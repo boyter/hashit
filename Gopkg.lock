@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/edsrzf/mmap-go"
+  packages = ["."]
+  revision = "188cc3b666ba704534fa4f96e9e61f21f1e1ba7c"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -19,9 +25,18 @@
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = [
+    "unix",
+    "windows"
+  ]
+  revision = "61b9204099cb1bebc803c9ffb9b2d3acd9d457d9"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "97eb70e5b0cdcc0eaa2731c309de85cff66b263adf3904f48deb7f66d0d2a5a2"
+  inputs-digest = "4198cc9ebfcd3ba541e133f1fa4487768addfe4a543b45284890e861bc8205ef"
   solver-name = "gps-cdcl"
   solver-version = 1
