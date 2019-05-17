@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"crypto/md5"
 	"fmt"
 	mmapgo "github.com/edsrzf/mmap-go"
 	"os"
@@ -44,19 +43,15 @@ func Process() {
 		}
 		close(fileListQueue)
 	}()
-
+	fileProcessorWorker(fileListQueue)
 
 	// If a file is small < 1 MB then read directly into memory and process
 	// if it is large then mmap it and process
-	md5_digest := md5.New()
+	//md5_digest := md5.New()
 	//sha1_digest := sha1.New()
 	//sha256_digest := sha256.New()
 	//sha512_digest := sha512.New()
-
-
-	md5_digest.Write([]byte{})
-
-
+	//md5_digest.Write([]byte{})
 }
 
 func Mmap() {

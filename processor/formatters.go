@@ -20,5 +20,5 @@ func printVerbose(msg string) {
 
 // Used when explicitly for os.exit output when crashing out
 func printError(msg string) {
-	_, _ = fmt.Fprintf(os.Stderr, "ERROR %s: %s", getFormattedTime(), msg)
+	_, _ = fmt.Fprintln(os.Stderr, "ERROR %s: %s", getFormattedTime(), msg)
 }

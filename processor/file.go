@@ -7,11 +7,10 @@ import (
 
 func walkDirectory(toWalk string, output chan string) {
 	_ = godirwalk.Walk(toWalk, &godirwalk.Options{
-		// Unsorted is meant to make the walk faster and we need to sort after processing anyway
-		Unsorted: true,
+		Unsorted: false,
 		Callback: func(root string, info *godirwalk.Dirent) error {
 			if !info.IsDir() {
-				output <- info.Name()
+				output <- root
 			}
 
 			return nil
