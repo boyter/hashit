@@ -22,7 +22,6 @@ func main() {
 
 	flags := rootCmd.PersistentFlags()
 
-
 	flags.BoolVarP(
 		&verbose,
 		"verbose",
@@ -30,7 +29,6 @@ func main() {
 		false,
 		"verbose output",
 	)
-
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
