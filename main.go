@@ -1,8 +1,7 @@
 package main
 
 import (
-	"fmt"
-	mmapgo "github.com/edsrzf/mmap-go"
+	"github.com/boyter/hashit/processor"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -17,7 +16,8 @@ func main() {
 		Long:    "Hash It!\nBen Boyter <ben@boyter.org> + Contributors",
 		Version: "0.1.0",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(args)
+			processor.DirFilePaths = args
+			processor.Process()
 		},
 	}
 
@@ -33,32 +33,5 @@ func main() {
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
-	}
-
-	file, err := os.OpenFile("main.go", os.O_RDONLY, 0644)
-
-	if err != nil {
-		panic(err.Error())
-	}
-
-	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
-
-	fmt.Println(len(mmap))
-
-	count := 0
-	for _, currentByte := range mmap {
-		if currentByte == '\n' {
-			count++
-		}
-	}
-
-	fmt.Println(count)
-
-	if err != nil {
-		fmt.Println("error mapping:", err)
-	}
-
-	if err := mmap.Unmap(); err != nil {
-		fmt.Println("error unmapping:", err)
 	}
 }
