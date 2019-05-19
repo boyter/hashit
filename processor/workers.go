@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"sync"
 )
 
 func fileProcessorWorker(input chan string) {
@@ -43,12 +44,23 @@ func fileProcessorWorker(input chan string) {
 				continue
 			}
 
-			md5_digest := md5.New()
+			var wg sync.WaitGroup
+
+			wg.Add(1)
+			md5_string := ""
+			go func() {
+				md5_digest := md5.New()
+				md5_digest.Write(content)
+				md5_string = hex.EncodeToString(md5_digest.Sum(nil))
+				wg.Done()
+			}()
+
+
 			////sha1_digest := sha1.New()
 			////sha256_digest := sha256.New()
 			////sha512_digest := sha512.New()
-			md5_digest.Write(content)
-			fmt.Println(hex.EncodeToString(md5_digest.Sum(nil)))
+
+			fmt.Println()
 		}
 	}
 }
