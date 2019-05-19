@@ -33,11 +33,12 @@ func fileProcessorWorker(input chan string) {
 		}
 
 		// Greater than 1 million bytes
-		if fi.Size() > 1000000 {
+		if fi.Size() > 1 {
 			// If Windows ignore memory maps and stream the file off disk
 			if runtime.GOOS == "windows" {
 			} else {
 				// Memory map the file and process
+				processMemoryMap(res)
 			}
 
 		} else {
@@ -48,8 +49,56 @@ func fileProcessorWorker(input chan string) {
 				continue
 			}
 
-			processFile(content, res)
+			processContent(content, res)
 		}
+	}
+}
+
+func processMemoryMap(filename string) {
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
+
+	if err != nil {
+		fmt.Println("error mapping:", err)
+	}
+
+	// Create channels for each hash
+	md5_digest := md5.New()
+	sha1_digest := sha1.New()
+	sha256_digest := sha256.New()
+	sha512_digest := sha512.New()
+
+	for i:=0; i<len(mmap); i += 1000000 {
+		end := i + 1000000
+		if end > len(mmap) {
+			end = len(mmap)
+		}
+
+		md5_digest.Write(mmap[i:end])
+		sha1_digest.Write(mmap[i:end])
+		sha256_digest.Write(mmap[i:end])
+		sha512_digest.Write(mmap[i:end])
+	}
+
+	md5_string := hex.EncodeToString(md5_digest.Sum(nil))
+	sha1_string := hex.EncodeToString(sha1_digest.Sum(nil))
+	sha256_string := hex.EncodeToString(sha256_digest.Sum(nil))
+	sha512_string := hex.EncodeToString(sha512_digest.Sum(nil))
+
+	fmt.Println(filename)
+	fmt.Println("   MD5 " + md5_string)
+	fmt.Println("  SHA1 " + sha1_string)
+	fmt.Println("SHA256 " + sha256_string)
+	fmt.Println("SHA512 " + sha512_string)
+	fmt.Println("")
+
+	if err := mmap.Unmap(); err != nil {
+		fmt.Println("error unmapping:", err)
 	}
 }
 
@@ -82,7 +131,7 @@ func Mmap() {
 	}
 }
 
-func processFile(content []byte, res string) {
+func processContent(content []byte, filename string) {
 	var wg sync.WaitGroup
 	md5_string := ""
 	sha1_string := ""
@@ -117,7 +166,7 @@ func processFile(content []byte, res string) {
 		wg.Done()
 	}(content)
 	wg.Wait()
-	fmt.Println(res)
+	fmt.Println(filename)
 	fmt.Println("   MD5 " + md5_string)
 	fmt.Println("  SHA1 " + sha1_string)
 	fmt.Println("SHA256 " + sha256_string)
