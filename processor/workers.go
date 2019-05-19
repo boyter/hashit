@@ -2,6 +2,9 @@ package processor
 
 import (
 	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -46,21 +49,51 @@ func fileProcessorWorker(input chan string) {
 
 			var wg sync.WaitGroup
 
-			wg.Add(1)
 			md5_string := ""
-			go func() {
+			sha1_string := ""
+			sha256_string := ""
+			sha512_string := ""
+
+			wg.Add(1)
+			go func(c []byte) {
 				md5_digest := md5.New()
-				md5_digest.Write(content)
+				md5_digest.Write(c)
 				md5_string = hex.EncodeToString(md5_digest.Sum(nil))
 				wg.Done()
-			}()
+			}(content)
 
+			wg.Add(1)
+			go func(c []byte) {
+				sha1_digest := sha1.New()
+				sha1_digest.Write(c)
+				sha1_string = hex.EncodeToString(sha1_digest.Sum(nil))
+				wg.Done()
+			}(content)
 
-			////sha1_digest := sha1.New()
-			////sha256_digest := sha256.New()
-			////sha512_digest := sha512.New()
+			wg.Add(1)
+			go func(c []byte) {
+				sha256_digest := sha256.New()
+				sha256_digest.Write(c)
+				sha256_string = hex.EncodeToString(sha256_digest.Sum(nil))
+				wg.Done()
+			}(content)
 
-			fmt.Println()
+			wg.Add(1)
+			go func(c []byte) {
+				sha512_digest := sha512.New()
+				sha512_digest.Write(c)
+				sha512_string = hex.EncodeToString(sha512_digest.Sum(nil))
+				wg.Done()
+			}(content)
+
+			wg.Wait()
+
+			fmt.Println(res)
+			fmt.Println("   MD5 " + md5_string)
+			fmt.Println("  SHA1 " + sha1_string)
+			fmt.Println("SHA256 " + sha256_string)
+			fmt.Println("SHA512 " + sha512_string)
+			fmt.Println("")
 		}
 	}
 }
