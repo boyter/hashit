@@ -6,8 +6,6 @@ import (
 	"os"
 )
 
-var verbose = false
-
 //go:generate go run scripts/include.go
 func main() {
 	rootCmd := &cobra.Command{
@@ -24,11 +22,17 @@ func main() {
 	flags := rootCmd.PersistentFlags()
 
 	flags.BoolVarP(
-		&verbose,
+		&processor.Verbose,
 		"verbose",
 		"v",
 		false,
 		"verbose output",
+	)
+	flags.BoolVar(
+		&processor.Debug,
+		"debug",
+		false,
+		"enabled debug output",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

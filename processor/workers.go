@@ -7,6 +7,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	mmapgo "github.com/edsrzf/mmap-go"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -36,7 +37,7 @@ func fileProcessorWorker(input chan string) {
 			// If Windows ignore memory maps and stream the file off disk
 			if runtime.GOOS == "windows" {
 			} else {
-
+				// Memory map the file and process
 			}
 
 		} else {
@@ -47,53 +48,79 @@ func fileProcessorWorker(input chan string) {
 				continue
 			}
 
-			var wg sync.WaitGroup
-
-			md5_string := ""
-			sha1_string := ""
-			sha256_string := ""
-			sha512_string := ""
-
-			wg.Add(1)
-			go func(c []byte) {
-				md5_digest := md5.New()
-				md5_digest.Write(c)
-				md5_string = hex.EncodeToString(md5_digest.Sum(nil))
-				wg.Done()
-			}(content)
-
-			wg.Add(1)
-			go func(c []byte) {
-				sha1_digest := sha1.New()
-				sha1_digest.Write(c)
-				sha1_string = hex.EncodeToString(sha1_digest.Sum(nil))
-				wg.Done()
-			}(content)
-
-			wg.Add(1)
-			go func(c []byte) {
-				sha256_digest := sha256.New()
-				sha256_digest.Write(c)
-				sha256_string = hex.EncodeToString(sha256_digest.Sum(nil))
-				wg.Done()
-			}(content)
-
-			wg.Add(1)
-			go func(c []byte) {
-				sha512_digest := sha512.New()
-				sha512_digest.Write(c)
-				sha512_string = hex.EncodeToString(sha512_digest.Sum(nil))
-				wg.Done()
-			}(content)
-
-			wg.Wait()
-
-			fmt.Println(res)
-			fmt.Println("   MD5 " + md5_string)
-			fmt.Println("  SHA1 " + sha1_string)
-			fmt.Println("SHA256 " + sha256_string)
-			fmt.Println("SHA512 " + sha512_string)
-			fmt.Println("")
+			processFile(content, res)
 		}
 	}
+}
+
+func Mmap() {
+	file, err := os.OpenFile("main.go", os.O_RDONLY, 0644)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
+
+	fmt.Println("Length", len(mmap))
+
+	count := 0
+	for _, currentByte := range mmap {
+		if currentByte == '\n' {
+			count++
+		}
+	}
+
+	fmt.Println("Newlines", count)
+
+	if err != nil {
+		fmt.Println("error mapping:", err)
+	}
+
+	if err := mmap.Unmap(); err != nil {
+		fmt.Println("error unmapping:", err)
+	}
+}
+
+func processFile(content []byte, res string) {
+	var wg sync.WaitGroup
+	md5_string := ""
+	sha1_string := ""
+	sha256_string := ""
+	sha512_string := ""
+	wg.Add(1)
+	go func(c []byte) {
+		md5_digest := md5.New()
+		md5_digest.Write(c)
+		md5_string = hex.EncodeToString(md5_digest.Sum(nil))
+		wg.Done()
+	}(content)
+	wg.Add(1)
+	go func(c []byte) {
+		sha1_digest := sha1.New()
+		sha1_digest.Write(c)
+		sha1_string = hex.EncodeToString(sha1_digest.Sum(nil))
+		wg.Done()
+	}(content)
+	wg.Add(1)
+	go func(c []byte) {
+		sha256_digest := sha256.New()
+		sha256_digest.Write(c)
+		sha256_string = hex.EncodeToString(sha256_digest.Sum(nil))
+		wg.Done()
+	}(content)
+	wg.Add(1)
+	go func(c []byte) {
+		sha512_digest := sha512.New()
+		sha512_digest.Write(c)
+		sha512_string = hex.EncodeToString(sha512_digest.Sum(nil))
+		wg.Done()
+	}(content)
+	wg.Wait()
+	fmt.Println(res)
+	fmt.Println("   MD5 " + md5_string)
+	fmt.Println("  SHA1 " + sha1_string)
+	fmt.Println("SHA256 " + sha256_string)
+	fmt.Println("SHA512 " + sha512_string)
+	fmt.Println("")
 }

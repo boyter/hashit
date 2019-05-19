@@ -1,8 +1,6 @@
 package processor
 
 import (
-	"fmt"
-	mmapgo "github.com/edsrzf/mmap-go"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,6 +8,9 @@ import (
 
 // Verbose enables verbose logging output
 var Verbose = false
+
+// Debug enables debug logging output
+var Debug = false
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
@@ -36,49 +37,13 @@ func Process() {
 
 	fileListQueue := make(chan string, FileListQueueSize) // Files ready to be read from disk
 
-	// Spawn routine to start identifying files on disk
+	// Spawn routine to start finding files on disk
 	go func() {
 		for _, f := range DirFilePaths {
 			walkDirectory(f, fileListQueue)
 		}
 		close(fileListQueue)
 	}()
+
 	fileProcessorWorker(fileListQueue)
-
-	// If a file is small < 1 MB then read directly into memory and process
-	// if it is large then mmap it and process
-	//md5_digest := md5.New()
-	//sha1_digest := sha1.New()
-	//sha256_digest := sha256.New()
-	//sha512_digest := sha512.New()
-	//md5_digest.Write([]byte{})
-}
-
-func Mmap() {
-	file, err := os.OpenFile("main.go", os.O_RDONLY, 0644)
-
-	if err != nil {
-		panic(err.Error())
-	}
-
-	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
-
-	fmt.Println("Length", len(mmap))
-
-	count := 0
-	for _, currentByte := range mmap {
-		if currentByte == '\n' {
-			count++
-		}
-	}
-
-	fmt.Println("Newlines", count)
-
-	if err != nil {
-		fmt.Println("error mapping:", err)
-	}
-
-	if err := mmap.Unmap(); err != nil {
-		fmt.Println("error unmapping:", err)
-	}
 }
