@@ -21,7 +21,7 @@ func printVerbose(msg string) {
 // Prints a message to stdout if flag to enable debug output is set
 func printDebug(msg string) {
 	if Debug {
-		fmt.Println(fmt.Sprintf("  DEBUG %s: %s", getFormattedTime(), msg))
+		fmt.Println(fmt.Sprintf("DEBUG %s: %s", getFormattedTime(), msg))
 	}
 }
 

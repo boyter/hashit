@@ -7,7 +7,7 @@ import (
 
 func walkDirectory(toWalk string, output chan string) {
 	_ = godirwalk.Walk(toWalk, &godirwalk.Options{
-		Unsorted: false,
+		Unsorted: true,
 		Callback: func(root string, info *godirwalk.Dirent) error {
 			if !info.IsDir() {
 				output <- root

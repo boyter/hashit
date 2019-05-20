@@ -16,6 +16,11 @@ import (
 
 func fileProcessorWorker(input chan string) {
 	for res := range input {
+
+		if Debug {
+			printDebug(fmt.Sprintf("processing %s", res))
+		}
+
 		// Open the file and determine if we should read it from disk or memory map
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
 
@@ -45,14 +50,19 @@ func fileProcessorWorker(input chan string) {
 			//	}
 			//} else {
 			if Debug {
-				printDebug(fmt.Sprintf("%s size = %d using memory map", res, fsize))
+				printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
 			}
 
 			// Memory map the file and process
+			// TODO should return a struct with the values we have
 			processMemoryMap(res)
 			//}
 
 		} else {
+			if Debug {
+				printDebug(fmt.Sprintf("%s bytes=%d using read file", res, fsize))
+			}
+			// TODO should return a struct with the values we have
 			processReadFile(res)
 		}
 	}
@@ -100,29 +110,35 @@ func processMemoryMap(filename string) {
 		}()
 	}
 
-	wg.Add(1)
-	go func() {
-		for b := range sha1c {
-			sha1_d.Write(b)
-		}
-		wg.Done()
-	}()
+	if hasHash("sha1") {
+		wg.Add(1)
+		go func() {
+			for b := range sha1c {
+				sha1_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
-	wg.Add(1)
-	go func() {
-		for b := range sha256c {
-			sha256_d.Write(b)
-		}
-		wg.Done()
-	}()
+	if hasHash("sha256") {
+		wg.Add(1)
+		go func() {
+			for b := range sha256c {
+				sha256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
-	wg.Add(1)
-	go func() {
-		for b := range sha512c {
-			sha512_d.Write(b)
-		}
-		wg.Done()
-	}()
+	if hasHash("sha512") {
+		wg.Add(1)
+		go func() {
+			for b := range sha512c {
+				sha512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash("blake2b256") {
 		wg.Add(1)
@@ -145,10 +161,15 @@ func processMemoryMap(filename string) {
 		if hasHash("md5") {
 			md5c <- mmap[i:end]
 		}
-		sha1c <- mmap[i:end]
-		sha256c <- mmap[i:end]
-		sha512c <- mmap[i:end]
-
+		if hasHash("sha1") {
+			sha1c <- mmap[i:end]
+		}
+		if hasHash("sha256") {
+			sha256c <- mmap[i:end]
+		}
+		if hasHash("sha512") {
+			sha512c <- mmap[i:end]
+		}
 		if hasHash("blake2b256") {
 			blake2b_256_c <- mmap[i:end]
 		}
@@ -165,9 +186,15 @@ func processMemoryMap(filename string) {
 	if hasHash("md5") {
 		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
 	}
-	fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
-	fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
-	fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
+	if hasHash("sha1") {
+		fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
+	}
+	if hasHash("sha256") {
+		fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
+	}
+	if hasHash("sha512") {
+		fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
+	}
 	if hasHash("blake2b256") {
 		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
 	}

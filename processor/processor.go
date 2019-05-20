@@ -3,7 +3,6 @@ package processor
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -20,7 +19,7 @@ var Hashes = []string{}
 var DirFilePaths = []string{}
 
 // FileListQueueSize is the queue of files found and ready to be processed
-var FileListQueueSize = runtime.NumCPU() * 100
+var FileListQueueSize = 1000
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
@@ -56,7 +55,10 @@ func Process() {
 		close(fileListQueue)
 	}()
 
+	// TODO multi-process this
 	fileProcessorWorker(fileListQueue)
+
+	// TODO formatter here
 }
 
 
