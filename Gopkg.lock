@@ -14,6 +14,18 @@
   version = "v1.0"
 
 [[projects]]
+  name = "github.com/karrick/godirwalk"
+  packages = ["."]
+  revision = "5e617d9cfec6f870e63b168e9a2fb7c490a1c108"
+  version = "v1.10.3"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/minio/blake2b-simd"
+  packages = ["."]
+  revision = "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
+
+[[projects]]
   name = "github.com/spf13/cobra"
   packages = ["."]
   revision = "ef82de70bb3f60c65fb8eebacbb2d122ef517385"
@@ -37,6 +49,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4198cc9ebfcd3ba541e133f1fa4487768addfe4a543b45284890e861bc8205ef"
+  inputs-digest = "4012294484ff69a0a0b7e8441e093d481fbc87c9c2e3aa9f342f0fada52472ea"
   solver-name = "gps-cdcl"
   solver-version = 1

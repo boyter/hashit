@@ -12,6 +12,9 @@ var Verbose = false
 // Debug enables debug logging output
 var Debug = false
 
+// If set to true disables the use of memory maps
+var NoMmap = false
+
 // List of hashes that we want to process
 var Hashes = []string{}
 
@@ -20,6 +23,9 @@ var DirFilePaths = []string{}
 
 // FileListQueueSize is the queue of files found and ready to be processed
 var FileListQueueSize = 1000
+
+// Number of bytes in a size to enable memory maps or streaming
+var StreamSize int64 = 1000000
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {

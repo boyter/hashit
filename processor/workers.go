@@ -9,8 +9,10 @@ import (
 	"fmt"
 	mmapgo "github.com/edsrzf/mmap-go"
 	"github.com/minio/blake2b-simd"
+	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"sync"
 )
 
@@ -38,25 +40,26 @@ func fileProcessorWorker(input chan string) {
 		fsize := fi.Size()
 		_ = file.Close()
 
-		// Greater than 1 million bytes
-		if fsize > 1000000 {
-			// If Windows ignore memory maps and stream the file off disk
-			//if runtime.GOOS == "windows" {
-			//	// Should be done like memory map
-			//	scanner := bufio.NewScanner(file)
-			//
-			//	for scanner.Scan() {
-			//		scanner.Bytes()
-			//	}
-			//} else {
-			if Debug {
-				printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
-			}
+		if fsize > StreamSize {
+			// If Windows always ignore memory maps and stream the file off disk
+			if runtime.GOOS == "windows" || NoMmap == true {
 
-			// Memory map the file and process
-			// TODO should return a struct with the values we have
-			processMemoryMap(res)
-			//}
+				if Debug {
+					printDebug(fmt.Sprintf("%s bytes=%d using scanner", res, fsize))
+				}
+
+				// TODO should return a struct with the values we have
+				processScanner(res)
+			} else {
+
+				if Debug {
+					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
+				}
+
+				// Memory map the file and process
+				// TODO should return a struct with the values we have
+				processMemoryMap(res)
+			}
 
 		} else {
 			if Debug {
@@ -66,6 +69,141 @@ func fileProcessorWorker(input chan string) {
 			processReadFile(res)
 		}
 	}
+}
+
+// TODO compare this to memory maps
+// Random tests indicate that mmap is faster when not in power save mode
+func processScanner(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		printError(fmt.Sprintf("opening file %s: %s", file, err.Error()))
+		return
+	}
+	defer file.Close()
+
+	// Create channels for each hash
+	md5_d := md5.New()
+	sha1_d := sha1.New()
+	sha256_d := sha256.New()
+	sha512_d := sha512.New()
+	blake2b_256_d := blake2b.New256()
+
+	md5c := make(chan []byte, 10)
+	sha1c := make(chan []byte, 10)
+	sha256c := make(chan []byte, 10)
+	sha512c := make(chan []byte, 10)
+	blake2b_256_c := make(chan []byte, 10)
+
+	var wg sync.WaitGroup
+
+	if hasHash("md5") {
+		wg.Add(1)
+		go func() {
+			for b := range md5c {
+				md5_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash("sha1") {
+		wg.Add(1)
+		go func() {
+			for b := range sha1c {
+				sha1_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash("sha256") {
+		wg.Add(1)
+		go func() {
+			for b := range sha256c {
+				sha256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash("sha512") {
+		wg.Add(1)
+		go func() {
+			for b := range sha512c {
+				sha512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash("blake2b256") {
+		wg.Add(1)
+		go func() {
+			for b := range blake2b_256_c {
+				blake2b_256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+
+	data := make([]byte, 8192) // 8192 appears to be optimal
+	for {
+		data = data[:cap(data)]
+		n, err := file.Read(data)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+			return
+		}
+
+		data = data[:n]
+
+		if hasHash("md5") {
+			md5c <- data
+		}
+		if hasHash("sha1") {
+			sha1c <-data
+		}
+		if hasHash("sha256") {
+			sha256c <-data
+		}
+		if hasHash("sha512") {
+			sha512c <- data
+		}
+		if hasHash("blake2b256") {
+			blake2b_256_c <- data
+		}
+	}
+
+	close(md5c)
+	close(sha1c)
+	close(sha256c)
+	close(sha512c)
+	close(blake2b_256_c)
+
+	wg.Wait()
+
+	fmt.Println(filename)
+	if hasHash("md5") {
+		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
+	}
+	if hasHash("sha1") {
+		fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
+	}
+	if hasHash("sha256") {
+		fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
+	}
+	if hasHash("sha512") {
+		fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
+	}
+	if hasHash("blake2b256") {
+		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
+	}
+	fmt.Println("")
 }
 
 // For files over a certain size it is faster to process them using

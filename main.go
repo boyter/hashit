@@ -27,6 +27,12 @@ func main() {
 		[]string{"md5", "sha1", "sha512"},
 		"hashes to be run for each file (set to all for all possible hashes)",
 	)
+	flags.BoolVar(
+		&processor.NoMmap,
+		"no-mmap",
+		false,
+		"never use memory maps",
+	)
 	flags.BoolVarP(
 		&processor.Verbose,
 		"verbose",
