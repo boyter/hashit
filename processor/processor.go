@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Verbose enables verbose logging output
@@ -11,6 +12,9 @@ var Verbose = false
 
 // Debug enables debug logging output
 var Debug = false
+
+// List of hashes that we want to process
+var Hashes = []string{}
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
@@ -24,6 +28,13 @@ func Process() {
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
 	}
+
+	// Clean up hashes by setting all to lower
+	cleanhash := []string{}
+	for _, x := range Hashes {
+		cleanhash = append(cleanhash, strings.ToLower(x))
+	}
+	Hashes = cleanhash
 
 	// Check if the paths or files added exist and exit if not
 	for _, f := range DirFilePaths {
@@ -46,4 +57,19 @@ func Process() {
 	}()
 
 	fileProcessorWorker(fileListQueue)
+}
+
+
+func hasHash(hash string) bool {
+	for _, x := range Hashes {
+		if x == "all" {
+			return true
+		}
+
+		if x == hash {
+			return true
+		}
+	}
+
+	return false
 }

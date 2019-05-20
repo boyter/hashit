@@ -21,6 +21,13 @@ func main() {
 
 	flags := rootCmd.PersistentFlags()
 
+	flags.StringSliceVar(
+		&processor.Hashes,
+		"exclude-dir",
+		[]string{"md5", "sha1", "sha512"},
+		"hashes to be run for each file (set to all for all possible hashes)",
+	)
+
 	flags.BoolVarP(
 		&processor.Verbose,
 		"verbose",

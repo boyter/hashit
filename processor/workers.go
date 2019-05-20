@@ -31,7 +31,7 @@ func fileProcessorWorker(input chan string) {
 			continue
 		}
 		fsize := fi.Size()
-		file.Close()
+		_ = file.Close()
 
 		// Greater than 1 million bytes
 		if fsize > 1000000 {
@@ -90,13 +90,15 @@ func processMemoryMap(filename string) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		for b := range md5c {
-			md5_d.Write(b)
-		}
-		wg.Done()
-	}()
+	if hasHash("md5") {
+		wg.Add(1)
+		go func() {
+			for b := range md5c {
+				md5_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	wg.Add(1)
 	go func() {
@@ -122,13 +124,15 @@ func processMemoryMap(filename string) {
 		wg.Done()
 	}()
 
-	wg.Add(1)
-	go func() {
-		for b := range blake2b_256_c {
-			blake2b_256_d.Write(b)
-		}
-		wg.Done()
-	}()
+	if hasHash("blake2b256") {
+		wg.Add(1)
+		go func() {
+			for b := range blake2b_256_c {
+				blake2b_256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	total := len(mmap)
 
@@ -138,11 +142,16 @@ func processMemoryMap(filename string) {
 			end = total
 		}
 
-		md5c <- mmap[i:end]
+		if hasHash("md5") {
+			md5c <- mmap[i:end]
+		}
 		sha1c <- mmap[i:end]
 		sha256c <- mmap[i:end]
 		sha512c <- mmap[i:end]
-		blake2b_256_c <- mmap[i:end]
+
+		if hasHash("blake2b256") {
+			blake2b_256_c <- mmap[i:end]
+		}
 	}
 	close(md5c)
 	close(sha1c)
@@ -153,11 +162,15 @@ func processMemoryMap(filename string) {
 	wg.Wait()
 
 	fmt.Println(filename)
-	fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
+	if hasHash("md5") {
+		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
+	}
 	fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
 	fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
 	fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
-	fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
+	if hasHash("blake2b256") {
+		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
+	}
 	fmt.Println("")
 
 	if err := mmap.Unmap(); err != nil {
@@ -176,22 +189,37 @@ func processReadFile(filename string) {
 		return
 	}
 
-	md5_digest := md5.New()
-	md5_digest.Write(content)
-	sha1_digest := sha1.New()
-	sha1_digest.Write(content)
-	sha256_digest := sha256.New()
-	sha256_digest.Write(content)
-	sha512_digest := sha512.New()
-	sha512_digest.Write(content)
-	blake2bs_256_digest := blake2b.New256()
-	blake2bs_256_digest.Write(content)
-
 	fmt.Println(filename)
-	fmt.Println("        MD5 " + hex.EncodeToString(md5_digest.Sum(nil)))
-	fmt.Println("      SHA-1 " + hex.EncodeToString(sha1_digest.Sum(nil)))
-	fmt.Println("    SHA-256 " + hex.EncodeToString(sha256_digest.Sum(nil)))
-	fmt.Println("    SHA-512 " + hex.EncodeToString(sha512_digest.Sum(nil)))
-	fmt.Println("Blake2b-256 " + hex.EncodeToString(blake2bs_256_digest.Sum(nil)))
+
+	if hasHash("md5") {
+		md5_digest := md5.New()
+		md5_digest.Write(content)
+		fmt.Println("        MD5 " + hex.EncodeToString(md5_digest.Sum(nil)))
+	}
+
+	if hasHash("sha1") {
+		sha1_digest := sha1.New()
+		sha1_digest.Write(content)
+		fmt.Println("      SHA-1 " + hex.EncodeToString(sha1_digest.Sum(nil)))
+	}
+
+	if hasHash("sha256") {
+		sha256_digest := sha256.New()
+		sha256_digest.Write(content)
+		fmt.Println("    SHA-256 " + hex.EncodeToString(sha256_digest.Sum(nil)))
+	}
+
+	if hasHash("sha512") {
+		sha512_digest := sha512.New()
+		sha512_digest.Write(content)
+		fmt.Println("    SHA-512 " + hex.EncodeToString(sha512_digest.Sum(nil)))
+	}
+
+	if hasHash("blake2b256") {
+		blake2bs_256_digest := blake2b.New256()
+		blake2bs_256_digest.Write(content)
+		fmt.Println("Blake2b-256 " + hex.EncodeToString(blake2bs_256_digest.Sum(nil)))
+	}
+
 	fmt.Println("")
 }
