@@ -125,10 +125,9 @@ func processMemoryMap(filename string) {
 		wg.Done()
 	}()
 
-
 	total := len(mmap)
 
-	for i:=0; i<total; i += 1000000 {
+	for i := 0; i < total; i += 1000000 {
 		end := i + 1000000
 		if end > total {
 			end = total
