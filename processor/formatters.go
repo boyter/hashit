@@ -18,6 +18,13 @@ func printVerbose(msg string) {
 	}
 }
 
+// Prints a message to stdout if flag to enable debug output is set
+func printDebug(msg string) {
+	if Debug {
+		fmt.Println(fmt.Sprintf("  DEBUG %s: %s", getFormattedTime(), msg))
+	}
+}
+
 // Used when explicitly for os.exit output when crashing out
 func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, "ERROR %s: %s", getFormattedTime(), msg)
