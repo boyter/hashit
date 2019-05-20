@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"bufio"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -37,6 +38,12 @@ func fileProcessorWorker(input chan string) {
 		if fi.Size() > 1 {
 			// If Windows ignore memory maps and stream the file off disk
 			if runtime.GOOS == "windows" {
+				// Should be done like memory map
+				scanner := bufio.NewScanner(file)
+
+				for scanner.Scan() {
+					scanner.Bytes()
+				}
 			} else {
 				// Memory map the file and process
 				processMemoryMap(res)
