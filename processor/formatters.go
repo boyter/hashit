@@ -1,8 +1,10 @@
 package processor
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -33,14 +35,30 @@ func printError(msg string) {
 
 
 func fileSummarize(input chan Result) string {
-	//switch {
-	//case More || strings.ToLower(Format) == "wide":
-	//	return fileSummarizeLong(input)
-	//case strings.ToLower(Format) == "json":
-	//	return toJSON(input)
-	//case strings.ToLower(Format) == "csv":
-	//	return toCSV(input)
-	//}
+	switch {
+	case strings.ToLower(Format) == "json":
+		return toJSON(input)
+	case strings.ToLower(Format) == "csv":
+		//return toCSV(input)
+	}
+
+	for res := range input {
+		fmt.Println(res.File)
+		fmt.Println("   MD5 " + res.MD5)
+		fmt.Println("  SHA1 " + res.SHA1)
+		fmt.Println("SHA512 " + res.SHA512)
+		fmt.Println("")
+	}
 
 	return ""
+}
+
+func toJSON(input chan Result) string {
+	results := []Result{}
+	for res := range input {
+		results = append(results, res)
+	}
+
+	jsonString, _ := json.Marshal(results)
+	return string(jsonString)
 }

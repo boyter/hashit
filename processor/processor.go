@@ -1,6 +1,8 @@
 package processor
 
 import (
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,12 @@ var NoMmap = false
 
 // List of hashes that we want to process
 var Hashes = []string{}
+
+// Format sets the output format of the formatter
+var Format = ""
+
+// FileOutput sets the file that output should be written to
+var FileOutput = ""
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
@@ -63,12 +71,16 @@ func Process() {
 	}()
 
 	// TODO multi-process this
-	fileProcessorWorker(fileListQueue)
-	fileSummarize(fileSummaryQueue)
+	fileProcessorWorker(fileListQueue, fileSummaryQueue)
+	result := fileSummarize(fileSummaryQueue)
 
-	// TODO formatter here
+	if FileOutput == "" {
+		fmt.Println(result)
+	} else {
+		_ = ioutil.WriteFile(FileOutput, []byte(result), 0600)
+		fmt.Println("results written to " + FileOutput)
+	}
 }
-
 
 func hasHash(hash string) bool {
 	for _, x := range Hashes {

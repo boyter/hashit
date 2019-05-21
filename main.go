@@ -27,6 +27,20 @@ func main() {
 		[]string{"md5", "sha1", "sha512"},
 		"hashes to be run for each file (set to all for all possible hashes)",
 	)
+	flags.StringVarP(
+		&processor.Format,
+		"format",
+		"f",
+		"text",
+		"set output format [text, json, csv]",
+	)
+	flags.StringVarP(
+		&processor.FileOutput,
+		"output",
+		"o",
+		"",
+		"output filename (default stdout)",
+	)
 	flags.BoolVar(
 		&processor.NoMmap,
 		"no-mmap",

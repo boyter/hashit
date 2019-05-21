@@ -16,7 +16,7 @@ import (
 	"sync"
 )
 
-func fileProcessorWorker(input chan string) {
+func fileProcessorWorker(input chan string, output chan Result) {
 	for res := range input {
 
 		if Debug {
@@ -56,19 +56,28 @@ func fileProcessorWorker(input chan string) {
 					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
 				}
 
-				// Memory map the file and process
-				// TODO should return a struct with the values we have
-				processMemoryMap(res)
+				r, err := processMemoryMap(res)
+				if err == nil {
+					r.File = res
+					r.Bytes = fsize
+					output <- r
+				}
 			}
 
 		} else {
 			if Debug {
 				printDebug(fmt.Sprintf("%s bytes=%d using read file", res, fsize))
 			}
-			// TODO should return a struct with the values we have
-			processReadFile(res)
+
+			r, err := processReadFile(res)
+			if err == nil {
+				r.File = res
+				r.Bytes = fsize
+				output <- r
+			}
 		}
 	}
+	close(output)
 }
 
 // TODO compare this to memory maps
@@ -210,20 +219,19 @@ func processScanner(filename string) {
 // memory mapped files which this method does
 // NB this does not play well with Windows as it will never
 // be able to unmap the file "error unmapping: FlushFileBuffers: Access is denied."
-func processMemoryMap(filename string) {
+func processMemoryMap(filename string) (Result, error) {
 	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
 		printError(fmt.Sprintf("opening file %s: %s", file, err.Error()))
-		return
+		return Result{}, err
 	}
 
 	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
 	if err != nil {
 		printError(fmt.Sprintf("mapping file %s: %s", filename, err.Error()))
-		return
+		return Result{}, err
 	}
 
-	// Create channels for each hash
 	md5_d := md5.New()
 	sha1_d := sha1.New()
 	sha256_d := sha256.New()
@@ -312,6 +320,7 @@ func processMemoryMap(filename string) {
 			blake2b_256_c <- mmap[i:end]
 		}
 	}
+
 	close(md5c)
 	close(sha1c)
 	close(sha256c)
@@ -320,71 +329,63 @@ func processMemoryMap(filename string) {
 
 	wg.Wait()
 
-	fmt.Println(filename)
-	if hasHash("md5") {
-		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
-	}
-	if hasHash("sha1") {
-		fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
-	}
-	if hasHash("sha256") {
-		fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
-	}
-	if hasHash("sha512") {
-		fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
-	}
-	if hasHash("blake2b256") {
-		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
-	}
-	fmt.Println("")
-
 	if err := mmap.Unmap(); err != nil {
 		printError(fmt.Sprintf("unmapping file %s: %s", filename, err.Error()))
 	}
+
+	return Result{
+		File: filename,
+		Bytes: int64(total),
+		MD5: hex.EncodeToString(md5_d.Sum(nil)),
+		SHA1: hex.EncodeToString(sha1_d.Sum(nil)),
+		SHA256: hex.EncodeToString(sha256_d.Sum(nil)),
+		SHA512: hex.EncodeToString(sha512_d.Sum(nil)),
+		Blake2b: hex.EncodeToString(blake2b_256_d.Sum(nil)),
+	}, nil
 }
 
 // For files under a certain size its faster to just read them into memory in one
 // chunk and then process them which this method does
 // NB there is little point in multi-processing at this level, it would be
 // better done on the input channel if required
-func processReadFile(filename string) {
+func processReadFile(filename string) (Result, error) {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		printError(fmt.Sprintf("Unable to read file %s into memory with error %s", filename, err.Error()))
-		return
+		return Result{}, err
 	}
 
-	fmt.Println(filename)
+	result := Result{}
 
 	if hasHash("md5") {
 		md5_digest := md5.New()
 		md5_digest.Write(content)
-		fmt.Println("        MD5 " + hex.EncodeToString(md5_digest.Sum(nil)))
+		result.MD5 = hex.EncodeToString(md5_digest.Sum(nil))
 	}
 
 	if hasHash("sha1") {
 		sha1_digest := sha1.New()
 		sha1_digest.Write(content)
-		fmt.Println("      SHA-1 " + hex.EncodeToString(sha1_digest.Sum(nil)))
+		result.SHA1 = hex.EncodeToString(sha1_digest.Sum(nil))
 	}
 
 	if hasHash("sha256") {
 		sha256_digest := sha256.New()
 		sha256_digest.Write(content)
-		fmt.Println("    SHA-256 " + hex.EncodeToString(sha256_digest.Sum(nil)))
+		result.SHA256 = hex.EncodeToString(sha256_digest.Sum(nil))
 	}
 
 	if hasHash("sha512") {
 		sha512_digest := sha512.New()
 		sha512_digest.Write(content)
-		fmt.Println("    SHA-512 " + hex.EncodeToString(sha512_digest.Sum(nil)))
+		result.SHA512 = hex.EncodeToString(sha512_digest.Sum(nil))
 	}
 
 	if hasHash("blake2b256") {
 		blake2bs_256_digest := blake2b.New256()
 		blake2bs_256_digest.Write(content)
-		fmt.Println("Blake2b-256 " + hex.EncodeToString(blake2bs_256_digest.Sum(nil)))
+		result.Blake2b = hex.EncodeToString(blake2bs_256_digest.Sum(nil))
 	}
 
-	fmt.Println("")
+	return result, nil
 }
