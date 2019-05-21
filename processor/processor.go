@@ -17,6 +17,9 @@ var Verbose = false
 // Debug enables debug logging output
 var Debug = false
 
+// Trace enables trace logging output which is extremely verbose
+var Trace = false
+
 // If set to true disables the use of memory maps
 var NoMmap = false
 

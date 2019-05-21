@@ -32,6 +32,24 @@ func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, "ERROR %s: %s", getFormattedTime(), msg)
 }
 
+// Prints a message to stdout if flag to enable trace output is set
+func printTrace(msg string) {
+	if Trace {
+		fmt.Println(fmt.Sprintf("TRACE %s: %s", getFormattedTime(), msg))
+	}
+}
+
+// Returns the current time as a millisecond timestamp
+func makeTimestampMilli() int64 {
+	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+// Returns the current time as a nanosecond timestamp as some things
+// are far too fast to measure using nanoseconds
+func makeTimestampNano() int64 {
+	return time.Now().UnixNano()
+}
+
 func fileSummarize(input chan Result) string {
 	switch {
 	case strings.ToLower(Format) == "json":
@@ -46,7 +64,6 @@ func fileSummarize(input chan Result) string {
 func toText(input chan Result) string {
 	var str strings.Builder
 
-	str.WriteString("\n")
 	for res := range input {
 		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
 		if hasHash(s_md5) {

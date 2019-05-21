@@ -56,7 +56,12 @@ func fileProcessorWorker(input chan string, output chan Result) {
 					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
 				}
 
+				fileStartTime := makeTimestampMilli()
 				r, err := processMemoryMap(res)
+				if Trace {
+					printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
+				}
+
 				if err == nil {
 					r.File = res
 					r.Bytes = fsize

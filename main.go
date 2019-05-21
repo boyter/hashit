@@ -60,6 +60,12 @@ func main() {
 		false,
 		"enable debug output",
 	)
+	flags.BoolVar(
+		&processor.Trace,
+		"trace",
+		false,
+		"enable trace output",
+	)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
