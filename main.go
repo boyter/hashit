@@ -12,7 +12,7 @@ func main() {
 		Use:     "hashit",
 		Short:   "hashit [FILE or DIRECTORY]",
 		Long:    "Hash It!\nBen Boyter <ben@boyter.org> + Contributors",
-		Version: "0.1.0",
+		Version: processor.Version,
 		Run: func(cmd *cobra.Command, args []string) {
 			processor.DirFilePaths = args
 			processor.Process()
@@ -24,7 +24,7 @@ func main() {
 	flags.StringSliceVar(
 		&processor.Hashes,
 		"hash",
-		[]string{"md5", "sha1", "sha512"},
+		[]string{"md5", "sha1", "sha256", "sha512"},
 		"hashes to be run for each file (set to all for all possible hashes)",
 	)
 	flags.StringVarP(

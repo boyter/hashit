@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// Global Version
+var Version = "0.1.0"
+
 // Verbose enables verbose logging output
 var Verbose = false
 
