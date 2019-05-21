@@ -53,11 +53,11 @@ func Process() {
 	}
 
 	// Clean up hashes by setting all to lower
-	cleanhash := []string{}
+	h := []string{}
 	for _, x := range Hashes {
-		cleanhash = append(cleanhash, strings.ToLower(x))
+		h = append(h, strings.ToLower(x))
 	}
-	Hashes = cleanhash
+	Hashes = h
 
 	// Check if the paths or files added exist and exit if not
 	for _, f := range DirFilePaths {

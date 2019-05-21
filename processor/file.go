@@ -3,10 +3,11 @@ package processor
 import (
 	"fmt"
 	"github.com/karrick/godirwalk"
+	"strings"
 )
 
 func walkDirectory(toWalk string, output chan string) {
-	_ = godirwalk.Walk(toWalk, &godirwalk.Options{
+	err := godirwalk.Walk(toWalk, &godirwalk.Options{
 		Unsorted: true,
 		Callback: func(root string, info *godirwalk.Dirent) error {
 			if !info.IsDir() {
@@ -22,4 +23,9 @@ func walkDirectory(toWalk string, output chan string) {
 			return godirwalk.SkipNode
 		},
 	})
+
+	// If err and we get specific error it's a file which we want to process
+	if err != nil && strings.Contains(err.Error(), "cannot Walk non-directory") {
+		output <- toWalk
+	}
 }
