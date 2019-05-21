@@ -51,7 +51,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				// TODO should return a struct with the values we have
 				processScanner(res)
 			} else {
-
 				if Debug {
 					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
 				}
@@ -68,7 +67,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 					output <- r
 				}
 			}
-
 		} else {
 			if Debug {
 				printDebug(fmt.Sprintf("%s bytes=%d using read file", res, fsize))
@@ -301,6 +299,7 @@ func processMemoryMap(filename string) (Result, error) {
 	}
 
 	total := len(mmap)
+	fileStartTime := makeTimestampMilli()
 
 	for i := 0; i < total; i += 1000000 {
 		end := i + 1000000
@@ -323,6 +322,10 @@ func processMemoryMap(filename string) (Result, error) {
 		if hasHash(s_blake2b256) {
 			blake2b_256_c <- mmap[i:end]
 		}
+	}
+
+	if Trace {
+		printTrace(fmt.Sprintf("milliseconds reading mmap file: %s: %d", filename, makeTimestampMilli()-fileStartTime))
 	}
 
 	close(md5c)
@@ -353,42 +356,73 @@ func processMemoryMap(filename string) (Result, error) {
 // NB there is little point in multi-processing at this level, it would be
 // better done on the input channel if required
 func processReadFile(filename string) (Result, error) {
+	startTime := makeTimestampNano()
 	content, err := ioutil.ReadFile(filename)
+
 	if err != nil {
 		printError(fmt.Sprintf("Unable to read file %s into memory with error %s", filename, err.Error()))
 		return Result{}, err
 	}
 
+	if Trace {
+		printTrace(fmt.Sprintf("nanoseconds reading file: %s: %d", filename, makeTimestampNano()-startTime))
+	}
+
 	result := Result{}
 
 	if hasHash(s_md5) {
+		startTime = makeTimestampNano()
 		md5_digest := md5.New()
 		md5_digest.Write(content)
 		result.MD5 = hex.EncodeToString(md5_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing md5: %s: %d", filename, makeTimestampNano()-startTime))
+		}
 	}
 
 	if hasHash(s_sha1) {
+		startTime = makeTimestampNano()
 		sha1_digest := sha1.New()
 		sha1_digest.Write(content)
 		result.SHA1 = hex.EncodeToString(sha1_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha1: %s: %d", filename, makeTimestampNano()-startTime))
+		}
 	}
 
 	if hasHash(s_sha256) {
+		startTime = makeTimestampNano()
 		sha256_digest := sha256.New()
 		sha256_digest.Write(content)
 		result.SHA256 = hex.EncodeToString(sha256_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha256: %s: %d", filename, makeTimestampNano()-startTime))
+		}
 	}
 
 	if hasHash(s_sha512) {
+		startTime = makeTimestampNano()
 		sha512_digest := sha512.New()
 		sha512_digest.Write(content)
 		result.SHA512 = hex.EncodeToString(sha512_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
 	}
 
 	if hasHash(s_blake2b256) {
+		startTime = makeTimestampNano()
 		blake2bs_256_digest := blake2b.New256()
 		blake2bs_256_digest.Write(content)
 		result.Blake2b256 = hex.EncodeToString(blake2bs_256_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing blake2b: %s: %d", filename, makeTimestampNano()-startTime))
+		}
 	}
 
 	return result, nil
