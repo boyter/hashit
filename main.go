@@ -23,7 +23,7 @@ func main() {
 
 	flags.StringSliceVar(
 		&processor.Hashes,
-		"hashes",
+		"hash",
 		[]string{"md5", "sha1", "sha512"},
 		"hashes to be run for each file (set to all for all possible hashes)",
 	)
@@ -44,7 +44,7 @@ func main() {
 		&processor.Debug,
 		"debug",
 		false,
-		"enabled debug output",
+		"enable debug output",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

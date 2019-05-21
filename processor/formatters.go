@@ -29,3 +29,18 @@ func printDebug(msg string) {
 func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, "ERROR %s: %s", getFormattedTime(), msg)
 }
+
+
+
+func fileSummarize(input chan Result) string {
+	//switch {
+	//case More || strings.ToLower(Format) == "wide":
+	//	return fileSummarizeLong(input)
+	//case strings.ToLower(Format) == "json":
+	//	return toJSON(input)
+	//case strings.ToLower(Format) == "csv":
+	//	return toCSV(input)
+	//}
+
+	return ""
+}

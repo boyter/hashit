@@ -52,6 +52,7 @@ func Process() {
 	}
 
 	fileListQueue := make(chan string, FileListQueueSize) // Files ready to be read from disk
+	fileSummaryQueue := make(chan Result, FileListQueueSize)
 
 	// Spawn routine to start finding files on disk
 	go func() {
@@ -63,6 +64,7 @@ func Process() {
 
 	// TODO multi-process this
 	fileProcessorWorker(fileListQueue)
+	fileSummarize(fileSummaryQueue)
 
 	// TODO formatter here
 }
