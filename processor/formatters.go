@@ -69,23 +69,12 @@ func toHashDeep(input chan Result) string {
 	str.WriteString("%%%% HASHIT-" + Version + "\n")
 	str.WriteString("%%%% size,md5,sha256,filename\n")
 	str.WriteString("## Invoked from: NEEDS TO GO HERE\n")
-	str.WriteString("## $ hashdeep processor/file.go processor/formatters.go processor/processor.go processor/structs.go processor/workers.go\n")
+	str.WriteString("## $ hashdeep NEEDS TO GO HERE\n")
 	str.WriteString("##\n")
 
 	for res := range input {
 		str.WriteString(fmt.Sprintf("%d,%s,%s,%s\n", res.Bytes, res.MD5, res.SHA256, res.File))
 	}
-
-	//%%%% HASHDEEP-1.0
-	//%%%% size,md5,sha256,filename
-	//## Invoked from: /mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit
-	//## $ hashdeep processor/file.go processor/formatters.go processor/processor.go processor/structs.go processor/workers.go
-	//##
-	//1459,aa62c46f8afb02d3923309f997a21a32,5683ad437b2210ec63fc78db6ca3b3f8930ad1287e5ff1fd4d156ccf05c243f2,/mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit/processor/formatters.go
-	//2278,f9e775a4ecfa51a1c5638a767012d5fc,ae7030d6495a15c6583516a89ebf166ce7a84cf2a3fced66f25af422824ed90d,/mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit/processor/processor.go
-	//214,60ed00bfe019fbf3e894cd6336b4b6be,d814dcc4beb533a7a55655519531c5c0a0f525007b8f6218775330cf54ee0578,/mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit/processor/structs.go
-	//528,d4b44389202317f4fe541a26d22ee5ec,eb5189227751bbe489d4a0dcd477fad87bf5bcff8a333e8b410487a1c0037e3b,/mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit/processor/file.go
-	//7916,d305c56350944199d831c439244f67cd,06df06a6f8a379a4a391a3e496799b4b8e253b38b0973893d0a27032dff284a7,/mnt/c/Users/bboyter/Documents/Go/src/github.com/boyter/hashit/processor/workers.go
 
 	return str.String()
 }
