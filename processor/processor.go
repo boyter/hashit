@@ -38,6 +38,13 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1000000
 
+var s_md5 = "md5"
+var s_sha1 = "sha1"
+var s_sha256 = "sha256"
+var s_sha512 = "sha512"
+var s_blake2b256 = "blake2b256"
+
+
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
 	// Clean up any invalid arguments before setting everything up

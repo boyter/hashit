@@ -36,21 +36,38 @@ func fileSummarize(input chan Result) string {
 	switch {
 	case strings.ToLower(Format) == "json":
 		return toJSON(input)
-	case strings.ToLower(Format) == "csv":
-	//return toCSV(input)
 	case strings.ToLower(Format) == "hashdeep":
-			return toHashDeep(input)
+		return toHashDeep(input)
 	}
 
+	return toText(input)
+}
+
+func toText(input chan Result) string {
+	var str strings.Builder
+
+	str.WriteString("\n")
 	for res := range input {
-		fmt.Println(res.File)
-		fmt.Println("   MD5 " + res.MD5)
-		fmt.Println("  SHA1 " + res.SHA1)
-		fmt.Println("SHA512 " + res.SHA512)
-		fmt.Println("")
+		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
+		if hasHash(s_md5) {
+			str.WriteString("        MD5 " + res.MD5 + "\n")
+		}
+		if hasHash(s_sha1) {
+			str.WriteString("       SHA1 " + res.SHA1 + "\n")
+		}
+		if hasHash(s_sha256) {
+			str.WriteString("     SHA256 " + res.SHA256 + "\n")
+		}
+		if hasHash(s_sha512) {
+			str.WriteString("     SHA512 " + res.SHA512 + "\n")
+		}
+		if hasHash(s_blake2b256) {
+			str.WriteString("Blake2b-256 " + res.Blake2b256 + "\n")
+		}
+		str.WriteString("\n")
 	}
 
-	return ""
+	return str.String()
 }
 
 func toJSON(input chan Result) string {
@@ -65,6 +82,9 @@ func toJSON(input chan Result) string {
 
 func toHashDeep(input chan Result) string {
 	var str strings.Builder
+
+	// TODO you can turn on/off hashes in hashdeep EG hashdeep -c sha1,sha256 processor/*
+	// TODO which is not currently supported below
 
 	str.WriteString("%%%% HASHIT-" + Version + "\n")
 	str.WriteString("%%%% size,md5,sha256,filename\n")
