@@ -23,6 +23,9 @@ var Trace = false
 // If set to true disables the use of memory maps
 var NoMmap = false
 
+// Print out results as they are processed
+var Stream = false
+
 // List of hashes that we want to process
 var Hashes = []string{}
 

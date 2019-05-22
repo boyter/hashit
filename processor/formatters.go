@@ -82,6 +82,11 @@ func toText(input chan Result) string {
 			str.WriteString("Blake2b-256 " + res.Blake2b256 + "\n")
 		}
 		str.WriteString("\n")
+
+		if Stream {
+			fmt.Println(str.String())
+			str.Reset()
+		}
 	}
 
 	return str.String()

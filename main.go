@@ -47,6 +47,12 @@ func main() {
 		false,
 		"never use memory maps",
 	)
+	flags.BoolVar(
+		&processor.Stream,
+		"stream",
+		false,
+		"stream out results as processed",
+	)
 	flags.BoolVarP(
 		&processor.Verbose,
 		"verbose",
