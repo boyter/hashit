@@ -47,7 +47,6 @@ var s_sha256 = "sha256"
 var s_sha512 = "sha512"
 var s_blake2b256 = "blake2b256"
 
-
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
 	// Clean up any invalid arguments before setting everything up
@@ -72,8 +71,8 @@ func Process() {
 		}
 	}
 
-	fileListQueue := make(chan string, FileListQueueSize) // Files ready to be read from disk
-	fileSummaryQueue := make(chan Result, FileListQueueSize)
+	fileListQueue := make(chan string, FileListQueueSize)    // Files ready to be read from disk
+	fileSummaryQueue := make(chan Result, FileListQueueSize) // Results ready to be printed
 
 	// Spawn routine to start finding files on disk
 	go func() {
@@ -83,8 +82,7 @@ func Process() {
 		close(fileListQueue)
 	}()
 
-	// TODO multi-process this
-	fileProcessorWorker(fileListQueue, fileSummaryQueue)
+	go fileProcessorWorker(fileListQueue, fileSummaryQueue)
 	result := fileSummarize(fileSummaryQueue)
 
 	if FileOutput == "" {

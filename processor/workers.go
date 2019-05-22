@@ -72,7 +72,12 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				printDebug(fmt.Sprintf("%s bytes=%d using read file", res, fsize))
 			}
 
+			fileStartTime := makeTimestampNano()
 			r, err := processReadFile(res)
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processReadFile: %s: %d", res, makeTimestampNano()-fileStartTime))
+			}
+
 			if err == nil {
 				r.File = res
 				r.Bytes = fsize
@@ -88,7 +93,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 func processScanner(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		printError(fmt.Sprintf("opening file %s: %s", file, err.Error()))
+		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
 		return
 	}
 	defer file.Close()
@@ -224,7 +229,7 @@ func processScanner(filename string) {
 func processMemoryMap(filename string) (Result, error) {
 	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
-		printError(fmt.Sprintf("opening file %s: %s", file, err.Error()))
+		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
 		return Result{}, err
 	}
 
@@ -421,7 +426,7 @@ func processReadFile(filename string) (Result, error) {
 		result.Blake2b256 = hex.EncodeToString(blake2bs_256_digest.Sum(nil))
 
 		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing blake2b: %s: %d", filename, makeTimestampNano()-startTime))
+			printTrace(fmt.Sprintf("nanoseconds processing blake2b-256: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 
