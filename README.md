@@ -1,4 +1,8 @@
 
+
+ Dual-licensed under MIT or the [UNLICENSE](http://unlicense.org).
+
+
 Examples of SUM's
 
 http://releases.ubuntu.com/16.04/MD5SUMS
