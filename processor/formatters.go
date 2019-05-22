@@ -110,10 +110,17 @@ func toHashDeep(input chan Result) string {
 	// TODO you can turn on/off hashes in hashdeep EG hashdeep -c sha1,sha256 processor/*
 	// TODO which is not currently supported below
 
+	pwd, err := os.Getwd()
+	if err != nil {
+		printError(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
+		pwd = ""
+	}
+
+
 	str.WriteString("%%%% HASHIT-" + Version + "\n")
 	str.WriteString("%%%% size,md5,sha256,filename\n")
-	str.WriteString("## Invoked from: NEEDS TO GO HERE\n")
-	str.WriteString("## $ hashdeep NEEDS TO GO HERE\n")
+	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
+	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
 	str.WriteString("##\n")
 
 	for res := range input {

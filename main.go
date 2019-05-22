@@ -32,7 +32,7 @@ func main() {
 		"format",
 		"f",
 		"text",
-		"set output format [text, json, csv]",
+		"set output format [text, json, hashdeep]",
 	)
 	flags.StringVarP(
 		&processor.FileOutput,
