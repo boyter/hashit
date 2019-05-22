@@ -29,8 +29,11 @@ var NoMmap = false
 // Do not print out results as they are processed
 var NoStream = false
 
+// Should the application print all hashes it knows about
+var Hashes = false
+
 // List of hashes that we want to process
-var Hashes = []string{}
+var Hash = []string{}
 
 // Format sets the output format of the formatter
 var Format = ""
@@ -63,10 +66,10 @@ func Process() {
 
 	// Clean up hashes by setting all to lower
 	h := []string{}
-	for _, x := range Hashes {
+	for _, x := range Hash {
 		h = append(h, strings.ToLower(x))
 	}
-	Hashes = h
+	Hash = h
 
 	// Check if the paths or files added exist and exit if not
 	for _, f := range DirFilePaths {
@@ -101,7 +104,7 @@ func Process() {
 }
 
 func hasHash(hash string) bool {
-	for _, x := range Hashes {
+	for _, x := range Hash {
 		if x == "all" {
 			return true
 		}

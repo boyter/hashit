@@ -26,7 +26,7 @@ func main() {
 	flags := rootCmd.PersistentFlags()
 
 	flags.StringSliceVar(
-		&processor.Hashes,
+		&processor.Hash,
 		"hash",
 		[]string{"md5", "sha1", "sha256", "sha512"},
 		"hashes to be run for each file (set to all for all possible hashes)",
@@ -44,6 +44,12 @@ func main() {
 		"r",
 		false,
 		"recursive subdirectories are traversed",
+	)
+	flags.BoolVar(
+		&processor.Hashes,
+		"hashes",
+		false,
+		"list all supported hashes",
 	)
 	flags.StringVarP(
 		&processor.FileOutput,
