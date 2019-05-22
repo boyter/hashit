@@ -104,12 +104,14 @@ func processScanner(filename string) {
 	sha256_d := sha256.New()
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
+	blake2b_512_d := blake2b.New512()
 
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
 	sha256c := make(chan []byte, 10)
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
+	blake2b_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -162,6 +164,15 @@ func processScanner(filename string) {
 			wg.Done()
 		}()
 	}
+	if hasHash(s_blake2b512) {
+		wg.Add(1)
+		go func() {
+			for b := range blake2b_512_c {
+				blake2b_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	data := make([]byte, 8192) // 8192 appears to be optimal
 	for {
@@ -193,6 +204,9 @@ func processScanner(filename string) {
 		if hasHash(s_blake2b256) {
 			blake2b_256_c <- data
 		}
+		if hasHash(s_blake2b512) {
+			blake2b_512_c <- data
+		}
 	}
 
 	close(md5c)
@@ -200,6 +214,7 @@ func processScanner(filename string) {
 	close(sha256c)
 	close(sha512c)
 	close(blake2b_256_c)
+	close(blake2b_512_c)
 
 	wg.Wait()
 
@@ -218,6 +233,9 @@ func processScanner(filename string) {
 	}
 	if hasHash(s_blake2b256) {
 		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
+	}
+	if hasHash(s_blake2b512) {
+		fmt.Println("Blake2b 512 " + hex.EncodeToString(blake2b_512_d.Sum(nil)))
 	}
 	fmt.Println("")
 }
@@ -339,7 +357,6 @@ func processMemoryMap(filename string) (Result, error) {
 		if hasHash(s_blake2b256) {
 			blake2b_256_c <- mmap[i:end]
 		}
-
 		if hasHash(s_blake2b512) {
 			blake2b_512_c <- mmap[i:end]
 		}

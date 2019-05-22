@@ -8,6 +8,10 @@ import (
 
 //go:generate go run scripts/include.go
 func main() {
+	//f, _ := os.Create("hashit.pprof")
+	//pprof.StartCPUProfile(f)
+	//defer pprof.StopCPUProfile()
+
 	rootCmd := &cobra.Command{
 		Use:     "hashit",
 		Short:   "hashit [FILE or DIRECTORY]",
@@ -33,6 +37,13 @@ func main() {
 		"f",
 		"text",
 		"set output format [text, json, hashdeep]",
+	)
+	flags.BoolVarP(
+		&processor.Recursive,
+		"recursive",
+		"r",
+		false,
+		"recursive subdirectories are traversed",
 	)
 	flags.StringVarP(
 		&processor.FileOutput,
