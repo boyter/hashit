@@ -8,7 +8,7 @@ import (
 
 func walkDirectory(toWalk string, output chan string) {
 	err := godirwalk.Walk(toWalk, &godirwalk.Options{
-		Unsorted: true,
+		Unsorted: false, // We want the run to be deterministic
 		Callback: func(root string, info *godirwalk.Dirent) error {
 			if !info.IsDir() {
 				output <- root

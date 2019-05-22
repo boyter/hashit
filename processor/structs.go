@@ -8,5 +8,6 @@ type Result struct {
 	SHA256     string
 	SHA512     string
 	Blake2b256 string
+	Blake2b512 string
 	Bytes      int64
 }

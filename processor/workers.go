@@ -244,12 +244,14 @@ func processMemoryMap(filename string) (Result, error) {
 	sha256_d := sha256.New()
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
+	blake2b_512_d := blake2b.New512()
 
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
 	sha256c := make(chan []byte, 10)
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
+	blake2b_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -303,6 +305,16 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
+	if hasHash(s_blake2b512) {
+		wg.Add(1)
+		go func() {
+			for b := range blake2b_512_c {
+				blake2b_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
 	total := len(mmap)
 	fileStartTime := makeTimestampMilli()
 
@@ -327,6 +339,10 @@ func processMemoryMap(filename string) (Result, error) {
 		if hasHash(s_blake2b256) {
 			blake2b_256_c <- mmap[i:end]
 		}
+
+		if hasHash(s_blake2b512) {
+			blake2b_512_c <- mmap[i:end]
+		}
 	}
 
 	if Trace {
@@ -338,6 +354,7 @@ func processMemoryMap(filename string) (Result, error) {
 	close(sha256c)
 	close(sha512c)
 	close(blake2b_256_c)
+	close(blake2b_512_c)
 
 	wg.Wait()
 
@@ -353,6 +370,7 @@ func processMemoryMap(filename string) (Result, error) {
 		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
 		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
 		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
+		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
 	}, nil
 }
 
@@ -427,6 +445,17 @@ func processReadFile(filename string) (Result, error) {
 
 		if Trace {
 			printTrace(fmt.Sprintf("nanoseconds processing blake2b-256: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(s_blake2b512) {
+		startTime = makeTimestampNano()
+		blake2bs_512_digest := blake2b.New512()
+		blake2bs_512_digest.Write(content)
+		result.Blake2b512 = hex.EncodeToString(blake2bs_512_digest.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing blake2b-512: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 

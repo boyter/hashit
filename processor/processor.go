@@ -23,8 +23,8 @@ var Trace = false
 // If set to true disables the use of memory maps
 var NoMmap = false
 
-// Print out results as they are processed
-var Stream = false
+// Do not print out results as they are processed
+var NoStream = false
 
 // List of hashes that we want to process
 var Hashes = []string{}
@@ -49,6 +49,7 @@ var s_sha1 = "sha1"
 var s_sha256 = "sha256"
 var s_sha512 = "sha512"
 var s_blake2b256 = "blake2b256"
+var s_blake2b512 = "blake2b512"
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
@@ -89,7 +90,7 @@ func Process() {
 	result := fileSummarize(fileSummaryQueue)
 
 	if FileOutput == "" {
-		fmt.Println(result)
+		fmt.Print(result)
 	} else {
 		_ = ioutil.WriteFile(FileOutput, []byte(result), 0600)
 		fmt.Println("results written to " + FileOutput)
