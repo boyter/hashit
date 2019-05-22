@@ -84,7 +84,6 @@ func toText(input chan Result) string {
 		if hasHash(s_blake2b512) {
 			str.WriteString("Blake2b-512 " + res.Blake2b512 + "\n")
 		}
-		str.WriteString("\n")
 
 		if NoStream == false {
 			fmt.Println(str.String())
