@@ -9,5 +9,9 @@ type Result struct {
 	SHA512     string
 	Blake2b256 string
 	Blake2b512 string
+	Sha3224    string
+	Sha3256    string
+	Sha3384    string
+	Sha3512    string
 	Bytes      int64
 }

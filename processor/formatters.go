@@ -84,6 +84,18 @@ func toText(input chan Result) string {
 		if hasHash(s_blake2b512) {
 			str.WriteString("Blake2b-512 " + res.Blake2b512 + "\n")
 		}
+		if hasHash(s_sha3224) {
+			str.WriteString("   SHA3-224 " + res.Sha3224 + "\n")
+		}
+		if hasHash(s_sha3224) {
+			str.WriteString("   SHA3-256 " + res.Sha3256 + "\n")
+		}
+		if hasHash(s_sha3384) {
+			str.WriteString("   SHA3-384 " + res.Sha3384 + "\n")
+		}
+		if hasHash(s_sha3512) {
+			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
+		}
 
 		if NoStream == false {
 			fmt.Println(str.String())

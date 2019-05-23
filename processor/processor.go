@@ -56,6 +56,10 @@ var s_sha256 = "sha256"
 var s_sha512 = "sha512"
 var s_blake2b256 = "blake2b256"
 var s_blake2b512 = "blake2b512"
+var s_sha3224 = "sha3224"
+var s_sha3256 = "sha3256"
+var s_sha3384 = "sha3384"
+var s_sha3512 = "sha3512"
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {

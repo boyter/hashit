@@ -9,6 +9,7 @@ import (
 	"fmt"
 	mmapgo "github.com/edsrzf/mmap-go"
 	"github.com/minio/blake2b-simd"
+	"golang.org/x/crypto/sha3"
 	"io"
 	"io/ioutil"
 	"os"
@@ -263,6 +264,10 @@ func processMemoryMap(filename string) (Result, error) {
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
 	blake2b_512_d := blake2b.New512()
+	sha3_224_d := sha3.New224()
+	sha3_256_d := sha3.New256()
+	sha3_384_d := sha3.New384()
+	sha3_512_d := sha3.New512()
 
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
@@ -270,6 +275,10 @@ func processMemoryMap(filename string) (Result, error) {
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
 	blake2b_512_c := make(chan []byte, 10)
+	sha3_224_c := make(chan []byte, 10)
+	sha3_256_c := make(chan []byte, 10)
+	sha3_384_c := make(chan []byte, 10)
+	sha3_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -333,6 +342,43 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
+	if hasHash(s_sha3224) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_224_c {
+				sha3_224_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(s_sha3256) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_256_c {
+				sha3_256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(s_sha3384) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_384_c {
+				sha3_384_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(s_sha3512) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_512_c {
+				sha3_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
 	total := len(mmap)
 	fileStartTime := makeTimestampMilli()
 
@@ -360,6 +406,18 @@ func processMemoryMap(filename string) (Result, error) {
 		if hasHash(s_blake2b512) {
 			blake2b_512_c <- mmap[i:end]
 		}
+		if hasHash(s_sha3224) {
+			sha3_224_c <- mmap[i:end]
+		}
+		if hasHash(s_sha3256) {
+			sha3_256_c <- mmap[i:end]
+		}
+		if hasHash(s_sha3384) {
+			sha3_384_c <- mmap[i:end]
+		}
+		if hasHash(s_sha3512) {
+			sha3_512_c <- mmap[i:end]
+		}
 	}
 
 	if Trace {
@@ -372,6 +430,10 @@ func processMemoryMap(filename string) (Result, error) {
 	close(sha512c)
 	close(blake2b_256_c)
 	close(blake2b_512_c)
+	close(sha3_224_c)
+	close(sha3_256_c)
+	close(sha3_384_c)
+	close(sha3_512_c)
 
 	wg.Wait()
 
@@ -388,6 +450,10 @@ func processMemoryMap(filename string) (Result, error) {
 		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
 		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
 		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
+		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
+		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
+		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
+		Sha3512:    hex.EncodeToString(sha3_512_d.Sum(nil)),
 	}, nil
 }
 
