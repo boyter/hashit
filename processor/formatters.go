@@ -66,6 +66,9 @@ func toText(input chan Result) string {
 
 	for res := range input {
 		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
+		if hasHash(s_md4) {
+			str.WriteString("        MD4 " + res.MD4 + "\n")
+		}
 		if hasHash(s_md5) {
 			str.WriteString("        MD5 " + res.MD5 + "\n")
 		}

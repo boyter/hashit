@@ -9,6 +9,7 @@ import (
 	"fmt"
 	mmapgo "github.com/edsrzf/mmap-go"
 	"github.com/minio/blake2b-simd"
+	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
 	"io"
 	"io/ioutil"
@@ -258,6 +259,7 @@ func processMemoryMap(filename string) (Result, error) {
 		return Result{}, err
 	}
 
+	md4_d := md4.New()
 	md5_d := md5.New()
 	sha1_d := sha1.New()
 	sha256_d := sha256.New()
@@ -269,6 +271,7 @@ func processMemoryMap(filename string) (Result, error) {
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
 
+	md4c := make(chan []byte, 10)
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
 	sha256c := make(chan []byte, 10)
@@ -281,6 +284,16 @@ func processMemoryMap(filename string) (Result, error) {
 	sha3_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
+
+	if hasHash(s_md4) {
+		wg.Add(1)
+		go func() {
+			for b := range md4c {
+				md4_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(s_md5) {
 		wg.Add(1)
@@ -390,6 +403,9 @@ func processMemoryMap(filename string) (Result, error) {
 			end = total
 		}
 
+		if hasHash(s_md4) {
+			md4c <- mmap[i:end]
+		}
 		if hasHash(s_md5) {
 			md5c <- mmap[i:end]
 		}
@@ -426,6 +442,7 @@ func processMemoryMap(filename string) (Result, error) {
 		printTrace(fmt.Sprintf("milliseconds reading mmap file: %s: %d", filename, makeTimestampMilli()-fileStartTime))
 	}
 
+	close(md4c)
 	close(md5c)
 	close(sha1c)
 	close(sha256c)
@@ -446,6 +463,7 @@ func processMemoryMap(filename string) (Result, error) {
 	return Result{
 		File:       filename,
 		Bytes:      int64(total),
+		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
 		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
 		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
 		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
@@ -478,6 +496,21 @@ func processReadFile(filename string) (Result, error) {
 
 	var wg sync.WaitGroup
 	result := Result{}
+
+	if hasHash(s_md4) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := md4.New()
+			d.Write(content)
+			result.MD4 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing md4: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(s_md5) {
 		wg.Add(1)

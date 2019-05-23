@@ -50,6 +50,8 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1000000
 
+// TODO move these into a struct
+var s_md4 = "md4"
 var s_md5 = "md5"
 var s_sha1 = "sha1"
 var s_sha256 = "sha256"

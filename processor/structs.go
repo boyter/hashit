@@ -3,6 +3,7 @@ package processor
 // Holds the result after processing the hashes for the file
 type Result struct {
 	File       string
+	MD4		   string
 	MD5        string
 	SHA1       string
 	SHA256     string
