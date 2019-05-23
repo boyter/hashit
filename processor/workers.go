@@ -474,73 +474,159 @@ func processReadFile(filename string) (Result, error) {
 		printTrace(fmt.Sprintf("nanoseconds reading file: %s: %d", filename, makeTimestampNano()-startTime))
 	}
 
+	var wg sync.WaitGroup
 	result := Result{}
 
 	if hasHash(s_md5) {
-		startTime = makeTimestampNano()
-		md5_digest := md5.New()
-		md5_digest.Write(content)
-		result.MD5 = hex.EncodeToString(md5_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := md5.New()
+			d.Write(content)
+			result.MD5 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing md5: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing md5: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
 	if hasHash(s_sha1) {
-		startTime = makeTimestampNano()
-		sha1_digest := sha1.New()
-		sha1_digest.Write(content)
-		result.SHA1 = hex.EncodeToString(sha1_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha1.New()
+			d.Write(content)
+			result.SHA1 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing sha1: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha1: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
 	if hasHash(s_sha256) {
-		startTime = makeTimestampNano()
-		sha256_digest := sha256.New()
-		sha256_digest.Write(content)
-		result.SHA256 = hex.EncodeToString(sha256_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha256.New()
+			d.Write(content)
+			result.SHA256 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing sha256: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha256: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
 	if hasHash(s_sha512) {
-		startTime = makeTimestampNano()
-		sha512_digest := sha512.New()
-		sha512_digest.Write(content)
-		result.SHA512 = hex.EncodeToString(sha512_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha512.New()
+			d.Write(content)
+			result.SHA512 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing sha512: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha512: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
 	if hasHash(s_blake2b256) {
-		startTime = makeTimestampNano()
-		blake2bs_256_digest := blake2b.New256()
-		blake2bs_256_digest.Write(content)
-		result.Blake2b256 = hex.EncodeToString(blake2bs_256_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := blake2b.New256()
+			d.Write(content)
+			result.Blake2b256 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing blake2b-256: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing blake2b-256: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
 	if hasHash(s_blake2b512) {
-		startTime = makeTimestampNano()
-		blake2bs_512_digest := blake2b.New512()
-		blake2bs_512_digest.Write(content)
-		result.Blake2b512 = hex.EncodeToString(blake2bs_512_digest.Sum(nil))
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := blake2b.New512()
+			d.Write(content)
+			result.Blake2b512 = hex.EncodeToString(d.Sum(nil))
 
-		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing blake2b-512: %s: %d", filename, makeTimestampNano()-startTime))
-		}
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing blake2b-512: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
 	}
 
+	if hasHash(s_sha3224) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha3.New224()
+			d.Write(content)
+			result.Sha3224 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha3-224: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(s_sha3256) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha3.New256()
+			d.Write(content)
+			result.Sha3256 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha3-256: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(s_sha3384) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha3.New384()
+			d.Write(content)
+			result.Sha3384 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha3-384: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(s_sha3512) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := sha3.New512()
+			d.Write(content)
+			result.Sha3512 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing sha3-512: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 	return result, nil
 }

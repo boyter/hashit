@@ -64,8 +64,17 @@ var s_sha3512 = "sha3512"
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
 	// Clean up any invalid arguments before setting everything up
+
+	// If nothing was supplied as an argument to run against assume run against everything in the
+	// current directory recursively
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
+	}
+
+	// If a single argument is supplied enable recursive as if its a file no problem
+	// but if its a directory the user probably wants to hash everything in that directory
+	if len(DirFilePaths) == 1 {
+		Recursive = true
 	}
 
 	// Clean up hashes by setting all to lower
@@ -75,23 +84,30 @@ func Process() {
 	}
 	Hash = h
 
-	// Check if the paths or files added exist and exit if not
-	for _, f := range DirFilePaths {
-		fpath := filepath.Clean(f)
-
-		if _, err := os.Stat(fpath); os.IsNotExist(err) {
-			printError("file or directory does not exist: " + fpath)
-			os.Exit(1)
-		}
-	}
-
 	fileListQueue := make(chan string, FileListQueueSize)    // Files ready to be read from disk
 	fileSummaryQueue := make(chan Result, FileListQueueSize) // Results ready to be printed
 
 	// Spawn routine to start finding files on disk
 	go func() {
+		// Check if the paths or files added exist and inform the user if they don't
 		for _, f := range DirFilePaths {
-			walkDirectory(f, fileListQueue)
+			fp := filepath.Clean(f)
+			fi, err := os.Stat(fp)
+
+			// If there is an error which is usually does not exist then exit non zero
+			if err != nil {
+				printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
+				os.Exit(1)
+			} else {
+				if fi.IsDir() {
+					if Recursive {
+						walkDirectory(fp, fileListQueue)
+					}
+				} else {
+					fileListQueue <- fp
+				}
+			}
+
 		}
 		close(fileListQueue)
 	}()
