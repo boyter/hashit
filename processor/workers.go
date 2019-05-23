@@ -382,8 +382,10 @@ func processMemoryMap(filename string) (Result, error) {
 	total := len(mmap)
 	fileStartTime := makeTimestampMilli()
 
-	for i := 0; i < total; i += 1000000 {
-		end := i + 1000000
+	// 1,048,576 = 2^20
+	// No idea if this read size is optimal
+	for i := 0; i < total; i += 1048576 {
+		end := i + 1048576
 		if end > total {
 			end = total
 		}
