@@ -100,6 +100,8 @@ func toText(input chan Result) string {
 		if NoStream == false {
 			fmt.Println(str.String())
 			str.Reset()
+		} else {
+			str.WriteString("\n")
 		}
 	}
 
