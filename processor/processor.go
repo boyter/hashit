@@ -50,6 +50,7 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1000000
 
+// String mapping for hash names
 var HashNames = Result{
 	MD4:        "md4",
 	MD5:        "md5",
@@ -66,7 +67,21 @@ var HashNames = Result{
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
-	// Clean up any invalid arguments before setting everything up
+	// Display the supported hashes then bail out
+	if Hashes {
+		fmt.Println(fmt.Sprintf("        MD4 (%s)", HashNames.MD4))
+		fmt.Println(fmt.Sprintf("        MD5 (%s)", HashNames.MD5))
+		fmt.Println(fmt.Sprintf("       SHA1 (%s)", HashNames.SHA1))
+		fmt.Println(fmt.Sprintf("     SHA256 (%s)", HashNames.SHA256))
+		fmt.Println(fmt.Sprintf("     SHA512 (%s)", HashNames.SHA512))
+		fmt.Println(fmt.Sprintf("Blake2b-256 (%s)", HashNames.Blake2b256))
+		fmt.Println(fmt.Sprintf("Blake2b-512 (%s)", HashNames.Blake2b512))
+		fmt.Println(fmt.Sprintf("   SHA3-224 (%s)", HashNames.Sha3224))
+		fmt.Println(fmt.Sprintf("   SHA3-256 (%s)", HashNames.Sha3256))
+		fmt.Println(fmt.Sprintf("   SHA3-384 (%s)", HashNames.Sha3384))
+		fmt.Println(fmt.Sprintf("   SHA3-512 (%s)", HashNames.Sha3512))
+		return
+	}
 
 	// If nothing was supplied as an argument to run against assume run against everything in the
 	// current directory recursively
