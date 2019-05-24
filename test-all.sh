@@ -32,6 +32,15 @@ else
     exit
 fi
 
+if ./hashit --debug --trace --verbose -f text --hash md5 --no-mmap --no-stream -r main.go > /dev/null ; then
+    echo -e "${GREEN}PASSED multiple options test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should run correctly with multiple options"
+    echo -e "======================================================="
+    exit
+fi
+
 if ./hashit processor > /dev/null ; then
     echo -e "${GREEN}PASSED directory specified test"
 else
