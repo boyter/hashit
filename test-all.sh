@@ -52,6 +52,17 @@ else
     exit
 fi
 
+a=$(./hashit --format hashdeep main.go | grep ',main.go')
+b=$(hashdeep -l main.go | grep ',main.go')
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED hashdeep hash test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED hashdeep hash test"
+    echo -e "================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 
