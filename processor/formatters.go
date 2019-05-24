@@ -68,8 +68,17 @@ func fileSummarize(input chan Result) string {
 func toText(input chan Result) string {
 	var str strings.Builder
 
+	first := true
+
 	for res := range input {
+		if first == false {
+			str.WriteString("\n")
+		} else {
+			first = false
+		}
+
 		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
+
 		if hasHash(HashNames.MD4) {
 			str.WriteString("        MD4 " + res.MD4 + "\n")
 		}
@@ -107,8 +116,6 @@ func toText(input chan Result) string {
 		if NoStream == false {
 			fmt.Print(str.String())
 			str.Reset()
-		} else {
-			str.WriteString("\n")
 		}
 	}
 
