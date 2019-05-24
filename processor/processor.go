@@ -70,17 +70,7 @@ var HashNames = Result{
 func Process() {
 	// Display the supported hashes then bail out
 	if Hashes {
-		fmt.Println(fmt.Sprintf("        MD4 (%s)", HashNames.MD4))
-		fmt.Println(fmt.Sprintf("        MD5 (%s)", HashNames.MD5))
-		fmt.Println(fmt.Sprintf("       SHA1 (%s)", HashNames.SHA1))
-		fmt.Println(fmt.Sprintf("     SHA256 (%s)", HashNames.SHA256))
-		fmt.Println(fmt.Sprintf("     SHA512 (%s)", HashNames.SHA512))
-		fmt.Println(fmt.Sprintf("Blake2b-256 (%s)", HashNames.Blake2b256))
-		fmt.Println(fmt.Sprintf("Blake2b-512 (%s)", HashNames.Blake2b512))
-		fmt.Println(fmt.Sprintf("   SHA3-224 (%s)", HashNames.Sha3224))
-		fmt.Println(fmt.Sprintf("   SHA3-256 (%s)", HashNames.Sha3256))
-		fmt.Println(fmt.Sprintf("   SHA3-384 (%s)", HashNames.Sha3384))
-		fmt.Println(fmt.Sprintf("   SHA3-512 (%s)", HashNames.Sha3512))
+		printHashes()
 		return
 	}
 
@@ -97,11 +87,7 @@ func Process() {
 	}
 
 	// Clean up hashes by setting all to lower
-	h := []string{}
-	for _, x := range Hash {
-		h = append(h, strings.ToLower(x))
-	}
-	Hash = h
+	Hash = formatHashInput()
 
 	fileListQueue := make(chan string, FileListQueueSize)    // Files ready to be read from disk
 	fileSummaryQueue := make(chan Result, FileListQueueSize) // Results ready to be printed
@@ -132,6 +118,7 @@ func Process() {
 		close(fileListQueue)
 	}()
 
+	// NB we want the output to be deterministic so only have a SINGLE goroutine here
 	go fileProcessorWorker(fileListQueue, fileSummaryQueue)
 	result := fileSummarize(fileSummaryQueue)
 
@@ -143,6 +130,16 @@ func Process() {
 	}
 }
 
+// ToLower all of the input hashes so we can match them easily
+func formatHashInput() []string {
+	h := []string{}
+	for _, x := range Hash {
+		h = append(h, strings.ToLower(x))
+	}
+	return h
+}
+
+// Check if a hash was supplied to the input so we know if we should calculate it
 func hasHash(hash string) bool {
 	for _, x := range Hash {
 		if x == "all" {

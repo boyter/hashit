@@ -19,7 +19,6 @@ import (
 
 func fileProcessorWorker(input chan string, output chan Result) {
 	for res := range input {
-
 		if Debug {
 			printDebug(fmt.Sprintf("processing %s", res))
 		}
@@ -38,6 +37,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			printError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
 			continue
 		}
+
 		fsize := fi.Size()
 		_ = file.Close()
 
