@@ -11,7 +11,6 @@ import (
 	"github.com/minio/blake2b-simd"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
-	"io"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -93,153 +92,153 @@ func fileProcessorWorker(input chan string, output chan Result) {
 // TODO compare this to memory maps
 // Random tests indicate that mmap is faster when not in power save mode
 func processScanner(filename string) {
-	file, err := os.Open(filename)
-	if err != nil {
-		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
-		return
-	}
-	defer file.Close()
-
-	// Create channels for each hash
-	md5_d := md5.New()
-	sha1_d := sha1.New()
-	sha256_d := sha256.New()
-	sha512_d := sha512.New()
-	blake2b_256_d := blake2b.New256()
-	blake2b_512_d := blake2b.New512()
-
-	md5c := make(chan []byte, 10)
-	sha1c := make(chan []byte, 10)
-	sha256c := make(chan []byte, 10)
-	sha512c := make(chan []byte, 10)
-	blake2b_256_c := make(chan []byte, 10)
-	blake2b_512_c := make(chan []byte, 10)
-
-	var wg sync.WaitGroup
-
-	if hasHash(s_md5) {
-		wg.Add(1)
-		go func() {
-			for b := range md5c {
-				md5_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(s_sha1) {
-		wg.Add(1)
-		go func() {
-			for b := range sha1c {
-				sha1_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(s_sha256) {
-		wg.Add(1)
-		go func() {
-			for b := range sha256c {
-				sha256_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(s_sha512) {
-		wg.Add(1)
-		go func() {
-			for b := range sha512c {
-				sha512_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(s_blake2b256) {
-		wg.Add(1)
-		go func() {
-			for b := range blake2b_256_c {
-				blake2b_256_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-	if hasHash(s_blake2b512) {
-		wg.Add(1)
-		go func() {
-			for b := range blake2b_512_c {
-				blake2b_512_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	data := make([]byte, 8192) // 8192 appears to be optimal
-	for {
-		data = data[:cap(data)]
-		n, err := file.Read(data)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
-			return
-		}
-
-		data = data[:n]
-
-		if hasHash(s_md5) {
-			md5c <- data
-		}
-		if hasHash(s_sha1) {
-			sha1c <- data
-		}
-		if hasHash(s_sha256) {
-			sha256c <- data
-		}
-		if hasHash(s_sha512) {
-			sha512c <- data
-		}
-		if hasHash(s_blake2b256) {
-			blake2b_256_c <- data
-		}
-		if hasHash(s_blake2b512) {
-			blake2b_512_c <- data
-		}
-	}
-
-	close(md5c)
-	close(sha1c)
-	close(sha256c)
-	close(sha512c)
-	close(blake2b_256_c)
-	close(blake2b_512_c)
-
-	wg.Wait()
-
-	fmt.Println(filename)
-	if hasHash(s_md5) {
-		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
-	}
-	if hasHash(s_sha1) {
-		fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
-	}
-	if hasHash(s_sha256) {
-		fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
-	}
-	if hasHash(s_sha512) {
-		fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
-	}
-	if hasHash(s_blake2b256) {
-		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
-	}
-	if hasHash(s_blake2b512) {
-		fmt.Println("Blake2b 512 " + hex.EncodeToString(blake2b_512_d.Sum(nil)))
-	}
-	fmt.Println("")
+	//file, err := os.Open(filename)
+	//if err != nil {
+	//	printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
+	//	return
+	//}
+	//defer file.Close()
+	//
+	//// Create channels for each hash
+	//md5_d := md5.New()
+	//sha1_d := sha1.New()
+	//sha256_d := sha256.New()
+	//sha512_d := sha512.New()
+	//blake2b_256_d := blake2b.New256()
+	//blake2b_512_d := blake2b.New512()
+	//
+	//md5c := make(chan []byte, 10)
+	//sha1c := make(chan []byte, 10)
+	//sha256c := make(chan []byte, 10)
+	//sha512c := make(chan []byte, 10)
+	//blake2b_256_c := make(chan []byte, 10)
+	//blake2b_512_c := make(chan []byte, 10)
+	//
+	//var wg sync.WaitGroup
+	//
+	//if hasHash(HashNames.MD5) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range md5c {
+	//			md5_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//
+	//if hasHash(HashNames.SHA1) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range sha1c {
+	//			sha1_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//
+	//if hasHash(s_sha256) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range sha256c {
+	//			sha256_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//
+	//if hasHash(s_sha512) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range sha512c {
+	//			sha512_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//
+	//if hasHash(s_blake2b256) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range blake2b_256_c {
+	//			blake2b_256_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//if hasHash(s_blake2b512) {
+	//	wg.Add(1)
+	//	go func() {
+	//		for b := range blake2b_512_c {
+	//			blake2b_512_d.Write(b)
+	//		}
+	//		wg.Done()
+	//	}()
+	//}
+	//
+	//data := make([]byte, 8192) // 8192 appears to be optimal
+	//for {
+	//	data = data[:cap(data)]
+	//	n, err := file.Read(data)
+	//	if err != nil {
+	//		if err == io.EOF {
+	//			break
+	//		}
+	//
+	//		printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+	//		return
+	//	}
+	//
+	//	data = data[:n]
+	//
+	//	if hasHash(s_md5) {
+	//		md5c <- data
+	//	}
+	//	if hasHash(s_sha1) {
+	//		sha1c <- data
+	//	}
+	//	if hasHash(s_sha256) {
+	//		sha256c <- data
+	//	}
+	//	if hasHash(s_sha512) {
+	//		sha512c <- data
+	//	}
+	//	if hasHash(s_blake2b256) {
+	//		blake2b_256_c <- data
+	//	}
+	//	if hasHash(s_blake2b512) {
+	//		blake2b_512_c <- data
+	//	}
+	//}
+	//
+	//close(md5c)
+	//close(sha1c)
+	//close(sha256c)
+	//close(sha512c)
+	//close(blake2b_256_c)
+	//close(blake2b_512_c)
+	//
+	//wg.Wait()
+	//
+	//fmt.Println(filename)
+	//if hasHash(s_md5) {
+	//	fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
+	//}
+	//if hasHash(s_sha1) {
+	//	fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
+	//}
+	//if hasHash(s_sha256) {
+	//	fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
+	//}
+	//if hasHash(s_sha512) {
+	//	fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
+	//}
+	//if hasHash(s_blake2b256) {
+	//	fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
+	//}
+	//if hasHash(s_blake2b512) {
+	//	fmt.Println("Blake2b 512 " + hex.EncodeToString(blake2b_512_d.Sum(nil)))
+	//}
+	//fmt.Println("")
 }
 
 // For files over a certain size it is faster to process them using
@@ -285,7 +284,7 @@ func processMemoryMap(filename string) (Result, error) {
 
 	var wg sync.WaitGroup
 
-	if hasHash(s_md4) {
+	if hasHash(HashNames.MD4) {
 		wg.Add(1)
 		go func() {
 			for b := range md4c {
@@ -295,7 +294,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_md5) {
+	if hasHash(HashNames.MD5) {
 		wg.Add(1)
 		go func() {
 			for b := range md5c {
@@ -305,7 +304,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha1) {
+	if hasHash(HashNames.SHA1) {
 		wg.Add(1)
 		go func() {
 			for b := range sha1c {
@@ -315,7 +314,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha256) {
+	if hasHash(HashNames.SHA256) {
 		wg.Add(1)
 		go func() {
 			for b := range sha256c {
@@ -325,7 +324,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha512) {
+	if hasHash(HashNames.SHA512) {
 		wg.Add(1)
 		go func() {
 			for b := range sha512c {
@@ -335,7 +334,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_blake2b256) {
+	if hasHash(HashNames.Blake2b256) {
 		wg.Add(1)
 		go func() {
 			for b := range blake2b_256_c {
@@ -345,7 +344,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_blake2b512) {
+	if hasHash(HashNames.Blake2b512) {
 		wg.Add(1)
 		go func() {
 			for b := range blake2b_512_c {
@@ -355,7 +354,7 @@ func processMemoryMap(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha3224) {
+	if hasHash(HashNames.Sha3224) {
 		wg.Add(1)
 		go func() {
 			for b := range sha3_224_c {
@@ -364,7 +363,7 @@ func processMemoryMap(filename string) (Result, error) {
 			wg.Done()
 		}()
 	}
-	if hasHash(s_sha3256) {
+	if hasHash(HashNames.Sha3256) {
 		wg.Add(1)
 		go func() {
 			for b := range sha3_256_c {
@@ -373,7 +372,7 @@ func processMemoryMap(filename string) (Result, error) {
 			wg.Done()
 		}()
 	}
-	if hasHash(s_sha3384) {
+	if hasHash(HashNames.Sha3384) {
 		wg.Add(1)
 		go func() {
 			for b := range sha3_384_c {
@@ -382,7 +381,7 @@ func processMemoryMap(filename string) (Result, error) {
 			wg.Done()
 		}()
 	}
-	if hasHash(s_sha3512) {
+	if hasHash(HashNames.Sha3512) {
 		wg.Add(1)
 		go func() {
 			for b := range sha3_512_c {
@@ -403,37 +402,37 @@ func processMemoryMap(filename string) (Result, error) {
 			end = total
 		}
 
-		if hasHash(s_md4) {
+		if hasHash(HashNames.MD4) {
 			md4c <- mmap[i:end]
 		}
-		if hasHash(s_md5) {
+		if hasHash(HashNames.MD5) {
 			md5c <- mmap[i:end]
 		}
-		if hasHash(s_sha1) {
+		if hasHash(HashNames.SHA1) {
 			sha1c <- mmap[i:end]
 		}
-		if hasHash(s_sha256) {
+		if hasHash(HashNames.SHA256) {
 			sha256c <- mmap[i:end]
 		}
-		if hasHash(s_sha512) {
+		if hasHash(HashNames.SHA512) {
 			sha512c <- mmap[i:end]
 		}
-		if hasHash(s_blake2b256) {
+		if hasHash(HashNames.Blake2b256) {
 			blake2b_256_c <- mmap[i:end]
 		}
-		if hasHash(s_blake2b512) {
+		if hasHash(HashNames.Blake2b512) {
 			blake2b_512_c <- mmap[i:end]
 		}
-		if hasHash(s_sha3224) {
+		if hasHash(HashNames.Sha3224) {
 			sha3_224_c <- mmap[i:end]
 		}
-		if hasHash(s_sha3256) {
+		if hasHash(HashNames.Sha3256) {
 			sha3_256_c <- mmap[i:end]
 		}
-		if hasHash(s_sha3384) {
+		if hasHash(HashNames.Sha3384) {
 			sha3_384_c <- mmap[i:end]
 		}
-		if hasHash(s_sha3512) {
+		if hasHash(HashNames.Sha3512) {
 			sha3_512_c <- mmap[i:end]
 		}
 	}
@@ -497,7 +496,7 @@ func processReadFile(filename string) (Result, error) {
 	var wg sync.WaitGroup
 	result := Result{}
 
-	if hasHash(s_md4) {
+	if hasHash(HashNames.MD4) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -512,7 +511,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_md5) {
+	if hasHash(HashNames.MD5) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -527,7 +526,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha1) {
+	if hasHash(HashNames.SHA1) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -542,7 +541,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha256) {
+	if hasHash(HashNames.SHA256) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -557,7 +556,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha512) {
+	if hasHash(HashNames.SHA512) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -572,7 +571,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_blake2b256) {
+	if hasHash(HashNames.Blake2b256) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -587,7 +586,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_blake2b512) {
+	if hasHash(HashNames.Blake2b512) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -602,7 +601,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha3224) {
+	if hasHash(HashNames.Sha3224) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -617,7 +616,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha3256) {
+	if hasHash(HashNames.Sha3256) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -632,7 +631,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha3384) {
+	if hasHash(HashNames.Sha3384) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()
@@ -647,7 +646,7 @@ func processReadFile(filename string) (Result, error) {
 		}()
 	}
 
-	if hasHash(s_sha3512) {
+	if hasHash(HashNames.Sha3512) {
 		wg.Add(1)
 		go func() {
 			startTime = makeTimestampNano()

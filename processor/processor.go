@@ -50,18 +50,19 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1000000
 
-// TODO move these into a struct
-var s_md4 = "md4"
-var s_md5 = "md5"
-var s_sha1 = "sha1"
-var s_sha256 = "sha256"
-var s_sha512 = "sha512"
-var s_blake2b256 = "blake2b256"
-var s_blake2b512 = "blake2b512"
-var s_sha3224 = "sha3224"
-var s_sha3256 = "sha3256"
-var s_sha3384 = "sha3384"
-var s_sha3512 = "sha3512"
+var HashNames = Result{
+	MD4:        "md4",
+	MD5:        "md5",
+	SHA1:       "sha1",
+	SHA256:     "sha256",
+	SHA512:     "sha512",
+	Blake2b256: "blake2b256",
+	Blake2b512: "blake2b512",
+	Sha3224:    "sha3224",
+	Sha3256:    "sha3256",
+	Sha3384:    "sha3384",
+	Sha3512:    "sha3512",
+}
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {

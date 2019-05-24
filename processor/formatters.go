@@ -66,37 +66,37 @@ func toText(input chan Result) string {
 
 	for res := range input {
 		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
-		if hasHash(s_md4) {
+		if hasHash(HashNames.MD4) {
 			str.WriteString("        MD4 " + res.MD4 + "\n")
 		}
-		if hasHash(s_md5) {
+		if hasHash(HashNames.MD5) {
 			str.WriteString("        MD5 " + res.MD5 + "\n")
 		}
-		if hasHash(s_sha1) {
+		if hasHash(HashNames.SHA1) {
 			str.WriteString("       SHA1 " + res.SHA1 + "\n")
 		}
-		if hasHash(s_sha256) {
+		if hasHash(HashNames.SHA256) {
 			str.WriteString("     SHA256 " + res.SHA256 + "\n")
 		}
-		if hasHash(s_sha512) {
+		if hasHash(HashNames.SHA512) {
 			str.WriteString("     SHA512 " + res.SHA512 + "\n")
 		}
-		if hasHash(s_blake2b256) {
+		if hasHash(HashNames.Blake2b256) {
 			str.WriteString("Blake2b-256 " + res.Blake2b256 + "\n")
 		}
-		if hasHash(s_blake2b512) {
+		if hasHash(HashNames.Blake2b512) {
 			str.WriteString("Blake2b-512 " + res.Blake2b512 + "\n")
 		}
-		if hasHash(s_sha3224) {
+		if hasHash(HashNames.Sha3224) {
 			str.WriteString("   SHA3-224 " + res.Sha3224 + "\n")
 		}
-		if hasHash(s_sha3224) {
+		if hasHash(HashNames.Sha3256) {
 			str.WriteString("   SHA3-256 " + res.Sha3256 + "\n")
 		}
-		if hasHash(s_sha3384) {
+		if hasHash(HashNames.Sha3384) {
 			str.WriteString("   SHA3-384 " + res.Sha3384 + "\n")
 		}
-		if hasHash(s_sha3512) {
+		if hasHash(HashNames.Sha3512) {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
 		}
 
