@@ -25,9 +25,10 @@ func main() {
 
 	flags := rootCmd.PersistentFlags()
 
-	flags.StringSliceVar(
+	flags.StringSliceVarP(
 		&processor.Hash,
 		"hash",
+		"c",
 		[]string{"md5", "sha1", "sha256", "sha512"},
 		"hashes to be run for each file (set to 'all' for all possible hashes)",
 	)

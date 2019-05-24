@@ -41,6 +41,15 @@ else
     exit
 fi
 
+if ./hashit main.go -c md5 | grep -q -i 'md5'; then
+    echo -e "${GREEN}PASSED short hash test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with short hash"
+    echo -e "======================================================="
+    exit
+fi
+
 for i in 'md4' 'md5' 'sha1' 'sha256' 'sha512'
 do
     if ./hashit main.go --hash $i | grep -q -i $i; then
@@ -61,7 +70,6 @@ else
     echo -e "======================================================="
     exit
 fi
-
 
 if ./hashit main.go --hash blake2b512 | grep -q -i 'blake2b-512'; then
     echo -e "${GREEN}PASSED hash test blake2b512"
