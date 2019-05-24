@@ -396,6 +396,7 @@ func processMemoryMap(filename string) (Result, error) {
 
 	// 1,048,576 = 2^20
 	// No idea if this read size is optimal
+	// TODO test out size here to find optimal for SSD
 	for i := 0; i < total; i += 1048576 {
 		end := i + 1048576
 		if end > total {
