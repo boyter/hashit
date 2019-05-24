@@ -43,6 +43,7 @@ var FileOutput = ""
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
+var isDir = false
 
 // FileListQueueSize is the queue of files found and ready to be processed
 var FileListQueueSize = 1000
@@ -119,6 +120,7 @@ func Process() {
 			} else {
 				if fi.IsDir() {
 					if Recursive {
+						isDir = true
 						walkDirectory(fp, fileListQueue)
 					}
 				} else {

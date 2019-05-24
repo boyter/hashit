@@ -36,7 +36,7 @@ func main() {
 		"format",
 		"f",
 		"text",
-		"set output format [text, json, clean, hashdeep]",
+		"set output format [text, json, hashdeep]",
 	)
 	flags.BoolVarP(
 		&processor.Recursive,
