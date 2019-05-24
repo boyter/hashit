@@ -41,6 +41,82 @@ else
     exit
 fi
 
+for i in 'md4' 'md5' 'sha1' 'sha256' 'sha512'
+do
+    if ./hashit main.go --hash $i | grep -q -i $i; then
+        echo -e "${GREEN}PASSED hash test $i"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED Should be able to work with hash $i"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
+if ./hashit main.go --hash blake2b256 | grep -q -i 'blake2b-256'; then
+    echo -e "${GREEN}PASSED hash test blake2b256"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash blake2b256"
+    echo -e "======================================================="
+    exit
+fi
+
+
+if ./hashit main.go --hash blake2b512 | grep -q -i 'blake2b-512'; then
+    echo -e "${GREEN}PASSED hash test blake2b512"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash blake2b512"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit main.go --hash sha3224 | grep -q -i 'sha3-224'; then
+    echo -e "${GREEN}PASSED hash test sha3224"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash sha3224"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit main.go --hash sha3256 | grep -q -i 'sha3-256'; then
+    echo -e "${GREEN}PASSED hash test sha3256"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash sha3256"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit main.go --hash sha3384 | grep -q -i 'sha3-384'; then
+    echo -e "${GREEN}PASSED hash test sha3384"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash sha3384"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit main.go --hash sha3512 | grep -q -i 'sha3-512'; then
+    echo -e "${GREEN}PASSED hash test sha3512"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to work with hash sha3512"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit main.go --hashes | grep -q -i 'md5'; then
+    echo -e "${GREEN}PASSED hashes test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to display hashes"
+    echo -e "======================================================="
+    exit
+fi
+
 a=$(./hashit --no-stream * | md5sum)
 b=$(./hashit * | md5sum)
 if [ "$a" == "$b" ]; then
