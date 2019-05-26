@@ -244,7 +244,6 @@ func processScanner(filename string) {
 	//fmt.Println("")
 }
 
-
 func processStandardInput(output chan Result) {
 	total, nChunks := int64(0), int64(0)
 	r := bufio.NewReader(os.Stdin)

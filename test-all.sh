@@ -134,6 +134,33 @@ else
     exit
 fi
 
+if echo "hello" | ./hashit main.go --hash md5 | grep -q -i 'b1946ac92492d2347c6235b4d2611184'; then
+    echo -e "${GREEN}PASSED stdin md5 test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to process md5 stdin"
+    echo -e "======================================================="
+    exit
+fi
+
+if echo "hello" | ./hashit main.go --hash sha1 | grep -q -i 'f572d396fae9206628714fb2ce00f72e94f2258f'; then
+    echo -e "${GREEN}PASSED stdin sha1 test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to process sha1 stdin"
+    echo -e "======================================================="
+    exit
+fi
+
+if echo "hello" | ./hashit main.go --hash sha256 | grep -q -i '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03'; then
+    echo -e "${GREEN}PASSED stdin sha256 test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to process sha256 stdin"
+    echo -e "======================================================="
+    exit
+fi
+
 a=$(./hashit --no-stream * | md5sum)
 b=$(./hashit * | md5sum)
 if [ "$a" == "$b" ]; then
