@@ -15,7 +15,7 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:     "hashit",
 		Short:   "hashit [FILE or DIRECTORY]",
-		Long:    "Hash It!\nBen Boyter <ben@boyter.org> + Contributors",
+		Long:    "Hash It!\nBen Boyter <ben@boyter.org>",
 		Version: processor.Version,
 		Run: func(cmd *cobra.Command, args []string) {
 			processor.DirFilePaths = args
