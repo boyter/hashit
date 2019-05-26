@@ -58,11 +58,69 @@ func fileSummarize(input chan Result) string {
 		return toHashDeep(input)
 		//case strings.ToLower(Format) == "clean":
 		//	return toClean(input)
+	case strings.ToLower(Format) == "sum":
+		return toSum(input)
 	}
 	// TODO add output format that is just the hash for single files
 	// TODO add output format that confirms to md5sum
 
 	return toText(input)
+}
+
+// Mimics how md5sum sha1sum etc... work
+func toSum(input chan Result) string {
+	var str strings.Builder
+
+	first := true
+
+	for res := range input {
+		if first == false {
+			str.WriteString("\n")
+		} else {
+			first = false
+		}
+
+		if hasHash(HashNames.MD4) {
+			str.WriteString(res.MD4 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.MD5) {
+			str.WriteString(res.MD5 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.SHA1) {
+			str.WriteString(res.SHA1 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.SHA256) {
+			str.WriteString(res.SHA256 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.SHA512) {
+			str.WriteString(res.SHA512 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Blake2b256) {
+			str.WriteString(res.Blake2b256 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Blake2b512) {
+			str.WriteString(res.Blake2b512 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Sha3224) {
+			str.WriteString(res.Sha3224 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Sha3256) {
+			str.WriteString(res.Sha3256 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Sha3384) {
+			str.WriteString(res.Sha3384 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.Sha3512) {
+			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
+		}
+
+		if NoStream == false {
+			fmt.Print(str.String())
+			str.Reset()
+		}
+	}
+
+	return str.String()
 }
 
 func toText(input chan Result) string {

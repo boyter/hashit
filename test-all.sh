@@ -183,6 +183,28 @@ else
     exit
 fi
 
+a=$(./hashit --format sum --hash md5 main.go)
+b=$(md5sum main.go)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED sum md5 format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sum md5 format test"
+    echo -e "================================================="
+    exit
+fi
+
+a=$(./hashit --format sum --hash sha1 main.go)
+b=$(sha1sum main.go)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED sum sha1 format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sum sha1 format test"
+    echo -e "================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 
