@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"bufio"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -11,7 +12,9 @@ import (
 	"github.com/minio/blake2b-simd"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
+	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"runtime"
 	"sync"
@@ -239,6 +242,40 @@ func processScanner(filename string) {
 	//	fmt.Println("Blake2b 512 " + hex.EncodeToString(blake2b_512_d.Sum(nil)))
 	//}
 	//fmt.Println("")
+}
+
+
+func processStandardInput(output chan Result) {
+	nBytes, nChunks := int64(0), int64(0)
+	r := bufio.NewReader(os.Stdin)
+	buf := make([]byte, 0, 4*1024)
+
+	for {
+		n, err := r.Read(buf[:cap(buf)])
+		buf = buf[:n]
+
+		if n == 0 {
+			if err == nil {
+				continue
+			}
+
+			if err == io.EOF {
+				break
+			}
+
+			log.Fatal(err)
+		}
+
+		nChunks++
+		nBytes += int64(len(buf))
+
+		// process buf
+		if err != nil && err != io.EOF {
+			log.Fatal(err)
+		}
+	}
+	log.Println("Bytes:", nBytes, "Chunks:", nChunks)
+	close(output)
 }
 
 // For files over a certain size it is faster to process them using

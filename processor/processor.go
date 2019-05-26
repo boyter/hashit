@@ -29,6 +29,9 @@ var NoMmap = false
 // Do not print out results as they are processed
 var NoStream = false
 
+// If data is being piped in using stdin
+var StandardInput = false
+
 // Should the application print all hashes it knows about
 var Hashes = false
 
@@ -74,6 +77,12 @@ func Process() {
 		return
 	}
 
+	// Check if we are accepting data from stdin
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		StandardInput = true
+	}
+
 	// If nothing was supplied as an argument to run against assume run against everything in the
 	// current directory recursively
 	if len(DirFilePaths) == 0 {
@@ -86,40 +95,48 @@ func Process() {
 		Recursive = true
 	}
 
-	// Clean up hashes by setting all to lower
+	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
-	fileListQueue := make(chan string, FileListQueueSize)    // Files ready to be read from disk
-	fileSummaryQueue := make(chan Result, FileListQueueSize) // Results ready to be printed
+	// Results ready to be printed
+	fileSummaryQueue := make(chan Result, FileListQueueSize)
 
-	// Spawn routine to start finding files on disk
-	go func() {
-		// Check if the paths or files added exist and inform the user if they don't
-		for _, f := range DirFilePaths {
-			fp := filepath.Clean(f)
-			fi, err := os.Stat(fp)
+	if StandardInput {
+		go processStandardInput(fileSummaryQueue)
+	} else {
+		// Files ready to be read from disk
+		fileListQueue := make(chan string, FileListQueueSize)
 
-			// If there is an error which is usually does not exist then exit non zero
-			if err != nil {
-				printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
-				os.Exit(1)
-			} else {
-				if fi.IsDir() {
-					if Recursive {
-						isDir = true
-						walkDirectory(fp, fileListQueue)
-					}
+		// Spawn routine to start finding files on disk
+		go func() {
+			// Check if the paths or files added exist and inform the user if they don't
+			for _, f := range DirFilePaths {
+				fp := filepath.Clean(f)
+				fi, err := os.Stat(fp)
+
+				// If there is an error which is usually does not exist then exit non zero
+				if err != nil {
+					printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
+					os.Exit(1)
 				} else {
-					fileListQueue <- fp
+					if fi.IsDir() {
+						if Recursive {
+							isDir = true
+							walkDirectory(fp, fileListQueue)
+						}
+					} else {
+						fileListQueue <- fp
+					}
 				}
+
 			}
+			close(fileListQueue)
+		}()
 
-		}
-		close(fileListQueue)
-	}()
+		// NB we want the output to be deterministic so only have a SINGLE goroutine here
+		go fileProcessorWorker(fileListQueue, fileSummaryQueue)
+	}
 
-	// NB we want the output to be deterministic so only have a SINGLE goroutine here
-	go fileProcessorWorker(fileListQueue, fileSummaryQueue)
 	result := fileSummarize(fileSummaryQueue)
 
 	if FileOutput == "" {
