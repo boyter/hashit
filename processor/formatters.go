@@ -202,7 +202,7 @@ func toHashDeep(input chan Result) string {
 		pwd = ""
 	}
 
-	str.WriteString("%%%% HASHIT-" + Version + "\n")
+	str.WriteString("%%%% HASHDEEP-1.0\n")
 	str.WriteString("%%%% size,md5,sha256,filename\n")
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))

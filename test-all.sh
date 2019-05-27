@@ -214,8 +214,27 @@ else
     exit
 fi
 
+if ./hashit --format hashdeep processor > audit.txt && hashdeep -l -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED relative hashdeep audit test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to create relative hashdeep audit"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit --format hashdeep processor > audit.txt && hashdeep -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED full hashdeep audit test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to create full hashdeep audit"
+    echo -e "======================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
+rm ./audit.txt
 
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"

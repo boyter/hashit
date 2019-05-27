@@ -15,3 +15,6 @@ https://linhost.info/2010/05/using-hashdeep-to-ensure-data-integrity/
 
 https://github.com/jessek/hashdeep/issues/4
 https://github.com/jessek/hashdeep/issues/358
+
+hashdeep -r vendor > audit.txt
+hashdeep -r -a -k audit.txt vendor
