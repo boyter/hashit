@@ -9,7 +9,6 @@ go test ./... || exit
 echo "Building application..."
 go build -ldflags="-s -w" || exit
 
-
 GREEN='\033[1;32m'
 RED='\033[0;31m'
 NC='\033[0m'
@@ -219,6 +218,15 @@ if ./hashit --format hashdeep processor > audit.txt && hashdeep -l -r -a -k audi
 else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to create relative hashdeep audit"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit --format hashdeep vendor > audit.txt && hashdeep -l -r -a -k audit.txt vendor | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED large relative hashdeep audit test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to create large relative hashdeep audit"
     echo -e "======================================================="
     exit
 fi
