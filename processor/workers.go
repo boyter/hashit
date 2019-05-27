@@ -34,7 +34,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			printError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}
-		defer file.Close()
 
 		fi, err := file.Stat()
 
@@ -96,6 +95,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				output <- r
 			}
 		}
+		_ = file.Close()
 	}
 	close(output)
 }
@@ -443,7 +443,6 @@ func processStandardInput(output chan Result) {
 			sha3_512_c <- buf
 		}
 
-		// process buf
 		if err != nil && err != io.EOF {
 			log.Fatal(err)
 		}
