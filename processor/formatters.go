@@ -114,7 +114,7 @@ func toSum(input chan Result) string {
 			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
 		}
 
-		if NoStream == false {
+		if NoStream == false && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -171,7 +171,7 @@ func toText(input chan Result) string {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
 		}
 
-		if NoStream == false {
+		if NoStream == false && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}

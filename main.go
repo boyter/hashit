@@ -11,7 +11,7 @@ func main() {
 	//f, _ := os.Create("hashit.pprof")
 	//pprof.StartCPUProfile(f)
 	//defer pprof.StopCPUProfile()
-
+	
 	rootCmd := &cobra.Command{
 		Use:     "hashit",
 		Short:   "hashit [FILE or DIRECTORY]",

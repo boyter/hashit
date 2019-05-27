@@ -2,6 +2,7 @@ package processor
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -13,7 +14,6 @@ import (
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"runtime"
@@ -27,12 +27,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		}
 
 		// Open the file and determine if we should read it from disk or memory map
+		// based on how large it is reported as being
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
 
 		if err != nil {
 			printError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}
+		defer file.Close()
 
 		fi, err := file.Stat()
 
@@ -42,7 +44,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		}
 
 		fsize := fi.Size()
-		_ = file.Close()
 
 		if fsize > StreamSize {
 			// If Windows always ignore memory maps and stream the file off disk
@@ -77,7 +78,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 
 			fileStartTime := makeTimestampNano()
-			r, err := processReadFile(res)
+
+			var n int64 = bytes.MinRead
+			if size := fsize + bytes.MinRead; size > n {
+				n = size
+			}
+			content, _ := readAll(file, n)
+
+			r, err := processReadFile(res, &content)
 			if Trace {
 				printTrace(fmt.Sprintf("nanoseconds processReadFile: %s: %d", res, makeTimestampNano()-fileStartTime))
 			}
@@ -714,18 +722,8 @@ func processMemoryMap(filename string) (Result, error) {
 // chunk and then process them which this method does
 // NB there is little point in multi-processing at this level, it would be
 // better done on the input channel if required
-func processReadFile(filename string) (Result, error) {
+func processReadFile(filename string, content *[]byte) (Result, error) {
 	startTime := makeTimestampNano()
-	content, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		printError(fmt.Sprintf("Unable to read file %s into memory with error %s", filename, err.Error()))
-		return Result{}, err
-	}
-
-	if Trace {
-		printTrace(fmt.Sprintf("nanoseconds reading file: %s: %d", filename, makeTimestampNano()-startTime))
-	}
 
 	var wg sync.WaitGroup
 	result := Result{}
@@ -735,7 +733,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := md4.New()
-			d.Write(content)
+			d.Write(*content)
 			result.MD4 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -750,7 +748,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := md5.New()
-			d.Write(content)
+			d.Write(*content)
 			result.MD5 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -765,7 +763,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha1.New()
-			d.Write(content)
+			d.Write(*content)
 			result.SHA1 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -780,7 +778,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha256.New()
-			d.Write(content)
+			d.Write(*content)
 			result.SHA256 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -795,7 +793,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha512.New()
-			d.Write(content)
+			d.Write(*content)
 			result.SHA512 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -810,7 +808,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := blake2b.New256()
-			d.Write(content)
+			d.Write(*content)
 			result.Blake2b256 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -825,7 +823,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := blake2b.New512()
-			d.Write(content)
+			d.Write(*content)
 			result.Blake2b512 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -840,7 +838,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha3.New224()
-			d.Write(content)
+			d.Write(*content)
 			result.Sha3224 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -855,7 +853,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha3.New256()
-			d.Write(content)
+			d.Write(*content)
 			result.Sha3256 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -870,7 +868,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha3.New384()
-			d.Write(content)
+			d.Write(*content)
 			result.Sha3384 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -885,7 +883,7 @@ func processReadFile(filename string) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := sha3.New512()
-			d.Write(content)
+			d.Write(*content)
 			result.Sha3512 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -897,4 +895,27 @@ func processReadFile(filename string) (Result, error) {
 
 	wg.Wait()
 	return result, nil
+}
+
+// Copied from Go io/ioutil
+func readAll(r io.Reader, capacity int64) (b []byte, err error) {
+	var buf bytes.Buffer
+	// If the buffer overflows, we will get bytes.ErrTooLarge.
+	// Return that as an error. Any other panic remains.
+	defer func() {
+		e := recover()
+		if e == nil {
+			return
+		}
+		if panicErr, ok := e.(error); ok && panicErr == bytes.ErrTooLarge {
+			err = panicErr
+		} else {
+			panic(e)
+		}
+	}()
+	if int64(int(capacity)) == capacity {
+		buf.Grow(int(capacity))
+	}
+	_, err = buf.ReadFrom(r)
+	return buf.Bytes(), err
 }
