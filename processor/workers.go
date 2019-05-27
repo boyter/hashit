@@ -636,10 +636,11 @@ func processMemoryMap(filename string) (Result, error) {
 	fileStartTime := makeTimestampMilli()
 
 	// 1,048,576 = 2^20
+	// * 4 = 4194304 4MB read size
 	// No idea if this read size is optimal
 	// TODO test out size here to find optimal for SSD
-	for i := 0; i < total; i += 1048576 {
-		end := i + 1048576
+	for i := 0; i < total; i += 4194304 {
+		end := i + 4194304
 		if end > total {
 			end = total
 		}
