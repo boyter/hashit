@@ -231,7 +231,9 @@ else
     exit
 fi
 
-if ./hashit --format hashdeep processor > audit.txt && hashdeep -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
+mkdir -p /tmp/hashit/
+echo "hello" > /tmp/hashit/file
+if ./hashit --format hashdeep /tmp/hashit/ > audit.txt && hashdeep -r -a -k audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED full hashdeep audit test"
 else
     echo -e "${RED}======================================================="
@@ -243,6 +245,8 @@ fi
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm ./audit.txt
+rm /tmp/hashit/file
+rmdir /tmp/hashit/
 
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"
