@@ -67,9 +67,9 @@ func main() {
 	)
 	flags.Int64Var(
 		&processor.StreamSize,
-		"mmap-stream",
+		"stream-size",
 		1000000,
-		"min size of file in bytes where stream or memory map processing starts",
+		"min size of file in bytes where stream processing starts",
 	)
 	flags.BoolVarP(
 		&processor.Verbose,
