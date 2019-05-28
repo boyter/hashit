@@ -251,7 +251,7 @@ func processScanner(filename string) (Result, error) {
 		}()
 	}
 
-	data := make([]byte, 8192)
+	data := make([]byte, 4194304)
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
