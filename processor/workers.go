@@ -47,7 +47,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		if fsize > StreamSize {
 			// If Windows always ignore memory maps and stream the file off disk
 			if runtime.GOOS == "windows" || NoMmap == true {
-
 				if Debug {
 					printDebug(fmt.Sprintf("%s bytes=%d using scanner", res, fsize))
 				}
@@ -252,53 +251,55 @@ func processScanner(filename string) (Result, error) {
 		}()
 	}
 
-	data := make([]byte, 8192) // 8192 appears to be optimal
+	data := make([]byte, 8192)
 	for {
-		data = data[:cap(data)]
 		n, err := file.Read(data)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
+		if err != nil && err != io.EOF {
 			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
 			return Result{}, err
 		}
 
-		data = data[:n]
+		// Need to make a copy here as it can be modified before
+		// the goroutine processes it in the channel
+		tmp := make([]byte, len(data))
+		copy(tmp, data)
 
 		if hasHash(HashNames.MD4) {
-			md4c <- data
+			md4c <- tmp[:n]
 		}
 		if hasHash(HashNames.MD5) {
-			md5c <- data
+			md5c <- tmp[:n]
 		}
 		if hasHash(HashNames.SHA1) {
-			sha1c <- data
+			sha1c <- tmp[:n]
 		}
 		if hasHash(HashNames.SHA256) {
-			sha256c <- data
+			sha256c <- tmp[:n]
 		}
 		if hasHash(HashNames.SHA512) {
-			sha512c <- data
+			sha512c <- tmp[:n]
 		}
 		if hasHash(HashNames.Blake2b256) {
-			blake2b_256_c <- data
+			blake2b_256_c <- tmp[:n]
 		}
 		if hasHash(HashNames.Blake2b512) {
-			blake2b_512_c <- data
+			blake2b_512_c <- tmp[:n]
 		}
 		if hasHash(HashNames.Sha3224) {
-			sha3_224_c <- data
+			sha3_224_c <- tmp[:n]
 		}
 		if hasHash(HashNames.Sha3256) {
-			sha3_256_c <- data
+			sha3_256_c <- tmp[:n]
 		}
 		if hasHash(HashNames.Sha3384) {
-			sha3_384_c <- data
+			sha3_384_c <- tmp[:n]
 		}
 		if hasHash(HashNames.Sha3512) {
-			sha3_512_c <- data
+			sha3_512_c <- tmp[:n]
+		}
+
+		if err == io.EOF {
+			break
 		}
 	}
 
