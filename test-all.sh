@@ -40,7 +40,7 @@ else
     exit
 fi
 
-if ./hashit --debug --trace --verbose -f text --hash md5 --no-mmap --no-stream -r main.go > /dev/null ; then
+if ./hashit --debug --trace --verbose -f text --hash md5 --no-stream --stream-size 10 -r main.go > /dev/null ; then
     echo -e "${GREEN}PASSED multiple options test"
 else
     echo -e "${RED}======================================================="
@@ -242,10 +242,10 @@ else
     exit
 fi
 
-for i in '' '--mmap-stream 0' '--mmap-stream 0 --no-mmap'
+for i in '' '--stream-size 0'
 do
     if ./hashit $i LICENSE | grep -q -i '227f999ca03b135a1b4d69bde84afb16'; then
-        echo -e "${GREEN}PASSED mmap $i hash test"
+        echo -e "${GREEN}PASSED stream $i hash test"
     else
         echo -e "${RED}======================================================="
         echo -e "FAILED $i test"
@@ -254,24 +254,13 @@ do
     fi
 done
 
-a=$(./hashit --format sum --hash md5 ./LICENSE)
-b=$(./hashit --no-mmap --format sum --hash md5 ./LICENSE)
+a=$(./hashit --format sum --hash all ./LICENSE)
+b=$(./hashit --format sum --hash all --stream-size 1 ./LICENSE)
 if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED small mmap/scanner test"
+    echo -e "${GREEN}PASSED small scanner test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED small mmap/scanner test"
-    echo -e "================================================="
-    exit
-fi
-
-a=$(./hashit --hash all ./hashit)
-b=$(./hashit --no-mmap --hash all ./hashit)
-if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED large mmap/scanner test"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED large mmap/scanner test"
+    echo -e "FAILED small scanner test"
     echo -e "================================================="
     exit
 fi
