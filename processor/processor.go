@@ -23,9 +23,6 @@ var Trace = false
 // Recursive to walk directories
 var Recursive = false
 
-// If set to true disables the use of memory maps
-var NoMmap = false
-
 // Do not print out results as they are processed
 var NoStream = false
 

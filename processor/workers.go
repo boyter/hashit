@@ -16,7 +16,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"runtime"
 	"sync"
 )
 
@@ -45,40 +44,22 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		fsize := fi.Size()
 
 		if fsize > StreamSize {
-			// If Windows always ignore memory maps and stream the file off disk
-			if runtime.GOOS == "windows" || NoMmap == true {
-				if Debug {
-					printDebug(fmt.Sprintf("%s bytes=%d using scanner", res, fsize))
-				}
-
-				fileStartTime := makeTimestampMilli()
-				r, err := processScanner(res)
-				if Trace {
-					printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
-				}
-
-				if err == nil {
-					r.File = res
-					r.Bytes = fsize
-					output <- r
-				}
-			} else {
-				if Debug {
-					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
-				}
-
-				fileStartTime := makeTimestampMilli()
-				r, err := processMemoryMap(res)
-				if Trace {
-					printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
-				}
-
-				if err == nil {
-					r.File = res
-					r.Bytes = fsize
-					output <- r
-				}
+			if Debug {
+				printDebug(fmt.Sprintf("%s bytes=%d using scanner", res, fsize))
 			}
+
+			fileStartTime := makeTimestampMilli()
+			r, err := processScanner(res)
+			if Trace {
+				printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
+			}
+
+			if err == nil {
+				r.File = res
+				r.Bytes = fsize
+				output <- r
+			}
+
 		} else {
 			if Debug {
 				printDebug(fmt.Sprintf("%s bytes=%d using read file", res, fsize))

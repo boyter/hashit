@@ -60,12 +60,6 @@ func main() {
 		"output filename (default stdout)",
 	)
 	flags.BoolVar(
-		&processor.NoMmap,
-		"no-mmap",
-		false,
-		"never use memory maps",
-	)
-	flags.BoolVar(
 		&processor.NoStream,
 		"no-stream",
 		false,

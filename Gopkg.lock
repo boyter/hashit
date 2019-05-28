@@ -39,8 +39,18 @@
 
 [[projects]]
   branch = "master"
+  name = "golang.org/x/crypto"
+  packages = [
+    "md4",
+    "sha3"
+  ]
+  revision = "22d7a77e9e5f409e934ed268692e56707cd169e5"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/sys"
   packages = [
+    "cpu",
     "unix",
     "windows"
   ]
@@ -49,6 +59,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4012294484ff69a0a0b7e8441e093d481fbc87c9c2e3aa9f342f0fada52472ea"
+  inputs-digest = "2dbee720e43e0e82a9e853a9c397c43ff04c857be3ae9cdf3b86675e12815deb"
   solver-name = "gps-cdcl"
   solver-version = 1
