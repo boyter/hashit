@@ -52,8 +52,17 @@ func fileProcessorWorker(input chan string, output chan Result) {
 					printDebug(fmt.Sprintf("%s bytes=%d using scanner", res, fsize))
 				}
 
-				// TODO should return a struct with the values we have
-				processScanner(res)
+				fileStartTime := makeTimestampMilli()
+				r, err := processScanner(res)
+				if Trace {
+					printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
+				}
+
+				if err == nil {
+					r.File = res
+					r.Bytes = fsize
+					output <- r
+				}
 			} else {
 				if Debug {
 					printDebug(fmt.Sprintf("%s bytes=%d using memory map", res, fsize))
@@ -102,30 +111,49 @@ func fileProcessorWorker(input chan string, output chan Result) {
 
 // TODO compare this to memory maps
 // Random tests indicate that mmap is faster when not in power save mode
-func processScanner(filename string) {
+func processScanner(filename string) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
-		return
+		return Result{}, err
 	}
 	defer file.Close()
 
-	// Create channels for each hash
+	md4_d := md4.New()
 	md5_d := md5.New()
 	sha1_d := sha1.New()
 	sha256_d := sha256.New()
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
 	blake2b_512_d := blake2b.New512()
+	sha3_224_d := sha3.New224()
+	sha3_256_d := sha3.New256()
+	sha3_384_d := sha3.New384()
+	sha3_512_d := sha3.New512()
 
+	md4c := make(chan []byte, 10)
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
 	sha256c := make(chan []byte, 10)
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
 	blake2b_512_c := make(chan []byte, 10)
+	sha3_224_c := make(chan []byte, 10)
+	sha3_256_c := make(chan []byte, 10)
+	sha3_384_c := make(chan []byte, 10)
+	sha3_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
+
+	if hasHash(HashNames.MD4) {
+		wg.Add(1)
+		go func() {
+			for b := range md4c {
+				md4_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(HashNames.MD5) {
 		wg.Add(1)
@@ -176,11 +204,49 @@ func processScanner(filename string) {
 			wg.Done()
 		}()
 	}
+
 	if hasHash(HashNames.Blake2b512) {
 		wg.Add(1)
 		go func() {
 			for b := range blake2b_512_c {
 				blake2b_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(HashNames.Sha3224) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_224_c {
+				sha3_224_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(HashNames.Sha3256) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_256_c {
+				sha3_256_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(HashNames.Sha3384) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_384_c {
+				sha3_384_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(HashNames.Sha3512) {
+		wg.Add(1)
+		go func() {
+			for b := range sha3_512_c {
+				sha3_512_d.Write(b)
 			}
 			wg.Done()
 		}()
@@ -196,11 +262,14 @@ func processScanner(filename string) {
 			}
 
 			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
-			return
+			return Result{}, err
 		}
 
 		data = data[:n]
 
+		if hasHash(HashNames.MD4) {
+			md4c <- data
+		}
 		if hasHash(HashNames.MD5) {
 			md5c <- data
 		}
@@ -219,37 +288,49 @@ func processScanner(filename string) {
 		if hasHash(HashNames.Blake2b512) {
 			blake2b_512_c <- data
 		}
+		if hasHash(HashNames.Sha3224) {
+			sha3_224_c <- data
+		}
+		if hasHash(HashNames.Sha3256) {
+			sha3_256_c <- data
+		}
+		if hasHash(HashNames.Sha3384) {
+			sha3_384_c <- data
+		}
+		if hasHash(HashNames.Sha3512) {
+			sha3_512_c <- data
+		}
 	}
 
+	close(md4c)
 	close(md5c)
 	close(sha1c)
 	close(sha256c)
 	close(sha512c)
 	close(blake2b_256_c)
 	close(blake2b_512_c)
+	close(sha3_224_c)
+	close(sha3_256_c)
+	close(sha3_384_c)
+	close(sha3_512_c)
 
 	wg.Wait()
 
-	fmt.Println(filename)
-	if hasHash(HashNames.MD5) {
-		fmt.Println("        MD5 " + hex.EncodeToString(md5_d.Sum(nil)))
-	}
-	if hasHash(HashNames.SHA1) {
-		fmt.Println("       SHA1 " + hex.EncodeToString(sha1_d.Sum(nil)))
-	}
-	if hasHash(HashNames.SHA256) {
-		fmt.Println("     SHA256 " + hex.EncodeToString(sha256_d.Sum(nil)))
-	}
-	if hasHash(HashNames.SHA512) {
-		fmt.Println("     SHA512 " + hex.EncodeToString(sha512_d.Sum(nil)))
-	}
-	if hasHash(HashNames.Blake2b256) {
-		fmt.Println("Blake2b 256 " + hex.EncodeToString(blake2b_256_d.Sum(nil)))
-	}
-	if hasHash(HashNames.Blake2b512) {
-		fmt.Println("Blake2b 512 " + hex.EncodeToString(blake2b_512_d.Sum(nil)))
-	}
-	fmt.Println("")
+	return Result{
+		File:       filename,
+		Bytes:      0,
+		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
+		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
+		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
+		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
+		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
+		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
+		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
+		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
+		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
+		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
+		Sha3512:    hex.EncodeToString(sha3_512_d.Sum(nil)),
+	}, nil
 }
 
 func processStandardInput(output chan Result) {
