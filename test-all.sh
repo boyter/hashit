@@ -213,6 +213,29 @@ else
     exit
 fi
 
+for i in '' '--stream-size 0'
+do
+    if ./hashit $i LICENSE | grep -q -i '227f999ca03b135a1b4d69bde84afb16'; then
+        echo -e "${GREEN}PASSED stream $i hash test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $i test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
+a=$(./hashit --format sum --hash all ./LICENSE)
+b=$(./hashit --format sum --hash all --stream-size 1 ./LICENSE)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED small scanner test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED small scanner test"
+    echo -e "================================================="
+    exit
+fi
+
 if ./hashit --format hashdeep processor > audit.txt && hashdeep -l -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED relative hashdeep audit test"
 else
@@ -242,28 +265,7 @@ else
     exit
 fi
 
-for i in '' '--stream-size 0'
-do
-    if ./hashit $i LICENSE | grep -q -i '227f999ca03b135a1b4d69bde84afb16'; then
-        echo -e "${GREEN}PASSED stream $i hash test"
-    else
-        echo -e "${RED}======================================================="
-        echo -e "FAILED $i test"
-        echo -e "======================================================="
-        exit
-    fi
-done
 
-a=$(./hashit --format sum --hash all ./LICENSE)
-b=$(./hashit --format sum --hash all --stream-size 1 ./LICENSE)
-if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED small scanner test"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED small scanner test"
-    echo -e "================================================="
-    exit
-fi
 
 echo -e "${NC}Cleaning up..."
 rm ./hashit
