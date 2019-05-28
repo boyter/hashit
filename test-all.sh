@@ -242,6 +242,40 @@ else
     exit
 fi
 
+for i in '' '--mmap-stream 0' '--mmap-stream 0 --no-mmap'
+do
+    if ./hashit $i LICENSE | grep -q -i '227f999ca03b135a1b4d69bde84afb16'; then
+        echo -e "${GREEN}PASSED mmap $i hash test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $i test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
+a=$(./hashit --format sum --hash md5 ./LICENSE)
+b=$(./hashit --no-mmap --format sum --hash md5 ./LICENSE)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED small mmap/scanner test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED small mmap/scanner test"
+    echo -e "================================================="
+    exit
+fi
+
+a=$(./hashit --hash all ./hashit)
+b=$(./hashit --no-mmap --hash all ./hashit)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED large mmap/scanner test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED large mmap/scanner test"
+    echo -e "================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm ./audit.txt

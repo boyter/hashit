@@ -71,6 +71,12 @@ func main() {
 		false,
 		"do not stream out results as processed",
 	)
+	flags.Int64Var(
+		&processor.StreamSize,
+		"mmap-stream",
+		1000000,
+		"min size of file in bytes where stream or memory map processing starts",
+	)
 	flags.BoolVarP(
 		&processor.Verbose,
 		"verbose",
