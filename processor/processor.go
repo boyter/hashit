@@ -5,7 +5,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // Global Version
@@ -130,8 +132,20 @@ func Process() {
 			close(fileListQueue)
 		}()
 
+		var wg sync.WaitGroup
 		// NB we want the output to be deterministic so only have a SINGLE goroutine here
-		go fileProcessorWorker(fileListQueue, fileSummaryQueue)
+		for i := 0; i < runtime.NumCPU(); i++ {
+			wg.Add(1)
+			go func() {
+				fileProcessorWorker(fileListQueue, fileSummaryQueue)
+				wg.Done()
+			}()
+		}
+
+		go func() {
+			wg.Wait()
+			close(fileSummaryQueue)
+		}()
 	}
 
 	result := fileSummarize(fileSummaryQueue)

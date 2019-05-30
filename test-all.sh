@@ -169,8 +169,8 @@ else
     exit
 fi
 
-a=$(./hashit --no-stream * | md5sum)
-b=$(./hashit * | md5sum)
+a=$(./hashit --no-stream * | sort | md5sum)
+b=$(./hashit * | sort | md5sum)
 if [ "$a" == "$b" ]; then
     echo -e "${GREEN}PASSED stream output test"
 else

@@ -93,7 +93,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		}
 		_ = file.Close()
 	}
-	close(output)
 }
 
 // TODO compare this to memory maps
