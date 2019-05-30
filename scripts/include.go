@@ -33,7 +33,7 @@ func generateConstants() error {
 	out.Write([]byte("package processor \n\nconst (\n"))
 
 	for _, f := range files {
-		if strings.HasPrefix(f.Name(), "hashes") && strings.HasSuffix(f.Name(), ".json") {
+		if strings.HasPrefix(f.Name(), "hashaudit") && strings.HasSuffix(f.Name(), ".json") {
 			f, err := os.Open(f.Name())
 			if err != nil {
 				return fmt.Errorf("failed to open file '%s': %v", f.Name(), err)

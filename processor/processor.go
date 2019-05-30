@@ -1,6 +1,8 @@
 package processor
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -68,6 +70,40 @@ var HashNames = Result{
 	Sha3512:    "sha3512",
 }
 
+// Raw hashDatabase loaded
+var hashDatabase = map[string]Result{}
+
+// Hash to name lookup
+var hashLookup = map[string]string{}
+
+// Turns the
+// ProcessConstants is responsible for setting up the language features based on the JSON file that is stored in constants
+// Needs to be called at least once in order for anything to actually happen
+func ProcessConstants() {
+	hashDatabase = loadDatabase()
+
+	// Put all of the hashes into a large map so we can look up in reverse
+	startTime := makeTimestampNano()
+	for name, value := range hashDatabase {
+		if value.MD5 != "" {
+			hashLookup[value.MD5] = name
+		}
+		if value.SHA1 != "" {
+			hashLookup[value.SHA1] = name
+		}
+		if value.SHA256 != "" {
+			hashLookup[value.SHA256] = name
+		}
+		if value.SHA512 != "" {
+			hashLookup[value.SHA512] = name
+		}
+	}
+
+	if Trace {
+		printTrace(fmt.Sprintf("nanoseconds build hash to file: %d", makeTimestampNano()-startTime))
+	}
+}
+
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
 	// Display the supported hashes then bail out
@@ -75,6 +111,9 @@ func Process() {
 		printHashes()
 		return
 	}
+
+	// TODO only need to do this if we want to audit a file
+	ProcessConstants()
 
 	// Check if we are accepting data from stdin
 	stat, _ := os.Stdin.Stat()
@@ -180,4 +219,24 @@ func hasHash(hash string) bool {
 	}
 
 	return false
+}
+
+func loadDatabase() map[string]Result {
+	var database map[string]Result
+	startTime := makeTimestampMilli()
+
+	data, err := base64.StdEncoding.DecodeString(hashaudit)
+	if err != nil {
+		panic(fmt.Sprintf("failed to base64 decode languages: %v", err))
+	}
+
+	if err := json.Unmarshal(data, &database); err != nil {
+		panic(fmt.Sprintf("hash audit json invalid: %v", err))
+	}
+
+	if Trace {
+		printTrace(fmt.Sprintf("milliseconds unmarshal: %d", makeTimestampMilli()-startTime))
+	}
+
+	return database
 }
