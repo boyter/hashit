@@ -9,7 +9,6 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
-	mmapgo "github.com/edsrzf/mmap-go"
 	"github.com/minio/blake2b-simd"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
@@ -73,9 +72,17 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 			content, _ := readAll(file, n)
 
-			r, err := processReadFile(res, &content)
+			var r Result
+
+			// For larger files if we have more than one hash try parallel
+			if fsize > 200000 && len(Hash) >= 1 && !hasHash("all") {
+				r, err = processReadFileParallel(res, &content)
+			} else {
+				r, err = processReadFile(res, &content)
+			}
+
 			if Trace {
-				printTrace(fmt.Sprintf("nanoseconds processReadFile: %s: %d", res, makeTimestampNano()-fileStartTime))
+				printTrace(fmt.Sprintf("nanoseconds processReadFileParallel: %s: %d", res, makeTimestampNano()-fileStartTime))
 			}
 
 			if err == nil {
@@ -544,248 +551,11 @@ func processStandardInput(output chan Result) {
 	close(output)
 }
 
-// For files over a certain size it is faster to process them using
-// memory mapped files which this method does
-// NB this does not play well with Windows as it will never
-// be able to unmap the file "error unmapping: FlushFileBuffers: Access is denied."
-func processMemoryMap(filename string) (Result, error) {
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	if err != nil {
-		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
-		return Result{}, err
-	}
-
-	mmap, err := mmapgo.Map(file, mmapgo.RDONLY, 0)
-	if err != nil {
-		printError(fmt.Sprintf("mapping file %s: %s", filename, err.Error()))
-		return Result{}, err
-	}
-
-	md4_d := md4.New()
-	md5_d := md5.New()
-	sha1_d := sha1.New()
-	sha256_d := sha256.New()
-	sha512_d := sha512.New()
-	blake2b_256_d := blake2b.New256()
-	blake2b_512_d := blake2b.New512()
-	sha3_224_d := sha3.New224()
-	sha3_256_d := sha3.New256()
-	sha3_384_d := sha3.New384()
-	sha3_512_d := sha3.New512()
-
-	md4c := make(chan []byte, 10)
-	md5c := make(chan []byte, 10)
-	sha1c := make(chan []byte, 10)
-	sha256c := make(chan []byte, 10)
-	sha512c := make(chan []byte, 10)
-	blake2b_256_c := make(chan []byte, 10)
-	blake2b_512_c := make(chan []byte, 10)
-	sha3_224_c := make(chan []byte, 10)
-	sha3_256_c := make(chan []byte, 10)
-	sha3_384_c := make(chan []byte, 10)
-	sha3_512_c := make(chan []byte, 10)
-
-	var wg sync.WaitGroup
-
-	if hasHash(HashNames.MD4) {
-		wg.Add(1)
-		go func() {
-			for b := range md4c {
-				md4_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.MD5) {
-		wg.Add(1)
-		go func() {
-			for b := range md5c {
-				md5_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.SHA1) {
-		wg.Add(1)
-		go func() {
-			for b := range sha1c {
-				sha1_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.SHA256) {
-		wg.Add(1)
-		go func() {
-			for b := range sha256c {
-				sha256_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.SHA512) {
-		wg.Add(1)
-		go func() {
-			for b := range sha512c {
-				sha512_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.Blake2b256) {
-		wg.Add(1)
-		go func() {
-			for b := range blake2b_256_c {
-				blake2b_256_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.Blake2b512) {
-		wg.Add(1)
-		go func() {
-			for b := range blake2b_512_c {
-				blake2b_512_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	if hasHash(HashNames.Sha3224) {
-		wg.Add(1)
-		go func() {
-			for b := range sha3_224_c {
-				sha3_224_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-	if hasHash(HashNames.Sha3256) {
-		wg.Add(1)
-		go func() {
-			for b := range sha3_256_c {
-				sha3_256_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-	if hasHash(HashNames.Sha3384) {
-		wg.Add(1)
-		go func() {
-			for b := range sha3_384_c {
-				sha3_384_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-	if hasHash(HashNames.Sha3512) {
-		wg.Add(1)
-		go func() {
-			for b := range sha3_512_c {
-				sha3_512_d.Write(b)
-			}
-			wg.Done()
-		}()
-	}
-
-	total := len(mmap)
-	fileStartTime := makeTimestampMilli()
-
-	// 1,048,576 = 2^20
-	// * 4 = 4194304 4MB read size
-	// No idea if this read size is optimal
-	// TODO test out size here to find optimal for SSD
-	for i := 0; i < total; i += 4194304 {
-		end := i + 4194304
-		if end > total {
-			end = total
-		}
-
-		if hasHash(HashNames.MD4) {
-			md4c <- mmap[i:end]
-		}
-		if hasHash(HashNames.MD5) {
-			md5c <- mmap[i:end]
-		}
-		if hasHash(HashNames.SHA1) {
-			sha1c <- mmap[i:end]
-		}
-		if hasHash(HashNames.SHA256) {
-			sha256c <- mmap[i:end]
-		}
-		if hasHash(HashNames.SHA512) {
-			sha512c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Blake2b256) {
-			blake2b_256_c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Blake2b512) {
-			blake2b_512_c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Sha3224) {
-			sha3_224_c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Sha3256) {
-			sha3_256_c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Sha3384) {
-			sha3_384_c <- mmap[i:end]
-		}
-		if hasHash(HashNames.Sha3512) {
-			sha3_512_c <- mmap[i:end]
-		}
-	}
-
-	if Trace {
-		printTrace(fmt.Sprintf("milliseconds reading mmap file: %s: %d", filename, makeTimestampMilli()-fileStartTime))
-	}
-
-	close(md4c)
-	close(md5c)
-	close(sha1c)
-	close(sha256c)
-	close(sha512c)
-	close(blake2b_256_c)
-	close(blake2b_512_c)
-	close(sha3_224_c)
-	close(sha3_256_c)
-	close(sha3_384_c)
-	close(sha3_512_c)
-
-	wg.Wait()
-
-	if err := mmap.Unmap(); err != nil {
-		printError(fmt.Sprintf("unmapping file %s: %s", filename, err.Error()))
-	}
-
-	return Result{
-		File:       filename,
-		Bytes:      int64(total),
-		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
-		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
-		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
-		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
-		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
-		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
-		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
-		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
-		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
-		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
-		Sha3512:    hex.EncodeToString(sha3_512_d.Sum(nil)),
-	}, nil
-}
-
 // For files under a certain size its faster to just read them into memory in one
 // chunk and then process them which this method does
 // NB there is little point in multi-processing at this level, it would be
 // better done on the input channel if required
-func processReadFile(filename string, content *[]byte) (Result, error) {
+func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	startTime := makeTimestampNano()
 
 	var wg sync.WaitGroup
@@ -957,6 +727,135 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	wg.Wait()
+	return result, nil
+}
+
+func processReadFile(filename string, content *[]byte) (Result, error) {
+	startTime := makeTimestampNano()
+
+	result := Result{}
+
+	if hasHash(HashNames.MD4) {
+		startTime = makeTimestampNano()
+		d := md4.New()
+		d.Write(*content)
+		result.MD4 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing md4: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.MD5) {
+		startTime = makeTimestampNano()
+		d := md5.New()
+		d.Write(*content)
+		result.MD5 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing md5: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.SHA1) {
+		startTime = makeTimestampNano()
+		d := sha1.New()
+		d.Write(*content)
+		result.SHA1 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha1: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.SHA256) {
+		startTime = makeTimestampNano()
+		d := sha256.New()
+		d.Write(*content)
+		result.SHA256 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha256: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.SHA512) {
+		startTime = makeTimestampNano()
+		d := sha512.New()
+		d.Write(*content)
+		result.SHA512 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Blake2b256) {
+		startTime = makeTimestampNano()
+		d := blake2b.New256()
+		d.Write(*content)
+		result.Blake2b256 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing blake2b-256: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Blake2b512) {
+		startTime = makeTimestampNano()
+		d := blake2b.New512()
+		d.Write(*content)
+		result.Blake2b512 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing blake2b-512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Sha3224) {
+		startTime = makeTimestampNano()
+		d := sha3.New224()
+		d.Write(*content)
+		result.Sha3224 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha3-224: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Sha3256) {
+		startTime = makeTimestampNano()
+		d := sha3.New256()
+		d.Write(*content)
+		result.Sha3256 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha3-256: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Sha3384) {
+		startTime = makeTimestampNano()
+		d := sha3.New384()
+		d.Write(*content)
+		result.Sha3384 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha3-384: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Sha3512) {
+		startTime = makeTimestampNano()
+		d := sha3.New512()
+		d.Write(*content)
+		result.Sha3512 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing sha3-512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
 	return result, nil
 }
 

@@ -9,7 +9,7 @@ import (
 //go:generate go run scripts/include.go
 func main() {
 	//f, _ := os.Create("hashit.pprof")
-	//pprof.StartCPUProfile(f)
+	//_ = pprof.StartCPUProfile(f)
 	//defer pprof.StopCPUProfile()
 
 	rootCmd := &cobra.Command{

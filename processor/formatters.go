@@ -56,13 +56,10 @@ func fileSummarize(input chan Result) string {
 		return toJSON(input)
 	case strings.ToLower(Format) == "hashdeep":
 		return toHashDeep(input)
-		//case strings.ToLower(Format) == "clean":
-		//	return toClean(input)
-	case strings.ToLower(Format) == "sum":
+	case strings.ToLower(Format) == "sum": // Similar to md5sum sha1sum output format
 		return toSum(input)
 	}
 	// TODO add output format that is just the hash for single files
-	// TODO add output format that confirms to md5sum
 
 	return toText(input)
 }
