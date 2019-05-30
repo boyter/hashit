@@ -213,6 +213,28 @@ else
     exit
 fi
 
+a=$(./hashit --format sum --hash sha256 main.go)
+b=$(sha256sum main.go)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED sum sha256 format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sum sha256 format test"
+    echo -e "================================================="
+    exit
+fi
+
+a=$(./hashit --format sum --hash sha512 main.go)
+b=$(sha512sum main.go)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED sum sha512 format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sum sha512 format test"
+    echo -e "================================================="
+    exit
+fi
+
 for i in '' '--stream-size 0'
 do
     if ./hashit $i LICENSE | grep -q -i '227f999ca03b135a1b4d69bde84afb16'; then
