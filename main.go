@@ -46,6 +46,13 @@ func main() {
 		false,
 		"recursive subdirectories are traversed",
 	)
+	flags.BoolVarP(
+		&processor.FileAudit,
+		"file-audit",
+		"x",
+		false,
+		"enable file audit logic where files will be checked against internal list",
+	)
 	flags.BoolVar(
 		&processor.Hashes,
 		"hashes",

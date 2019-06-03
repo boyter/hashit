@@ -55,6 +55,9 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1000000
 
+// If set will enable the internal file audit logic to kick in
+var FileAudit = false
+
 // String mapping for hash names
 var HashNames = Result{
 	MD4:        "md4",

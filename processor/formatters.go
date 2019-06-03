@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -166,6 +167,55 @@ func toText(input chan Result) string {
 		}
 		if hasHash(HashNames.Sha3512) {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
+		}
+
+
+		if FileAudit {
+			str.WriteString("\n")
+			str.WriteString("audit result\n")
+			_, f := filepath.Split(res.File)
+			// TODO check if we can match based on the hashes themselves
+
+			if val, ok := hashLookup[res.MD5]; ok {
+				fmt.Println("md5 match found", val)
+			}
+
+
+			if val, ok := hashDatabase[f]; ok {
+				if hasHash(HashNames.MD5) && val.MD5 != "" {
+					if res.MD5 == val.MD5 {
+						str.WriteString("        MD5 " + val.MD5 + " pass\n")
+					} else {
+						str.WriteString("        MD5 " + val.MD5 + " fail\n")
+					}
+				}
+
+				if hasHash(HashNames.SHA1) && val.SHA1 != "" {
+					if res.SHA1 == val.SHA1 {
+						str.WriteString("       SHA1 " + val.SHA1 + " pass\n")
+					} else {
+						str.WriteString("       SHA1 " + val.SHA1 + " fail\n")
+					}
+				}
+
+				if hasHash(HashNames.SHA256) && val.SHA256 != "" {
+					if res.SHA256 == val.SHA256 {
+						str.WriteString("     SHA256 " + val.SHA256 + " pass\n")
+					} else {
+						str.WriteString("     SHA256 " + val.SHA256 + " fail\n")
+					}
+				}
+
+				if hasHash(HashNames.SHA512) && val.SHA512 != "" {
+					if res.SHA512 == val.SHA512 {
+						str.WriteString("     SHA512 " + val.SHA512 + " pass\n")
+					} else {
+						str.WriteString("     SHA512 " + val.SHA512 + " fail\n")
+					}
+				}
+			} else {
+				str.WriteString("    unknown file cannot audit\n")
+			}
 		}
 
 		if NoStream == false && FileOutput == "" {
