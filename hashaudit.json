@@ -1,6 +1,8 @@
 {
   "xubuntu-18.04-desktop-amd64.iso": {
     "description": "Xubuntu 18.04 is an LTS release which was released in April 2018.",
+    "date": "2018-04",
+    "version": "18.04",
     "urls": [
       "https://xubuntu.org/release/18-04/",
       "http://mirror.exetel.com.au/pub/ubuntu/xubuntu-releases/18.04/release/MD5SUMS",
@@ -10,5 +12,15 @@
     "md5": "1b0bcbad9853cf7a4cade6324e6622f7",
     "sha1": "a1bcc46d01387337d4be81ba76e89b495a7b5331",
     "sha256": "7c24318d3b1de1efd584b5aea034ce1aafd2d0f06c59812d989a5fc95bf947e3"
+  },
+  "zig-linux-x86_64-0.4.0.tar.xz": {
+    "description": "Zig is a general-purpose programming language designed for robustness, optimality, and maintainability.",
+    "date": "2019-04-08",
+    "version": "0.4.0",
+    "urls": [
+      "https://ziglang.org/download/",
+      "https://ziglang.org/download/0.4.0/release-notes.html"
+    ],
+    "sha256": "fb1954e2fb556a01f8079a08130e88f70084e08978ff853bb2b1986d8c39d84e"
   }
 }

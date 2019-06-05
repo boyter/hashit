@@ -169,7 +169,6 @@ func toText(input chan Result) string {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
 		}
 
-
 		if FileAudit {
 			str.WriteString("\n")
 			str.WriteString("audit result\n")
@@ -179,7 +178,6 @@ func toText(input chan Result) string {
 			if val, ok := hashLookup[res.MD5]; ok {
 				fmt.Println("md5 match found", val)
 			}
-
 
 			if val, ok := hashDatabase[f]; ok {
 				if hasHash(HashNames.MD5) && val.MD5 != "" {
