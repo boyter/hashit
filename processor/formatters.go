@@ -194,6 +194,10 @@ func auditFile(str *strings.Builder, res Result) bool {
 	if val, ok := hashDatabase[found]; ok {
 
 		str.WriteString(fmt.Sprintf("%s identified\n", res.File))
+		str.WriteString(fmt.Sprintf("description %s\n", val.Description))
+		str.WriteString(fmt.Sprintf("    version %s\n", val.Version))
+		str.WriteString(fmt.Sprintf("       date %s\n", val.Date))
+		str.WriteString("\n")
 
 		if hasHash(HashNames.MD5) && val.MD5 != "" {
 			if res.MD5 == val.MD5 {
