@@ -115,8 +115,9 @@ func Process() {
 		return
 	}
 
-	// TODO only need to do this if we want to audit a file
-	ProcessConstants()
+	if FileAudit {
+		ProcessConstants()
+	}
 
 	// Check if we are accepting data from stdin
 	stat, _ := os.Stdin.Stat()

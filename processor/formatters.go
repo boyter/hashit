@@ -170,50 +170,7 @@ func toText(input chan Result) string {
 		}
 
 		if FileAudit {
-			str.WriteString("\n")
-			str.WriteString("audit result\n")
-			_, f := filepath.Split(res.File)
-			// TODO check if we can match based on the hashes themselves
-
-			if val, ok := hashLookup[res.MD5]; ok {
-				fmt.Println("md5 match found", val)
-			}
-
-			if val, ok := hashDatabase[f]; ok {
-				if hasHash(HashNames.MD5) && val.MD5 != "" {
-					if res.MD5 == val.MD5 {
-						str.WriteString("        MD5 " + val.MD5 + " pass\n")
-					} else {
-						str.WriteString("        MD5 " + val.MD5 + " fail\n")
-					}
-				}
-
-				if hasHash(HashNames.SHA1) && val.SHA1 != "" {
-					if res.SHA1 == val.SHA1 {
-						str.WriteString("       SHA1 " + val.SHA1 + " pass\n")
-					} else {
-						str.WriteString("       SHA1 " + val.SHA1 + " fail\n")
-					}
-				}
-
-				if hasHash(HashNames.SHA256) && val.SHA256 != "" {
-					if res.SHA256 == val.SHA256 {
-						str.WriteString("     SHA256 " + val.SHA256 + " pass\n")
-					} else {
-						str.WriteString("     SHA256 " + val.SHA256 + " fail\n")
-					}
-				}
-
-				if hasHash(HashNames.SHA512) && val.SHA512 != "" {
-					if res.SHA512 == val.SHA512 {
-						str.WriteString("     SHA512 " + val.SHA512 + " pass\n")
-					} else {
-						str.WriteString("     SHA512 " + val.SHA512 + " fail\n")
-					}
-				}
-			} else {
-				str.WriteString("    unknown file cannot audit\n")
-			}
+			auditFile(&str, res)
 		}
 
 		if NoStream == false && FileOutput == "" {
@@ -223,6 +180,91 @@ func toText(input chan Result) string {
 	}
 
 	return str.String()
+}
+
+func auditFile(str *strings.Builder, res Result) {
+	str.WriteString("\n")
+	str.WriteString("audit results\n")
+
+	found := findByHashes(res)
+	if found == "" {
+		_, found = filepath.Split(res.File)
+	}
+
+	if val, ok := hashDatabase[found]; ok {
+
+		str.WriteString(fmt.Sprintf("%s identified as %s\n", res.File, res.Description))
+
+		if hasHash(HashNames.MD5) && val.MD5 != "" {
+			if res.MD5 == val.MD5 {
+				str.WriteString("        MD5 " + val.MD5 + " pass\n")
+			} else {
+				str.WriteString("        MD5 " + val.MD5 + " fail\n")
+			}
+		}
+
+		if hasHash(HashNames.SHA1) && val.SHA1 != "" {
+			if res.SHA1 == val.SHA1 {
+				str.WriteString("       SHA1 " + val.SHA1 + " pass\n")
+			} else {
+				str.WriteString("       SHA1 " + val.SHA1 + " fail\n")
+			}
+		}
+
+		if hasHash(HashNames.SHA256) && val.SHA256 != "" {
+			if res.SHA256 == val.SHA256 {
+				str.WriteString("     SHA256 " + val.SHA256 + " pass\n")
+			} else {
+				str.WriteString("     SHA256 " + val.SHA256 + " fail\n")
+			}
+		}
+
+		if hasHash(HashNames.SHA512) && val.SHA512 != "" {
+			if res.SHA512 == val.SHA512 {
+				str.WriteString("     SHA512 " + val.SHA512 + " pass\n")
+			} else {
+				str.WriteString("     SHA512 " + val.SHA512 + " fail\n")
+			}
+		}
+	} else {
+		str.WriteString("    unknown file cannot audit\n")
+	}
+}
+
+func findByHashes(res Result) (string) {
+	if val, ok := hashLookup[res.MD5]; ok {
+		if Verbose {
+			printVerbose(fmt.Sprintf("md5 match found: %s", val))
+		}
+		return val
+	}
+
+	if val, ok := hashLookup[res.SHA1]; ok {
+		if Verbose {
+			printVerbose(fmt.Sprintf("sha1 match found: %s", val))
+		}
+		return val
+	}
+
+	if val, ok := hashLookup[res.SHA256]; ok {
+		if Verbose {
+			printVerbose(fmt.Sprintf("sha256 match found: %s", val))
+		}
+		return val
+	}
+
+	if val, ok := hashLookup[res.SHA512]; ok {
+		if Verbose {
+			printVerbose(fmt.Sprintf("sha512 match found: %s", val))
+		}
+		return val
+	}
+
+	if Verbose {
+		printVerbose(fmt.Sprintf("no hash match found for: %s", res.File))
+	}
+
+	return ""
 }
 
 func toJSON(input chan Result) string {
