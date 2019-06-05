@@ -191,10 +191,13 @@ func Process() {
 		}()
 	}
 
-	result := fileSummarize(fileSummaryQueue)
+	result, valid := fileSummarize(fileSummaryQueue)
 
 	if FileOutput == "" {
 		fmt.Print(result)
+		if !valid {
+			os.Exit(1)
+		}
 	} else {
 		_ = ioutil.WriteFile(FileOutput, []byte(result), 0600)
 		fmt.Println("results written to " + FileOutput)

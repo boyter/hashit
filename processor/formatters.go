@@ -51,16 +51,15 @@ func makeTimestampNano() int64 {
 	return time.Now().UnixNano()
 }
 
-func fileSummarize(input chan Result) string {
+func fileSummarize(input chan Result) (string, bool) {
 	switch {
 	case strings.ToLower(Format) == "json":
-		return toJSON(input)
+		return toJSON(input), true
 	case strings.ToLower(Format) == "hashdeep":
-		return toHashDeep(input)
+		return toHashDeep(input), true
 	case strings.ToLower(Format) == "sum": // Similar to md5sum sha1sum output format
-		return toSum(input)
+		return toSum(input), true
 	}
-	// TODO add output format that is just the hash for single files
 
 	return toText(input)
 }
@@ -121,9 +120,9 @@ func toSum(input chan Result) string {
 	return str.String()
 }
 
-func toText(input chan Result) string {
+func toText(input chan Result) (string, bool) {
 	var str strings.Builder
-
+	valid := true
 	first := true
 
 	for res := range input {
@@ -170,7 +169,7 @@ func toText(input chan Result) string {
 		}
 
 		if FileAudit {
-			auditFile(&str, res)
+			valid = auditFile(&str, res)
 		}
 
 		if NoStream == false && FileOutput == "" {
@@ -179,27 +178,29 @@ func toText(input chan Result) string {
 		}
 	}
 
-	return str.String()
+	return str.String(), valid
 }
 
-func auditFile(str *strings.Builder, res Result) {
+func auditFile(str *strings.Builder, res Result) bool {
 	str.WriteString("\n")
-	str.WriteString("audit results\n")
 
 	found := findByHashes(res)
 	if found == "" {
 		_, found = filepath.Split(res.File)
 	}
 
+	valid := true
+
 	if val, ok := hashDatabase[found]; ok {
 
-		str.WriteString(fmt.Sprintf("%s identified as %s\n", res.File, res.Description))
+		str.WriteString(fmt.Sprintf("%s identified\n", res.File))
 
 		if hasHash(HashNames.MD5) && val.MD5 != "" {
 			if res.MD5 == val.MD5 {
 				str.WriteString("        MD5 " + val.MD5 + " pass\n")
 			} else {
 				str.WriteString("        MD5 " + val.MD5 + " fail\n")
+				valid = false
 			}
 		}
 
@@ -208,6 +209,7 @@ func auditFile(str *strings.Builder, res Result) {
 				str.WriteString("       SHA1 " + val.SHA1 + " pass\n")
 			} else {
 				str.WriteString("       SHA1 " + val.SHA1 + " fail\n")
+				valid = false
 			}
 		}
 
@@ -216,6 +218,7 @@ func auditFile(str *strings.Builder, res Result) {
 				str.WriteString("     SHA256 " + val.SHA256 + " pass\n")
 			} else {
 				str.WriteString("     SHA256 " + val.SHA256 + " fail\n")
+				valid = false
 			}
 		}
 
@@ -224,11 +227,14 @@ func auditFile(str *strings.Builder, res Result) {
 				str.WriteString("     SHA512 " + val.SHA512 + " pass\n")
 			} else {
 				str.WriteString("     SHA512 " + val.SHA512 + " fail\n")
+				valid = false
 			}
 		}
 	} else {
 		str.WriteString("    unknown file cannot audit\n")
 	}
+
+	return valid
 }
 
 func findByHashes(res Result) (string) {
