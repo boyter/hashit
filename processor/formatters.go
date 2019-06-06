@@ -184,16 +184,22 @@ func toText(input chan Result) (string, bool) {
 func auditFile(str *strings.Builder, res Result) bool {
 	str.WriteString("\n")
 
+	identifiedByHash := true
 	found := findByHashes(res)
 	if found == "" {
 		_, found = filepath.Split(res.File)
+		identifiedByHash = false
 	}
 
 	valid := true
 
 	if val, ok := hashDatabase[found]; ok {
+		if identifiedByHash {
+			str.WriteString(fmt.Sprintf("%s (identified by hash)\n", res.File))
+		} else {
+			str.WriteString(fmt.Sprintf("%s (identified by filename)\n", res.File))
+		}
 
-		str.WriteString(fmt.Sprintf("%s identified\n", res.File))
 		str.WriteString(fmt.Sprintf("description %s\n", val.Description))
 		str.WriteString(fmt.Sprintf("    version %s\n", val.Version))
 		str.WriteString(fmt.Sprintf("       date %s\n", val.Date))
@@ -241,7 +247,7 @@ func auditFile(str *strings.Builder, res Result) bool {
 	return valid
 }
 
-func findByHashes(res Result) (string) {
+func findByHashes(res Result) string {
 	if val, ok := hashLookup[res.MD5]; ok {
 		if Verbose {
 			printVerbose(fmt.Sprintf("md5 match found: %s", val))

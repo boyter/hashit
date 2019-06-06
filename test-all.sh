@@ -287,7 +287,23 @@ else
     exit
 fi
 
+if ./hashit -x ./examples/xubuntu-18.04-desktop-amd64.iso > /dev/null ; then
+    echo -e "${RED}================================================="
+    echo -e "FAILED Invalid file match should return error "
+    echo -e "======================================================="
+    exit
+else
+    echo -e "${GREEN}PASSED Invalid file match"
+fi
 
+if ./hashit -x ./examples/xubuntu-18.04-desktop-amd64.iso  | grep -q -i 'identified by filename'; then
+    echo -e "${GREEN}PASSED identified by filename"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should identify by filename"
+    echo -e "======================================================="
+    exit
+fi
 
 echo -e "${NC}Cleaning up..."
 rm ./hashit
