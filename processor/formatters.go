@@ -181,6 +181,9 @@ func toText(input chan Result) (string, bool) {
 	return str.String(), valid
 }
 
+// If audit is enabled then try to identify the file against the internal list
+// and if we find a match we want to match the hashes against each other to
+// determine if the result is genuine or not
 func auditFile(str *strings.Builder, res Result) bool {
 	str.WriteString("\n")
 
@@ -247,6 +250,7 @@ func auditFile(str *strings.Builder, res Result) bool {
 	return valid
 }
 
+// Tries to identify a result based on the hashes produced for it
 func findByHashes(res Result) string {
 	if val, ok := hashLookup[res.MD5]; ok {
 		if Verbose {
