@@ -241,7 +241,7 @@ func auditFile(str *strings.Builder, res Result) bool {
 			}
 		}
 	} else {
-		str.WriteString("    unknown file cannot audit\n")
+		str.WriteString(fmt.Sprintf("%s (unknown file cannot audit)\n", res.File))
 	}
 
 	return valid

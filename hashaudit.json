@@ -1,4 +1,60 @@
 {
+  "ubuntu-16.04.6-desktop-amd64.iso": {
+    "description": "Ubuntu 16.04.6 LTS (Xenial Xerus) Desktop image for 64-bit PC (AMD64) computers",
+    "date": "2019-02-27",
+    "version": "16.04.6",
+    "urls": [
+      "http://releases.ubuntu.com/xenial/",
+      "http://releases.ubuntu.com/xenial/MD5SUMS",
+      "http://releases.ubuntu.com/xenial/SHA1SUMS",
+      "http://releases.ubuntu.com/xenial/SHA256SUMS"
+    ],
+    "md5": "5416371cc0e990871746ddaac89f1a5e",
+    "sha1": "a09607901183ab25c675626024aa402663fa2558",
+    "sha256": "e27d13d089a027601099b050fd6080785aae99c1a8eb7848774b8d44f1f679b9"
+  },
+  "ubuntu-16.04.6-desktop-i386.iso": {
+    "description": "Ubuntu 16.04.6 LTS (Xenial Xerus) Desktop image for 32-bit PC (i386) computers",
+    "date": "2019-02-27",
+    "version": "16.04.6",
+    "urls": [
+      "http://releases.ubuntu.com/xenial/",
+      "http://releases.ubuntu.com/xenial/MD5SUMS",
+      "http://releases.ubuntu.com/xenial/SHA1SUMS",
+      "http://releases.ubuntu.com/xenial/SHA256SUMS"
+    ],
+    "md5": "feefb18e7916c9a16bb09923ed98df64",
+    "sha1": "4e3528f6d45a25692f6f9c1f8acf9a3b7c114c5f",
+    "sha256": "eecb9c8160cdb08adf0c2f17daa1d403f5a55f14a856a5973f32f267eb9db039"
+  },
+  "ubuntu-16.04.6-server-amd64.iso": {
+    "description": "Ubuntu 16.04.6 LTS (Xenial Xerus) Server install image for 64-bit PC (AMD64) computers",
+    "date": "2019-02-27",
+    "version": "16.04.6",
+    "urls": [
+      "http://releases.ubuntu.com/xenial/",
+      "http://releases.ubuntu.com/xenial/MD5SUMS",
+      "http://releases.ubuntu.com/xenial/SHA1SUMS",
+      "http://releases.ubuntu.com/xenial/SHA256SUMS"
+    ],
+    "md5": "ac8a79a86a905ebdc3ef3f5dd16b7360",
+    "sha1": "056b7c15efc15bbbf40bf1a9ff1a3531fcbf70a2",
+    "sha256": "16afb1375372c57471ea5e29803a89a5a6bd1f6aabea2e5e34ac1ab7eb9786ac"
+  },
+  "ubuntu-16.04.6-server-i386.iso": {
+    "description": "Ubuntu 16.04.6 LTS (Xenial Xerus) Server install image for 32-bit PC (i386) computers",
+    "date": "2019-02-27",
+    "version": "16.04.6",
+    "urls": [
+      "http://releases.ubuntu.com/xenial/",
+      "http://releases.ubuntu.com/xenial/MD5SUMS",
+      "http://releases.ubuntu.com/xenial/SHA1SUMS",
+      "http://releases.ubuntu.com/xenial/SHA256SUMS"
+    ],
+    "md5": "1817138b1a181507c5ebd5ec8a3f40ba",
+    "sha1": "40343e90c9b8355ee6512e7680486df2f084eb1d",
+    "sha256": "7509cabb2f9f6ba0a95f8454d432be2ef26679d31ce35baa626acc5321460fab"
+  },
   "xubuntu-18.04-desktop-amd64.iso": {
     "description": "Xubuntu 18.04 is an LTS release which was released in April 2018.",
     "date": "2018-04",

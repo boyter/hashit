@@ -305,6 +305,15 @@ else
     exit
 fi
 
+if ./hashit -x ./main.go  | grep -q -i 'unknown file cannot audit'; then
+    echo -e "${GREEN}PASSED unknown file"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should report unknown file"
+    echo -e "======================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm ./audit.txt
