@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo "Running go generate..."
+go generate
+
 echo "Running go fmt..."
 gofmt -s -w ./..
 

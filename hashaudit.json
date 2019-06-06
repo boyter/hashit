@@ -83,6 +83,62 @@
     "sha1": "aa9606eb8c0bbce00552907f541547c4c510134f",
     "sha256": "ea6ccb5b57813908c006f42f7ac8eaa4fc603883a2d07876cf9ed74610ba2f53"
   },
+  "ubuntu-18.10-desktop-amd64.iso": {
+    "description": "Ubuntu 18.10 (Cosmic Cuttlefish) Desktop image for 64-bit PC (AMD64) computers",
+    "date": "2018-10-17",
+    "version": "18.10",
+    "urls": [
+      "http://releases.ubuntu.com/cosmic/",
+      "http://releases.ubuntu.com/cosmic/MD5SUMS",
+      "http://releases.ubuntu.com/cosmic/SHA1SUMS",
+      "http://releases.ubuntu.com/cosmic/SHA256SUMS"
+    ],
+    "md5": "d40aa9b8043849ecd888e85eade072db",
+    "sha1": "74dc7526e01fa78bb5b9486b4815364bbc625b12",
+    "sha256": "818affdaea8d38bbbe620009bfa788a7cbc583c7c61c2d278f61dd3c43e030a0"
+  },
+  "ubuntu-18.10-live-server-amd64.iso": {
+    "description": "Ubuntu 18.10 (Cosmic Cuttlefish) Server install image for 64-bit PC (AMD64) computers",
+    "date": "2018-10-17",
+    "version": "18.10",
+    "urls": [
+      "http://releases.ubuntu.com/cosmic/",
+      "http://releases.ubuntu.com/cosmic/MD5SUMS",
+      "http://releases.ubuntu.com/cosmic/SHA1SUMS",
+      "http://releases.ubuntu.com/cosmic/SHA256SUMS"
+    ],
+    "md5": "5850e23b67962d59a3b7cdc50df69e59",
+    "sha1": "97dc434a27bfcea151179ffc94ee7745f10efe5e",
+    "sha256": "7b9f670c749f797a0f7481d619ce8807edac052c97e1a0df3b130c95efae4765"
+  },
+  "ubuntu-19.04-desktop-amd64.iso": {
+    "description": "Ubuntu 19.04 (Disco Dingo) Desktop image for 64-bit PC (AMD64) computers",
+    "date": "2019-04-16",
+    "version": "19.04",
+    "urls": [
+      "http://releases.ubuntu.com/disco/",
+      "http://releases.ubuntu.com/disco/MD5SUMS",
+      "http://releases.ubuntu.com/disco/SHA1SUMS",
+      "http://releases.ubuntu.com/disco/SHA256SUMS"
+    ],
+    "md5": "6fa9686bc299c19c97d280f79a723868",
+    "sha1": "47064866141c7729b3f447890dd6d5bc2fc35cf7",
+    "sha256": "2da6f8b5c65b71b040c5c510311eae1798545b8ba801c9b63e9e3fd3c0457cbe"
+  },
+  "ubuntu-19.04-live-server-amd64.iso": {
+    "description": "Ubuntu 19.04 (Disco Dingo) Server install image for 64-bit PC (AMD64) computers",
+    "date": "2019-04-16",
+    "version": "19.04",
+    "urls": [
+      "http://releases.ubuntu.com/disco/",
+      "http://releases.ubuntu.com/disco/MD5SUMS",
+      "http://releases.ubuntu.com/disco/SHA1SUMS",
+      "http://releases.ubuntu.com/disco/SHA256SUMS"
+    ],
+    "md5": "9a659c92b961ef46f5c0fdc04b9269a6",
+    "sha1": "544ba93f0e0a92c642c3585894da1a59693cc278",
+    "sha256": "25d483341ccd0d522a6660b00db933787c86c47b42f1845bcf997127f4b61e9d"
+  },
   "xubuntu-18.04-desktop-amd64.iso": {
     "description": "Xubuntu 18.04 is an LTS release which was released in April 2018.",
     "date": "2018-04",
