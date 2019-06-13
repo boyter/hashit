@@ -66,6 +66,13 @@ func main() {
 		"",
 		"output filename (default stdout)",
 	)
+	flags.StringVarP(
+		&processor.AuditFile,
+		"audit",
+		"a",
+		"",
+		"audit mode, validates argument against known hashes",
+	)
 	flags.BoolVar(
 		&processor.NoStream,
 		"no-stream",

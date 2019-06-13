@@ -45,6 +45,9 @@ var Format = ""
 // FileOutput sets the file that output should be written to
 var FileOutput = ""
 
+// AuditFile sets the file that we want to audit against similar to hashdeep
+var AuditFile = ""
+
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
 var isDir = false
