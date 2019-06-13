@@ -88,8 +88,6 @@ func BenchmarkProcessReadFile1000Bytes(b *testing.B) {
 	b.Log(count)
 }
 
-///
-
 func BenchmarkProcessReadFileSingle100Bytes(b *testing.B) {
 	b.StopTimer()
 	Hash = append(Hash, "all")
