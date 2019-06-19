@@ -262,5 +262,10 @@ func loadAuditFile() {
 		os.Exit(1)
 	}
 
-	fmt.Println(content)
+	if strings.HasPrefix(strings.Trim(string(content), ""), "[{") {
+		fmt.Println("JSON audit file")
+	} else {
+		fmt.Println("HASHDEEP audit file")
+	}
+
 }
