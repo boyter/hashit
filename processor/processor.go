@@ -267,5 +267,4 @@ func loadAuditFile() {
 	} else {
 		fmt.Println("HASHDEEP audit file")
 	}
-
 }
