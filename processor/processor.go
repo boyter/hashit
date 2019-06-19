@@ -122,6 +122,10 @@ func Process() {
 		ProcessConstants()
 	}
 
+	if AuditFile != "" {
+		loadAuditFile()
+	}
+
 	// Check if we are accepting data from stdin
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
@@ -248,4 +252,15 @@ func loadDatabase() map[string]Result {
 	}
 
 	return database
+}
+
+func loadAuditFile() {
+	content, err := ioutil.ReadFile(AuditFile)
+
+	if err != nil {
+		printError(fmt.Sprintf("unable to load audit file: %s %s", AuditFile, err.Error()))
+		os.Exit(1)
+	}
+
+	fmt.Println(content)
 }
