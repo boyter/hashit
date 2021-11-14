@@ -49,9 +49,7 @@ Usage:
   hashit [flags]
 
 Flags:
-  -a, --audit string      audit mode, validates argument against known hashes
       --debug             enable debug output
-  -x, --file-audit        enable file audit logic where files will be checked against internal list
   -f, --format string     set output format [text, json, sum, hashdeep] (default "text")
   -c, --hash strings      hashes to be run for each file (set to 'all' for all possible hashes) (default [md5,sha1,sha256,sha512])
       --hashes            list all supported hashes

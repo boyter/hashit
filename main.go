@@ -6,7 +6,6 @@ import (
 	"os"
 )
 
-//go:generate go run scripts/include.go
 func main() {
 	//f, _ := os.Create("hashit.pprof")
 	//_ = pprof.StartCPUProfile(f)
@@ -46,13 +45,6 @@ func main() {
 		false,
 		"recursive subdirectories are traversed",
 	)
-	flags.BoolVarP(
-		&processor.FileAudit,
-		"file-audit",
-		"x",
-		false,
-		"enable file audit logic where files will be checked against internal list",
-	)
 	flags.BoolVar(
 		&processor.Hashes,
 		"hashes",
@@ -65,13 +57,6 @@ func main() {
 		"o",
 		"",
 		"output filename (default stdout)",
-	)
-	flags.StringVarP(
-		&processor.AuditFile,
-		"audit",
-		"a",
-		"",
-		"audit mode, validates argument against known hashes",
 	)
 	flags.BoolVar(
 		&processor.NoStream,
