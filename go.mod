@@ -3,7 +3,6 @@ module github.com/boyter/hashit
 go 1.17
 
 require (
-	github.com/karrick/godirwalk v1.10.3
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/spf13/cobra v0.0.3
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f

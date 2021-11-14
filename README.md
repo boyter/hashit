@@ -18,7 +18,7 @@ Other similar projects,
  
 ### Install
 
-If you are comfortable using Go and have >= 1.10 installed the usual `go get -u github.com/boyter/hashit/` will install for you.
+If you are comfortable using Go and have >= 1.16 installed the usual `go get -u github.com/boyter/hashit/` will install for you.
 
 Binaries will be on [Releases](https://github.com/boyter/hashit/releases) for Windows, GNU/Linux and macOS for both i386 and x86_64 bit machines once it hits version 1.0.0.
 
