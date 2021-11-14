@@ -56,7 +56,7 @@ var isDir = false
 var FileListQueueSize = 1000
 
 // Number of bytes in a size to enable memory maps or streaming
-var StreamSize int64 = 1000000
+var StreamSize int64 = 1_000_000
 
 // If set will enable the internal file audit logic to kick in
 var FileAudit = false
@@ -70,6 +70,7 @@ var HashNames = Result{
 	SHA512:     "sha512",
 	Blake2b256: "blake2b256",
 	Blake2b512: "blake2b512",
+	Blake3:     "blake3",
 	Sha3224:    "sha3224",
 	Sha3256:    "sha3256",
 	Sha3384:    "sha3384",

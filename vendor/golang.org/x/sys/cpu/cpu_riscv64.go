@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build !linux,arm64
+// +build riscv64
 
 package cpu
 
-func doinit() {}
+const cacheLineSize = 32
+
+func initOptions() {}

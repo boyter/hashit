@@ -98,6 +98,9 @@ func toSum(input chan Result) string {
 		if hasHash(HashNames.Blake2b512) {
 			str.WriteString(res.Blake2b512 + "  " + res.File + "\n")
 		}
+		if hasHash(HashNames.Blake3) {
+			str.WriteString(res.Blake3 + "  " + res.File + "\n")
+		}
 		if hasHash(HashNames.Sha3224) {
 			str.WriteString(res.Sha3224 + "  " + res.File + "\n")
 		}
@@ -154,6 +157,9 @@ func toText(input chan Result) (string, bool) {
 		}
 		if hasHash(HashNames.Blake2b512) {
 			str.WriteString("Blake2b-512 " + res.Blake2b512 + "\n")
+		}
+		if hasHash(HashNames.Blake3) {
+			str.WriteString("     Blake3 " + res.Blake3 + "\n")
 		}
 		if hasHash(HashNames.Sha3224) {
 			str.WriteString("   SHA3-224 " + res.Sha3224 + "\n")
@@ -330,6 +336,7 @@ func printHashes() {
 	fmt.Println(fmt.Sprintf("     SHA512 (%s)", HashNames.SHA512))
 	fmt.Println(fmt.Sprintf("Blake2b-256 (%s)", HashNames.Blake2b256))
 	fmt.Println(fmt.Sprintf("Blake2b-512 (%s)", HashNames.Blake2b512))
+	fmt.Println(fmt.Sprintf("     Blake3 (%s)", HashNames.Blake3))
 	fmt.Println(fmt.Sprintf("   SHA3-224 (%s)", HashNames.Sha3224))
 	fmt.Println(fmt.Sprintf("   SHA3-256 (%s)", HashNames.Sha3256))
 	fmt.Println(fmt.Sprintf("   SHA3-384 (%s)", HashNames.Sha3384))

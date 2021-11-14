@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/minio/blake2b-simd"
+	"github.com/zeebo/blake3"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
 	"io"
@@ -112,6 +113,7 @@ func processScanner(filename string) (Result, error) {
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
 	blake2b_512_d := blake2b.New512()
+	blake3_d := blake3.New()
 	sha3_224_d := sha3.New224()
 	sha3_256_d := sha3.New256()
 	sha3_384_d := sha3.New384()
@@ -124,6 +126,7 @@ func processScanner(filename string) (Result, error) {
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
 	blake2b_512_c := make(chan []byte, 10)
+	blake3c := make(chan []byte, 10)
 	sha3_224_c := make(chan []byte, 10)
 	sha3_256_c := make(chan []byte, 10)
 	sha3_384_c := make(chan []byte, 10)
@@ -196,6 +199,16 @@ func processScanner(filename string) (Result, error) {
 		go func() {
 			for b := range blake2b_512_c {
 				blake2b_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(HashNames.Blake3) {
+		wg.Add(1)
+		go func() {
+			for b := range blake3c {
+				blake3_d.Write(b)
 			}
 			wg.Done()
 		}()
@@ -238,7 +251,7 @@ func processScanner(filename string) (Result, error) {
 		}()
 	}
 
-	data := make([]byte, 4194304)
+	data := make([]byte, 4_194_304)
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
@@ -272,6 +285,9 @@ func processScanner(filename string) (Result, error) {
 		if hasHash(HashNames.Blake2b512) {
 			blake2b_512_c <- tmp[:n]
 		}
+		if hasHash(HashNames.Blake3) {
+			blake3c <- tmp[:n]
+		}
 		if hasHash(HashNames.Sha3224) {
 			sha3_224_c <- tmp[:n]
 		}
@@ -297,6 +313,7 @@ func processScanner(filename string) (Result, error) {
 	close(sha512c)
 	close(blake2b_256_c)
 	close(blake2b_512_c)
+	close(blake3c)
 	close(sha3_224_c)
 	close(sha3_256_c)
 	close(sha3_384_c)
@@ -314,6 +331,7 @@ func processScanner(filename string) (Result, error) {
 		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
 		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
 		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
+		Blake3:     hex.EncodeToString(blake3_d.Sum(nil)),
 		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
 		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
 		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
@@ -333,6 +351,7 @@ func processStandardInput(output chan Result) {
 	sha512_d := sha512.New()
 	blake2b_256_d := blake2b.New256()
 	blake2b_512_d := blake2b.New512()
+	blake3_d := blake3.New()
 	sha3_224_d := sha3.New224()
 	sha3_256_d := sha3.New256()
 	sha3_384_d := sha3.New384()
@@ -345,6 +364,7 @@ func processStandardInput(output chan Result) {
 	sha512c := make(chan []byte, 10)
 	blake2b_256_c := make(chan []byte, 10)
 	blake2b_512_c := make(chan []byte, 10)
+	blake3c := make(chan []byte, 10)
 	sha3_224_c := make(chan []byte, 10)
 	sha3_256_c := make(chan []byte, 10)
 	sha3_384_c := make(chan []byte, 10)
@@ -417,6 +437,16 @@ func processStandardInput(output chan Result) {
 		go func() {
 			for b := range blake2b_512_c {
 				blake2b_512_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(HashNames.Blake3) {
+		wg.Add(1)
+		go func() {
+			for b := range blake3c {
+				blake3_d.Write(b)
 			}
 			wg.Done()
 		}()
@@ -499,6 +529,9 @@ func processStandardInput(output chan Result) {
 		if hasHash(HashNames.Blake2b512) {
 			blake2b_512_c <- buf
 		}
+		if hasHash(HashNames.Blake3) {
+			blake3c <- buf
+		}
 		if hasHash(HashNames.Sha3224) {
 			sha3_224_c <- buf
 		}
@@ -524,6 +557,7 @@ func processStandardInput(output chan Result) {
 	close(sha512c)
 	close(blake2b_256_c)
 	close(blake2b_512_c)
+	close(blake3c)
 	close(sha3_224_c)
 	close(sha3_256_c)
 	close(sha3_384_c)
@@ -541,6 +575,7 @@ func processStandardInput(output chan Result) {
 		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
 		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
 		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
+		Blake3:     hex.EncodeToString(blake3_d.Sum(nil)),
 		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
 		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
 		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
@@ -808,6 +843,17 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 
 		if Trace {
 			printTrace(fmt.Sprintf("nanoseconds processing blake2b-512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Blake3) {
+		startTime = makeTimestampNano()
+		d := blake3.New()
+		d.Write(*content)
+		result.Blake3 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing blake3: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 
