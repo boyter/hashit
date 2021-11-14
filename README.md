@@ -130,7 +130,7 @@ Note that you don't have to specify the directory you want to run against. Runni
 
 If you supply a single argument to `hashit` and its a file it will process it. If you supply a single argument and it is a directory it will recurse that directory.
 
-If you supply multiple arguments which consist of files and directories then directories will be skipped. This allows wild card to be used and just process the files in a directory easily.
+If you supply multiple arguments which consist of files and directories then directories will be skipped. This allows wild card's to be used and just process the files in a directory.
 
 ```
 $ hashit *
