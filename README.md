@@ -6,7 +6,7 @@ A hash tool which can work like hashdeep or md5sum, sha1sum, etc... When you wan
 Yes the name is *very intentional* and similar to what say when I realise I need to get multiple hashes of a large file. This tool attempts to solve that pain.
 
 
-[![Build Status](https://travis-ci.org/boyter/hashit.svg?branch=master)](https://travis-ci.org/boyter/hashit)
+[![Go](https://github.com/boyter/hashit/actions/workflows/go.yml/badge.svg)](https://github.com/boyter/hashit/actions/workflows/go.yml)
 [![Scc Count Badge](https://sloc.xyz/github/boyter/hashit/)](https://github.com/boyter/hashit/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/boyter/hashit)](https://goreportcard.com/report/github.com/boyter/hashit)
 
