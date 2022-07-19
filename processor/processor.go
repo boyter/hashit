@@ -196,4 +196,3 @@ func hasHash(hash string) bool {
 
 	return false
 }
-
