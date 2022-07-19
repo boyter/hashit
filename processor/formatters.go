@@ -194,7 +194,7 @@ func toJSON(input chan Result) string {
 
 func toHashDeep(input chan Result) string {
 	var str strings.Builder
-	
+
 	pwd, err := os.Getwd()
 	if err != nil {
 		printError(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
