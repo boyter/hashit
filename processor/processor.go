@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"github.com/gosuri/uiprogress"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -21,6 +22,9 @@ var Debug = false
 
 // Trace enables trace logging output which is extremely verbose
 var Trace = false
+
+// Progress uses ui bar to display the progress of files
+var Progress = false
 
 // Recursive to walk directories
 var Recursive = false
@@ -144,6 +148,10 @@ func Process() {
 			}
 			close(fileListQueue)
 		}()
+
+		if Progress {
+			uiprogress.Start() // start rendering of progress bars
+		}
 
 		var wg sync.WaitGroup
 		for i := 0; i < runtime.NumCPU(); i++ {

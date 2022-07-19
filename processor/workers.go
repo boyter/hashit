@@ -9,6 +9,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"github.com/gosuri/uiprogress"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
 	"golang.org/x/crypto/md4"
@@ -16,6 +17,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -49,7 +51,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 
 			fileStartTime := makeTimestampMilli()
-			r, err := processScanner(res)
+			r, err := processScanner(res, int(fsize))
 			if Trace {
 				printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
 			}
@@ -98,7 +100,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 
 // TODO compare this to memory maps
 // Random tests indicate that mmap is faster when not in power save mode
-func processScanner(filename string) (Result, error) {
+func processScanner(filename string, fsize int) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
@@ -251,12 +253,27 @@ func processScanner(filename string) (Result, error) {
 		}()
 	}
 
+	var bar *uiprogress.Bar
+	if Progress {
+		bar = uiprogress.AddBar(fsize) // Add a new bar
+		bar.AppendFunc(func(b *uiprogress.Bar) string {
+			split := strings.Split(filename, "/")
+			return "file: " + split[len(split)-1]
+		})
+	}
+
+	sum := 0
 	data := make([]byte, 4_194_304)
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
 			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
 			return Result{}, err
+		}
+
+		if Progress {
+			sum += n
+			_ = bar.Set(sum)
 		}
 
 		// Need to make a copy here as it can be modified before

@@ -77,6 +77,13 @@ func main() {
 		false,
 		"verbose output",
 	)
+	flags.BoolVarP(
+		&processor.Progress,
+		"progress",
+		"p",
+		false,
+		"display progress of files",
+	)
 	flags.BoolVar(
 		&processor.Debug,
 		"debug",
