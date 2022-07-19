@@ -26,6 +26,9 @@ var Trace = false
 // Progress uses ui bar to display the progress of files
 var Progress = false
 
+// ProgressLarge uses ui bar to display the progress of files
+var ProgressLarge = false
+
 // Recursive to walk directories
 var Recursive = false
 
@@ -149,7 +152,7 @@ func Process() {
 			close(fileListQueue)
 		}()
 
-		if Progress {
+		if Progress || ProgressLarge {
 			uiprogress.Start() // start rendering of progress bars
 		}
 

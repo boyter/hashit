@@ -84,6 +84,16 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				r, err = processReadFile(res, &content)
 			}
 
+			if Progress {
+				var bar *uiprogress.Bar
+				bar = uiprogress.AddBar(1) // Add a new bar
+				bar.AppendFunc(func(b *uiprogress.Bar) string {
+					split := strings.Split(file.Name(), "/")
+					return "file: " + split[len(split)-1]
+				})
+				bar.Set(1)
+			}
+
 			if Trace {
 				printTrace(fmt.Sprintf("nanoseconds processReadFileParallel: %s: %d", res, makeTimestampNano()-fileStartTime))
 			}
@@ -254,7 +264,7 @@ func processScanner(filename string, fsize int) (Result, error) {
 	}
 
 	var bar *uiprogress.Bar
-	if Progress {
+	if Progress || ProgressLarge {
 		bar = uiprogress.AddBar(fsize) // Add a new bar
 		bar.AppendFunc(func(b *uiprogress.Bar) string {
 			split := strings.Split(filename, "/")
@@ -271,7 +281,7 @@ func processScanner(filename string, fsize int) (Result, error) {
 			return Result{}, err
 		}
 
-		if Progress {
+		if Progress || ProgressLarge {
 			sum += n
 			_ = bar.Set(sum)
 		}
