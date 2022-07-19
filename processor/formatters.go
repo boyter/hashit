@@ -194,10 +194,7 @@ func toJSON(input chan Result) string {
 
 func toHashDeep(input chan Result) string {
 	var str strings.Builder
-
-	// TODO you can turn on/off hashes in hashdeep EG hashdeep -c sha1,sha256 processor/*
-	// TODO which is not currently supported below
-
+	
 	pwd, err := os.Getwd()
 	if err != nil {
 		printError(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
@@ -210,8 +207,14 @@ func toHashDeep(input chan Result) string {
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
 	str.WriteString("##\n")
 
-	for res := range input {
-		str.WriteString(fmt.Sprintf("%d,%s,%s,%s\n", res.Bytes, res.MD5, res.SHA256, res.File))
+	if !contains(Hash, "sha256") && !contains(Hash, "all") {
+		for res := range input {
+			str.WriteString(fmt.Sprintf("%d,%s,%s\n", res.Bytes, res.MD5, res.File))
+		}
+	} else {
+		for res := range input {
+			str.WriteString(fmt.Sprintf("%d,%s,%s,%s\n", res.Bytes, res.MD5, res.SHA256, res.File))
+		}
 	}
 
 	return str.String()
@@ -230,4 +233,14 @@ func printHashes() {
 	fmt.Println(fmt.Sprintf("   SHA3-256 (%s)", HashNames.Sha3256))
 	fmt.Println(fmt.Sprintf("   SHA3-384 (%s)", HashNames.Sha3384))
 	fmt.Println(fmt.Sprintf("   SHA3-512 (%s)", HashNames.Sha3512))
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+
+	return false
 }
