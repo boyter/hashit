@@ -21,7 +21,21 @@ import (
 	"sync"
 )
 
+const (
+	UiBarMax = 1024 // 1024 should be dividable by most things
+)
+
 func fileProcessorWorker(input chan string, output chan Result) {
+
+	var bar *uiprogress.Bar
+	filename := ""
+	if Progress {
+		bar = uiprogress.AddBar(UiBarMax)
+		bar.AppendFunc(func(b *uiprogress.Bar) string {
+			return "file: " + filename
+		})
+	}
+
 	for res := range input {
 		if Debug {
 			printDebug(fmt.Sprintf("processing %s", res))
@@ -43,6 +57,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			continue
 		}
 
+		// update the ui if required
+		if Progress {
+			split := strings.Split(file.Name(), "/")
+			filename = split[len(split)-1]
+			// reset to 0 to start it all over again
+			_ = bar.Set(0)
+		}
+
 		fsize := fi.Size()
 
 		if fsize > StreamSize {
@@ -51,7 +73,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 
 			fileStartTime := makeTimestampMilli()
-			r, err := processScanner(res, int(fsize))
+			r, err := processScanner(res, int(fsize), bar)
 			if Trace {
 				printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
 			}
@@ -85,13 +107,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 
 			if Progress {
-				var bar *uiprogress.Bar
-				bar = uiprogress.AddBar(1) // Add a new bar
-				bar.AppendFunc(func(b *uiprogress.Bar) string {
-					split := strings.Split(file.Name(), "/")
-					return "file: " + split[len(split)-1]
-				})
-				bar.Set(1)
+				_ = bar.Set(UiBarMax)
 			}
 
 			if Trace {
@@ -110,7 +126,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 
 // TODO compare this to memory maps
 // Random tests indicate that mmap is faster when not in power save mode
-func processScanner(filename string, fsize int) (Result, error) {
+func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
@@ -263,15 +279,6 @@ func processScanner(filename string, fsize int) (Result, error) {
 		}()
 	}
 
-	var bar *uiprogress.Bar
-	if Progress || ProgressLarge {
-		bar = uiprogress.AddBar(fsize) // Add a new bar
-		bar.AppendFunc(func(b *uiprogress.Bar) string {
-			split := strings.Split(filename, "/")
-			return "file: " + split[len(split)-1]
-		})
-	}
-
 	sum := 0
 	data := make([]byte, 4_194_304)
 	for {
@@ -281,9 +288,17 @@ func processScanner(filename string, fsize int) (Result, error) {
 			return Result{}, err
 		}
 
-		if Progress || ProgressLarge {
+		if Progress {
 			sum += n
-			_ = bar.Set(sum)
+
+			percentage := float64(sum) / float64(fsize)
+			done := int(float64(UiBarMax) * percentage)
+
+			if done > UiBarMax {
+				done = UiBarMax
+			}
+
+			_ = bar.Set(done)
 		}
 
 		// Need to make a copy here as it can be modified before

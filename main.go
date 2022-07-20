@@ -83,13 +83,7 @@ func main() {
 		"progress",
 		"p",
 		false,
-		"display progress of all files",
-	)
-	flags.BoolVar(
-		&processor.ProgressLarge,
-		"progress-large",
-		false,
-		"display progress of only large files",
+		"display progress of files as they are processed",
 	)
 	flags.BoolVar(
 		&processor.Debug,
