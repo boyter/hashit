@@ -66,6 +66,8 @@ var StreamSize int64 = 1_000_000
 // If set will enable the internal file audit logic to kick in
 var FileAudit = false
 
+var NoThreads = runtime.NumCPU()
+
 // String mapping for hash names
 var HashNames = Result{
 	MD4:        "md4",
@@ -157,7 +159,7 @@ func Process() {
 		}
 
 		var wg sync.WaitGroup
-		for i := 0; i < runtime.NumCPU(); i++ {
+		for i := 0; i < NoThreads; i++ {
 			wg.Add(1)
 			go func() {
 				fileProcessorWorker(fileListQueue, fileSummaryQueue)

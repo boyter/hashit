@@ -4,6 +4,7 @@ import (
 	"github.com/boyter/hashit/processor"
 	"github.com/spf13/cobra"
 	"os"
+	"runtime"
 )
 
 func main() {
@@ -101,6 +102,12 @@ func main() {
 		"trace",
 		false,
 		"enable trace output",
+	)
+	flags.IntVar(
+		&processor.NoThreads,
+		"threads",
+		runtime.NumCPU(),
+		"number of threads processing files, by default the number of CPU cores",
 	)
 
 	if err := rootCmd.Execute(); err != nil {
