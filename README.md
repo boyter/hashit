@@ -43,6 +43,7 @@ Full details can be found in `hashit --help` or `hashit -h`.
 ```
 $ hashit -h
 Hash It!
+Version 1.1.0
 Ben Boyter <ben@boyter.org>
 
 Usage:
@@ -56,8 +57,10 @@ Flags:
   -h, --help              help for hashit
       --no-stream         do not stream out results as processed
   -o, --output string     output filename (default stdout)
+  -p, --progress          display progress of files as they are processed
   -r, --recursive         recursive subdirectories are traversed
       --stream-size int   min size of file in bytes where stream processing starts (default 1000000)
+      --threads int       number of threads processing files, by default the number of CPU cores (default 8)
       --trace             enable trace output
   -v, --verbose           verbose output
       --version           version for hashit
@@ -155,19 +158,33 @@ README.md (7094 bytes)
 ... OUTPUT SNIPPED ...
 ```
 
+If you are running hashit on a slower mechanical HDD you may want to limit the number of threads which read files from
+disk using `--threads 1`
+
+```shell
+$ hashit --threads 1 /mnt/slowdisk/
+```
+
+For large files you can use `-p` to see the progress of the file to get an idea of how long it might take to process.
+
+```shell
+$ hashit -p --threads 1 large.file
+[==================================>---------------------------------] file: large.file
+```
+
 
 #### Misc stuff below
 
-Examples of SUM's
-
-http://releases.ubuntu.com/16.04/MD5SUMS
-http://releases.ubuntu.com/16.04/SHA1SUMS
+Usage of hashdeep
 
 https://linhost.info/2010/05/using-hashdeep-to-ensure-data-integrity/
 
+Issues to address
 
 https://github.com/jessek/hashdeep/issues/4
 https://github.com/jessek/hashdeep/issues/358
+
+Example usage
 
 hashdeep -r vendor > audit.txt
 hashdeep -r -a -k audit.txt vendor
