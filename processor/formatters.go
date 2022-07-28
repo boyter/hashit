@@ -202,7 +202,11 @@ func toHashDeep(input chan Result) string {
 	}
 
 	str.WriteString("%%%% HASHDEEP-1.0\n")
-	str.WriteString("%%%% size,md5,sha256,filename\n")
+	if !contains(Hash, "sha256") && !contains(Hash, "all") {
+		str.WriteString("%%%% size,md5,filename\n")
+	} else {
+		str.WriteString("%%%% size,md5,sha256,filename\n")
+	}
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
 	str.WriteString("##\n")
