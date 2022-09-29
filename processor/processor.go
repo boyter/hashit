@@ -96,9 +96,11 @@ func Process() {
 	}
 
 	// Check if we are accepting data from stdin
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		StandardInput = true
+	if len(DirFilePaths) == 0 {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			StandardInput = true
+		}
 	}
 
 	// If nothing was supplied as an argument to run against assume run against everything in the
