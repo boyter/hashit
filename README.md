@@ -43,7 +43,7 @@ Full details can be found in `hashit --help` or `hashit -h`.
 ```
 $ hashit -h
 Hash It!
-Version 1.1.0
+Version 1.2.0
 Ben Boyter <ben@boyter.org>
 
 Usage:
@@ -51,7 +51,7 @@ Usage:
 
 Flags:
       --debug             enable debug output
-  -f, --format string     set output format [text, json, sum, hashdeep] (default "text")
+  -f, --format string     set output format [text, json, sum, hashdeep, hashonly] (default "text")
   -c, --hash strings      hashes to be run for each file (set to 'all' for all possible hashes) (default [md5,sha1,sha256,sha512])
       --hashes            list all supported hashes
   -h, --help              help for hashit
