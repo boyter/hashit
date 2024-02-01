@@ -15,6 +15,10 @@ Dual-licensed under MIT or the [UNLICENSE](http://unlicense.org).
 Other similar projects,
 
  - [hashdeep](https://github.com/jessek/hashdeep) originally called md5deep
+
+### Support
+
+Using `hashit` commercially? If you want priority support for `hashit` you can purchase a years worth https://app.gumroad.com/products/mcpni which entitles you to priority direct email support from the developer.
  
 ### Install
 
