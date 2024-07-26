@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/djherbis/times v1.6.0 // indirect
 	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
