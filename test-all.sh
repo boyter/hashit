@@ -3,8 +3,8 @@
 echo "Running go generate..."
 go generate
 
-echo "Running go fmt..."
-gofmt -s -w ./..
+#echo "Running go fmt..."
+#gofmt -s -w ./..
 
 echo "Running unit tests..."
 go test ./... || exit
