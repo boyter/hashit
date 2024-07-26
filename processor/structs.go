@@ -1,5 +1,7 @@
 package processor
 
+import "time"
+
 // Holds the result after processing the hashes for the file
 type Result struct {
 	File       string
@@ -16,4 +18,5 @@ type Result struct {
 	Sha3384    string
 	Sha3512    string
 	Bytes      int64
+	MTime      *time.Time
 }

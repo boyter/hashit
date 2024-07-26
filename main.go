@@ -103,6 +103,12 @@ func main() {
 		runtime.NumCPU(),
 		"number of threads processing files, by default the number of CPU cores",
 	)
+	flags.BoolVar(
+		&processor.MTime,
+		"mtime",
+		false,
+		"enable mtime output",
+	)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
