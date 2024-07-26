@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build amd64,!appengine,!gccgo
+//go:build amd64 && !purego && gc
 
 // This code was translated into a form compatible with 6a from the public
 // domain sources at https://github.com/gvanas/KeccakCodePackage
@@ -319,9 +319,9 @@
 	MOVQ rDi, _si(oState); \
 	MOVQ rDo, _so(oState)  \
 
-// func keccakF1600(state *[25]uint64)
+// func keccakF1600(a *[25]uint64)
 TEXT ·keccakF1600(SB), 0, $200-8
-	MOVQ state+0(FP), rpState
+	MOVQ a+0(FP), rpState
 
 	// Convert the user state into an internal state
 	NOTQ _be(rpState)
