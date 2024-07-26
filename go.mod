@@ -1,6 +1,6 @@
 module github.com/boyter/hashit
 
-go 1.17
+go 1.22
 
 require (
 	github.com/gosuri/uiprogress v0.0.1
