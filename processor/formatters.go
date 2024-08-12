@@ -256,21 +256,35 @@ func toHashDeep(input chan Result) string {
 
 	str.WriteString("%%%% HASHDEEP-1.0\n")
 	if !contains(Hash, "sha256") && !contains(Hash, "all") {
-		str.WriteString("%%%% size,md5,filename\n")
+		str.WriteString("%%%% size,md5,filename")
 	} else {
-		str.WriteString("%%%% size,md5,sha256,filename\n")
+		str.WriteString("%%%% size,md5,sha256,filename")
 	}
+
+	if MTime {
+		str.WriteString(",mtime")
+	}
+	str.WriteString("\n")
+
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
 	str.WriteString("##\n")
 
 	if !contains(Hash, "sha256") && !contains(Hash, "all") {
 		for res := range input {
-			str.WriteString(fmt.Sprintf("%d,%s,%s\n", res.Bytes, res.MD5, res.File))
+			str.WriteString(fmt.Sprintf("%d,%s,%s", res.Bytes, res.MD5, res.File))
+			if MTime {
+				str.WriteString(fmt.Sprintf(",%s", res.MTime.Format("2006-01-02 15:04:05")))
+			}
+			str.WriteString("\n")
 		}
 	} else {
 		for res := range input {
-			str.WriteString(fmt.Sprintf("%d,%s,%s,%s\n", res.Bytes, res.MD5, res.SHA256, res.File))
+			str.WriteString(fmt.Sprintf("%d,%s,%s,%s", res.Bytes, res.MD5, res.SHA256, res.File))
+			if MTime {
+				str.WriteString(fmt.Sprintf(",%s", res.MTime.Format("2006-01-02 15:04:05")))
+			}
+			str.WriteString("\n")
 		}
 	}
 

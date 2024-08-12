@@ -12,7 +12,7 @@ import (
 )
 
 // Global Version
-var Version = "1.2.0"
+var Version = "1.3.0"
 
 // Verbose enables verbose logging output
 var Verbose = false
@@ -22,6 +22,9 @@ var Debug = false
 
 // Trace enables trace logging output which is extremely verbose
 var Trace = false
+
+// MTime enable mtime calculation and output
+var MTime = false
 
 // Progress uses ui bar to display the progress of files
 var Progress = false

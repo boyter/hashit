@@ -3,6 +3,7 @@ module github.com/boyter/hashit
 go 1.22
 
 require (
+	github.com/djherbis/times v1.6.0
 	github.com/gosuri/uiprogress v0.0.1
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/spf13/cobra v1.8.1

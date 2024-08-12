@@ -9,6 +9,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"github.com/djherbis/times"
 	"github.com/gosuri/uiprogress"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -44,14 +46,23 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		// Open the file and determine if we should read it from disk or memory map
 		// based on how large it is reported as being
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
-
 		if err != nil {
 			printError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}
 
-		fi, err := file.Stat()
+		var mtime time.Time
+		if MTime {
+			stat, err := times.Stat(res)
+			if err != nil {
+				printError(fmt.Sprintf("Unable to read mtime file %s with error %s", res, err.Error()))
+				return
+			}
+			mtime = stat.ModTime()
+			//fmt.Println(stat.ModTime().Format("2006-01-02 15:04:05"))
+		}
 
+		fi, err := file.Stat()
 		if err != nil {
 			printError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
 			continue
@@ -81,6 +92,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			if err == nil {
 				r.File = res
 				r.Bytes = fsize
+				r.MTime = &mtime
 				output <- r
 			}
 
@@ -117,6 +129,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			if err == nil {
 				r.File = res
 				r.Bytes = fsize
+				r.MTime = &mtime
 				output <- r
 			}
 		}
