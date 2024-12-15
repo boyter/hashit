@@ -109,6 +109,13 @@ func main() {
 		false,
 		"enable mtime output",
 	)
+	flags.StringVarP(
+		&processor.FileInput,
+		"input",
+		"i",
+		"",
+		"input file of newline seperated file locations to process",
+	)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

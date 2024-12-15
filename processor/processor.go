@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/gosuri/uiprogress"
 	"io/ioutil"
@@ -12,7 +13,7 @@ import (
 )
 
 // Global Version
-var Version = "1.4.0"
+var Version = "1.5.0"
 
 // Verbose enables verbose logging output
 var Verbose = false
@@ -65,6 +66,9 @@ var StreamSize int64 = 1_000_000
 
 // If set will enable the internal file audit logic to kick in
 var FileAudit = false
+
+// FileInput indicates we have a file passed in which consists of a
+var FileInput = ""
 
 var NoThreads = runtime.NumCPU()
 
@@ -130,31 +134,58 @@ func Process() {
 		// Files ready to be read from disk
 		fileListQueue := make(chan string, FileListQueueSize)
 
-		// Spawn routine to start finding files on disk
-		go func() {
-			// Check if the paths or files added exist and inform the user if they don't
-			for _, f := range DirFilePaths {
-				fp := filepath.Clean(f)
-				fi, err := os.Stat(fp)
+		if FileInput == "" {
+			// Spawn routine to start finding files on disk
+			go func() {
+				// Check if the paths or files added exist and inform the user if they don't
+				for _, f := range DirFilePaths {
+					fp := filepath.Clean(f)
+					fi, err := os.Stat(fp)
 
-				// If there is an error which is usually does not exist then exit non zero
-				if err != nil {
-					printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
-					os.Exit(1)
-				} else {
-					if fi.IsDir() {
-						if Recursive {
-							isDir = true
-							walkDirectory(fp, fileListQueue)
-						}
+					// If there is an error which is usually does not exist then exit non zero
+					if err != nil {
+						printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
+						os.Exit(1)
 					} else {
-						fileListQueue <- fp
+						if fi.IsDir() {
+							if Recursive {
+								isDir = true
+								walkDirectory(fp, fileListQueue)
+							}
+						} else {
+							fileListQueue <- fp
+						}
 					}
-				}
 
-			}
-			close(fileListQueue)
-		}()
+				}
+				close(fileListQueue)
+			}()
+		} else {
+			// Open the file
+			go func() {
+				file, err := os.Open(FileInput)
+				if err != nil {
+					printError(fmt.Sprintf("failed to open input file: %s, %s", FileInput, err.Error()))
+					os.Exit(1)
+				}
+				defer file.Close()
+
+				scanner := bufio.NewScanner(file)
+
+				// Read the file line by line
+				for scanner.Scan() {
+					line := scanner.Text()
+					fileListQueue <- line
+				}
+				close(fileListQueue)
+
+				// Check for errors during scanning
+				if err := scanner.Err(); err != nil {
+					printError(fmt.Sprintf("error reading input file: %s, %s", FileInput, err.Error()))
+					os.Exit(1)
+				}
+			}()
+		}
 
 		if Progress {
 			uiprogress.Start() // start rendering of progress bars
