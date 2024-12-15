@@ -59,7 +59,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				return
 			}
 			mtime = stat.ModTime()
-			//fmt.Println(stat.ModTime().Format("2006-01-02 15:04:05"))
 		}
 
 		fi, err := file.Stat()
