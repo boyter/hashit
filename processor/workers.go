@@ -68,7 +68,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		}
 
 		// update the ui if required
-		if Progress {
+		if Progress && bar != nil {
 			split := strings.Split(file.Name(), "/")
 			filename = split[len(split)-1]
 			// reset to 0 to start it all over again
