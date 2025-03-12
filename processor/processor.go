@@ -3,13 +3,14 @@ package processor
 import (
 	"bufio"
 	"fmt"
-	"github.com/gosuri/uiprogress"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/gosuri/uiprogress"
 )
 
 // Global Version
@@ -75,6 +76,7 @@ var NoThreads = runtime.NumCPU()
 // String mapping for hash names
 var HashNames = Result{
 	CRC32:      "crc32",
+	XxHash64:   "xxhash64",
 	MD4:        "md4",
 	MD5:        "md5",
 	SHA1:       "sha1",
