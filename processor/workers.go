@@ -3,6 +3,7 @@ package processor
 import (
 	"bufio"
 	"bytes"
+	"hash/crc32"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -146,6 +147,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	}
 	defer file.Close()
 
+	crc32_d := crc32.NewIEEE()
 	md4_d := md4.New()
 	md5_d := md5.New()
 	sha1_d := sha1.New()
@@ -159,6 +161,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
 
+	crc32c := make(chan []byte, 10)
 	md4c := make(chan []byte, 10)
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
@@ -173,6 +176,16 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	sha3_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
+
+	if hasHash(HashNames.CRC32) {
+		wg.Add(1)
+		go func() {
+			for b := range crc32c {
+				crc32_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(HashNames.MD4) {
 		wg.Add(1)
@@ -318,6 +331,9 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		tmp := make([]byte, len(data))
 		copy(tmp, data)
 
+		if hasHash(HashNames.CRC32) {
+			crc32c <- tmp[:n]
+		}
 		if hasHash(HashNames.MD4) {
 			md4c <- tmp[:n]
 		}
@@ -360,6 +376,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		}
 	}
 
+	close(crc32c)
 	close(md4c)
 	close(md5c)
 	close(sha1c)
@@ -378,6 +395,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	return Result{
 		File:       filename,
 		Bytes:      0,
+		CRC32:      hex.EncodeToString(crc32_d.Sum(nil)),
 		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
 		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
 		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
@@ -398,6 +416,7 @@ func processStandardInput(output chan Result) {
 	r := bufio.NewReader(os.Stdin)
 	buf := make([]byte, 0, 4*1024)
 
+	crc32_d := crc32.NewIEEE()
 	md4_d := md4.New()
 	md5_d := md5.New()
 	sha1_d := sha1.New()
@@ -411,6 +430,7 @@ func processStandardInput(output chan Result) {
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
 
+	crc32c := make(chan []byte, 10)
 	md4c := make(chan []byte, 10)
 	md5c := make(chan []byte, 10)
 	sha1c := make(chan []byte, 10)
@@ -425,6 +445,16 @@ func processStandardInput(output chan Result) {
 	sha3_512_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
+
+	if hasHash(HashNames.CRC32) {
+		wg.Add(1)
+		go func() {
+			for b := range crc32c {
+				crc32_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(HashNames.MD4) {
 		wg.Add(1)
@@ -562,6 +592,9 @@ func processStandardInput(output chan Result) {
 		nChunks++
 		total += int64(len(buf))
 
+		if hasHash(HashNames.CRC32) {
+			crc32c <- buf
+		}
 		if hasHash(HashNames.MD4) {
 			md4c <- buf
 		}
@@ -604,6 +637,7 @@ func processStandardInput(output chan Result) {
 		}
 	}
 
+	close(crc32c)
 	close(md4c)
 	close(md5c)
 	close(sha1c)
@@ -622,6 +656,7 @@ func processStandardInput(output chan Result) {
 	output <- Result{
 		File:       "stdin",
 		Bytes:      total,
+		CRC32:      hex.EncodeToString(crc32_d.Sum(nil)),
 		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
 		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
 		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
@@ -648,6 +683,21 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 
 	var wg sync.WaitGroup
 	result := Result{}
+
+	if hasHash(HashNames.CRC32) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := crc32.NewIEEE()
+			d.Write(*content)
+			result.CRC32 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing crc32: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
 
 	if hasHash(HashNames.MD4) {
 		wg.Add(1)
@@ -822,6 +872,17 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	startTime := makeTimestampNano()
 
 	result := Result{}
+
+	if hasHash(HashNames.CRC32) {
+		startTime = makeTimestampNano()
+		d := crc32.NewIEEE()
+		d.Write(*content)
+		result.CRC32 = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing crc32: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
 
 	if hasHash(HashNames.MD4) {
 		startTime = makeTimestampNano()

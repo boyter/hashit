@@ -74,6 +74,7 @@ var NoThreads = runtime.NumCPU()
 
 // String mapping for hash names
 var HashNames = Result{
+	CRC32:      "crc32",
 	MD4:        "md4",
 	MD5:        "md5",
 	SHA1:       "sha1",
