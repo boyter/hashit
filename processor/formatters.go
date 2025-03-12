@@ -78,6 +78,9 @@ func toSum(input chan Result) string {
 			first = false
 		}
 
+		if hasHash(HashNames.CRC32) {
+			str.WriteString(res.CRC32 + "  " + res.File + "\n")
+		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString(res.MD4 + "  " + res.File + "\n")
 		}
@@ -129,6 +132,9 @@ func toHashOnly(input chan Result) (string, bool) {
 	valid := true
 
 	for res := range input {
+		if hasHash(HashNames.CRC32) {
+			str.WriteString(res.CRC32 + "\n")
+		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString(res.MD4 + "\n")
 		}
@@ -189,6 +195,9 @@ func toText(input chan Result) (string, bool) {
 
 		str.WriteString(fmt.Sprintf("%s (%d bytes)\n", res.File, res.Bytes))
 
+		if hasHash(HashNames.CRC32) {
+			str.WriteString("      CRC32 " + res.CRC32 + "\n")
+		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString("        MD4 " + res.MD4 + "\n")
 		}
@@ -292,6 +301,7 @@ func toHashDeep(input chan Result) string {
 }
 
 func printHashes() {
+	fmt.Println(fmt.Sprintf("      CRC32 (%s)", HashNames.CRC32))
 	fmt.Println(fmt.Sprintf("        MD4 (%s)", HashNames.MD4))
 	fmt.Println(fmt.Sprintf("        MD5 (%s)", HashNames.MD5))
 	fmt.Println(fmt.Sprintf("       SHA1 (%s)", HashNames.SHA1))
