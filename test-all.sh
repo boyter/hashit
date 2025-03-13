@@ -145,6 +145,15 @@ else
     exit
 fi
 
+if echo "hello" | ./hashit --hash xxhash64 | grep -q -i 'e4c191d091bd8853'; then
+    echo -e "${GREEN}PASSED stdin xxhash64 test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to process xxhash64 stdin"
+    echo -e "======================================================="
+    exit
+fi
+
 if echo "hello" | ./hashit --hash md5 | grep -q -i 'b1946ac92492d2347c6235b4d2611184'; then
     echo -e "${GREEN}PASSED stdin md5 test"
 else
@@ -190,6 +199,17 @@ if [ "$a" == "$b" ]; then
 else
     echo -e "${RED}======================================================="
     echo -e "FAILED hashdeep hash test"
+    echo -e "================================================="
+    exit
+fi
+
+a=$(./hashit --format sum --hash xxhash64 main.go)
+b=$(xxhsum main.go)
+if [ "$a" == "$b" ]; then
+    echo -e "${GREEN}PASSED sum xxhash64 format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sum xxhash64 format test"
     echo -e "================================================="
     exit
 fi
