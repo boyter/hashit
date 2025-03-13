@@ -290,6 +290,17 @@ else
     exit
 fi
 
+mkdir -p /tmp/hashit/
+echo "hello" > /tmp/hashit/file
+if ./hashit --mtime --format hashdeep /tmp/hashit/ > audit.txt && hashdeep -r -a -k audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED hashdeep audit with mtime test"
+else
+    echo -e "${RED}===================================================================="
+    echo -e "FAILED Should be able to correctly handle mtime with hashdeep audit"
+    echo -e "===================================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm ./audit.txt

@@ -9,6 +9,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"hash/crc32"
 	"io"
 	"log"
@@ -413,20 +414,20 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	return Result{
 		File:       filename,
 		Bytes:      0,
-		CRC32:      hex.EncodeToString(crc32_d.Sum(nil)),
-		XxHash64:   hex.EncodeToString(xxhash64_d.Sum(nil)),
-		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
-		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
-		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
-		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
-		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
-		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
-		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
-		Blake3:     hex.EncodeToString(blake3_d.Sum(nil)),
-		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
-		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
-		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
-		Sha3512:    hex.EncodeToString(sha3_512_d.Sum(nil)),
+		CRC32:      encodeIfHashEnabled(crc32_d, HashNames.CRC32),
+		XxHash64:   encodeIfHashEnabled(xxhash64_d, HashNames.XxHash64),
+		MD4:        encodeIfHashEnabled(md4_d, HashNames.MD4),
+		MD5:        encodeIfHashEnabled(md5_d, HashNames.MD5),
+		SHA1:       encodeIfHashEnabled(sha1_d, HashNames.SHA1),
+		SHA256:     encodeIfHashEnabled(sha256_d, HashNames.SHA256),
+		SHA512:     encodeIfHashEnabled(sha512_d, HashNames.SHA512),
+		Blake2b256: encodeIfHashEnabled(blake2b_256_d, HashNames.Blake2b256),
+		Blake2b512: encodeIfHashEnabled(blake2b_512_d, HashNames.Blake2b512),
+		Blake3:     encodeIfHashEnabled(blake3_d, HashNames.Blake3),
+		Sha3224:    encodeIfHashEnabled(sha3_224_d, HashNames.Sha3224),
+		Sha3256:    encodeIfHashEnabled(sha3_256_d, HashNames.Sha3256),
+		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
+		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
 	}, nil
 }
 
@@ -691,20 +692,20 @@ func processStandardInput(output chan Result) {
 	output <- Result{
 		File:       "stdin",
 		Bytes:      total,
-		CRC32:      hex.EncodeToString(crc32_d.Sum(nil)),
-		XxHash64:   hex.EncodeToString(xxhash64_d.Sum(nil)),
-		MD4:        hex.EncodeToString(md4_d.Sum(nil)),
-		MD5:        hex.EncodeToString(md5_d.Sum(nil)),
-		SHA1:       hex.EncodeToString(sha1_d.Sum(nil)),
-		SHA256:     hex.EncodeToString(sha256_d.Sum(nil)),
-		SHA512:     hex.EncodeToString(sha512_d.Sum(nil)),
-		Blake2b256: hex.EncodeToString(blake2b_256_d.Sum(nil)),
-		Blake2b512: hex.EncodeToString(blake2b_512_d.Sum(nil)),
-		Blake3:     hex.EncodeToString(blake3_d.Sum(nil)),
-		Sha3224:    hex.EncodeToString(sha3_224_d.Sum(nil)),
-		Sha3256:    hex.EncodeToString(sha3_256_d.Sum(nil)),
-		Sha3384:    hex.EncodeToString(sha3_384_d.Sum(nil)),
-		Sha3512:    hex.EncodeToString(sha3_512_d.Sum(nil)),
+		CRC32:      encodeIfHashEnabled(crc32_d, HashNames.CRC32),
+		XxHash64:   encodeIfHashEnabled(xxhash64_d, HashNames.XxHash64),
+		MD4:        encodeIfHashEnabled(md4_d, HashNames.MD4),
+		MD5:        encodeIfHashEnabled(md5_d, HashNames.MD5),
+		SHA1:       encodeIfHashEnabled(sha1_d, HashNames.SHA1),
+		SHA256:     encodeIfHashEnabled(sha256_d, HashNames.SHA256),
+		SHA512:     encodeIfHashEnabled(sha512_d, HashNames.SHA512),
+		Blake2b256: encodeIfHashEnabled(blake2b_256_d, HashNames.Blake2b256),
+		Blake2b512: encodeIfHashEnabled(blake2b_512_d, HashNames.Blake2b512),
+		Blake3:     encodeIfHashEnabled(blake3_d, HashNames.Blake3),
+		Sha3224:    encodeIfHashEnabled(sha3_224_d, HashNames.Sha3224),
+		Sha3256:    encodeIfHashEnabled(sha3_256_d, HashNames.Sha3256),
+		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
+		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
 	}
 
 	close(output)
@@ -1101,4 +1102,14 @@ func readAll(r io.Reader, capacity int64) (b []byte, err error) {
 	}
 	_, err = buf.ReadFrom(r)
 	return buf.Bytes(), err
+}
+
+// We return an empty string explicitly here so that we are not producing the
+// digest of an empty buffer.
+// By returning an empty string we can also make use of omitting it in the JSON output.
+func encodeIfHashEnabled(h hash.Hash, hashName string) string {
+	if hasHash(hashName) {
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	return ""
 }
