@@ -72,7 +72,7 @@ func toSum(input chan Result) string {
 	first := true
 
 	for res := range input {
-		if first == false {
+		if !first {
 			str.WriteString("\n")
 		} else {
 			first = false
@@ -121,7 +121,7 @@ func toSum(input chan Result) string {
 			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -178,7 +178,7 @@ func toHashOnly(input chan Result) (string, bool) {
 			str.WriteString(res.Sha3512 + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -193,7 +193,7 @@ func toText(input chan Result) (string, bool) {
 	first := true
 
 	for res := range input {
-		if first == false {
+		if !first {
 			str.WriteString("\n")
 		} else {
 			first = false
@@ -244,7 +244,7 @@ func toText(input chan Result) (string, bool) {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}

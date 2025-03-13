@@ -920,12 +920,11 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 }
 
 func processReadFile(filename string, content *[]byte) (Result, error) {
-	startTime := makeTimestampNano()
 
 	result := Result{}
 
 	if hasHash(HashNames.CRC32) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := crc32.NewIEEE()
 		d.Write(*content)
 		result.CRC32 = hex.EncodeToString(d.Sum(nil))
@@ -947,7 +946,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.MD4) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := md4.New()
 		d.Write(*content)
 		result.MD4 = hex.EncodeToString(d.Sum(nil))
@@ -958,7 +957,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.MD5) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := md5.New()
 		d.Write(*content)
 		result.MD5 = hex.EncodeToString(d.Sum(nil))
@@ -969,7 +968,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.SHA1) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha1.New()
 		d.Write(*content)
 		result.SHA1 = hex.EncodeToString(d.Sum(nil))
@@ -980,7 +979,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.SHA256) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha256.New()
 		d.Write(*content)
 		result.SHA256 = hex.EncodeToString(d.Sum(nil))
@@ -991,7 +990,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.SHA512) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha512.New()
 		d.Write(*content)
 		result.SHA512 = hex.EncodeToString(d.Sum(nil))
@@ -1002,7 +1001,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Blake2b256) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := blake2b.New256()
 		d.Write(*content)
 		result.Blake2b256 = hex.EncodeToString(d.Sum(nil))
@@ -1013,7 +1012,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Blake2b512) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := blake2b.New512()
 		d.Write(*content)
 		result.Blake2b512 = hex.EncodeToString(d.Sum(nil))
@@ -1024,7 +1023,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Blake3) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := blake3.New()
 		d.Write(*content)
 		result.Blake3 = hex.EncodeToString(d.Sum(nil))
@@ -1035,7 +1034,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Sha3224) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha3.New224()
 		d.Write(*content)
 		result.Sha3224 = hex.EncodeToString(d.Sum(nil))
@@ -1046,7 +1045,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Sha3256) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha3.New256()
 		d.Write(*content)
 		result.Sha3256 = hex.EncodeToString(d.Sum(nil))
@@ -1057,7 +1056,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Sha3384) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha3.New384()
 		d.Write(*content)
 		result.Sha3384 = hex.EncodeToString(d.Sum(nil))
@@ -1068,7 +1067,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	}
 
 	if hasHash(HashNames.Sha3512) {
-		startTime = makeTimestampNano()
+		startTime := makeTimestampNano()
 		d := sha3.New512()
 		d.Write(*content)
 		result.Sha3512 = hex.EncodeToString(d.Sum(nil))

@@ -57,7 +57,6 @@ var AuditFile = ""
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
-var isDir = false
 
 // FileListQueueSize is the queue of files found and ready to be processed
 var FileListQueueSize = 1000
@@ -90,12 +89,6 @@ var HashNames = Result{
 	Sha3384:    "sha3384",
 	Sha3512:    "sha3512",
 }
-
-// Raw hashDatabase loaded
-var hashDatabase = map[string]Result{}
-
-// Hash to name lookup
-var hashLookup = map[string]string{}
 
 // Process is the main entry point of the command line it sets everything up and starts running
 func Process() {
@@ -152,7 +145,6 @@ func Process() {
 					} else {
 						if fi.IsDir() {
 							if Recursive {
-								isDir = true
 								walkDirectory(fp, fileListQueue)
 							}
 						} else {
