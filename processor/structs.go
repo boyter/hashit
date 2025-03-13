@@ -6,6 +6,7 @@ import "time"
 type Result struct {
 	File       string
 	CRC32      string
+	XxHash64   string
 	MD4        string
 	MD5        string
 	SHA1       string

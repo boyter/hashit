@@ -70,7 +70,7 @@ else
     exit
 fi
 
-for i in 'md4' 'md5' 'sha1' 'sha256' 'sha512'
+for i in 'crc32' 'xxhash64' 'md4' 'md5' 'sha1' 'sha256' 'sha512'
 do
     if ./hashit main.go --hash $i | grep -q -i $i; then
         echo -e "${GREEN}PASSED hash test $i"

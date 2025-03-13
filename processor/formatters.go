@@ -72,7 +72,7 @@ func toSum(input chan Result) string {
 	first := true
 
 	for res := range input {
-		if first == false {
+		if !first {
 			str.WriteString("\n")
 		} else {
 			first = false
@@ -80,6 +80,9 @@ func toSum(input chan Result) string {
 
 		if hasHash(HashNames.CRC32) {
 			str.WriteString(res.CRC32 + "  " + res.File + "\n")
+		}
+		if hasHash(HashNames.XxHash64) {
+			str.WriteString(res.XxHash64 + "  " + res.File + "\n")
 		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString(res.MD4 + "  " + res.File + "\n")
@@ -118,7 +121,7 @@ func toSum(input chan Result) string {
 			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -134,6 +137,9 @@ func toHashOnly(input chan Result) (string, bool) {
 	for res := range input {
 		if hasHash(HashNames.CRC32) {
 			str.WriteString(res.CRC32 + "\n")
+		}
+		if hasHash(HashNames.XxHash64) {
+			str.WriteString(res.XxHash64 + "\n")
 		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString(res.MD4 + "\n")
@@ -172,7 +178,7 @@ func toHashOnly(input chan Result) (string, bool) {
 			str.WriteString(res.Sha3512 + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -187,7 +193,7 @@ func toText(input chan Result) (string, bool) {
 	first := true
 
 	for res := range input {
-		if first == false {
+		if !first {
 			str.WriteString("\n")
 		} else {
 			first = false
@@ -197,6 +203,9 @@ func toText(input chan Result) (string, bool) {
 
 		if hasHash(HashNames.CRC32) {
 			str.WriteString("      CRC32 " + res.CRC32 + "\n")
+		}
+		if hasHash(HashNames.XxHash64) {
+			str.WriteString("   xxHash64 " + res.XxHash64 + "\n")
 		}
 		if hasHash(HashNames.MD4) {
 			str.WriteString("        MD4 " + res.MD4 + "\n")
@@ -235,7 +244,7 @@ func toText(input chan Result) (string, bool) {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
 		}
 
-		if NoStream == false && FileOutput == "" {
+		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
 		}
@@ -302,6 +311,7 @@ func toHashDeep(input chan Result) string {
 
 func printHashes() {
 	fmt.Println(fmt.Sprintf("      CRC32 (%s)", HashNames.CRC32))
+	fmt.Println(fmt.Sprintf("   xxHash64 (%s)", HashNames.XxHash64))
 	fmt.Println(fmt.Sprintf("        MD4 (%s)", HashNames.MD4))
 	fmt.Println(fmt.Sprintf("        MD5 (%s)", HashNames.MD5))
 	fmt.Println(fmt.Sprintf("       SHA1 (%s)", HashNames.SHA1))
