@@ -7,7 +7,7 @@ go generate
 #gofmt -s -w ./..
 
 echo "Running unit tests..."
-go test ./... || exit
+go test -shuffle on ./... || exit
 
 echo "Building application..."
 go build -ldflags="-s -w" || exit
