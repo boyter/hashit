@@ -28,6 +28,16 @@ Binaries will be on [Releases](https://github.com/boyter/hashit/releases) for Wi
 
 If you would like to assist with getting `hashit` added into apt/homebrew/chocolatey/etc... please submit a PR or at least raise an issue with instructions.
 
+### Development
+
+You need to have Go installed. Minimum version is Go 1.24 https://go.dev/
+
+Install the following tools, either via the indicated command or what is suggested on site
+
+- sqlc brew install sqlc https://sqlc.dev/
+
+sqlc is used for the audit functionality as well as the SQLite output format. If you never change this functionality
+it may not be required, however _never_ edit the `./processor/db/` files directly.
 
 ### Pitch
 

@@ -1,9 +1,13 @@
 package processor
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/boyter/hashit/assets"
+	_ "modernc.org/sqlite"
 	"os"
+	"path"
 	"strings"
 	"time"
 )
@@ -334,4 +338,27 @@ func contains(list []string, v string) bool {
 	}
 
 	return false
+}
+
+func connectSqliteDb(location, name string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("%s.db?_busy_timeout=5000", path.Join(location, name)))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec(`pragma journal_mode = wal;
+pragma synchronous = normal;
+pragma temp_store = memory;
+pragma mmap_size = 268435456;
+pragma foreign_keys = on;`)
+	if err != nil {
+		printError("pragma issue " + err.Error())
+	}
+
+	_, err = db.Exec(assets.Migrations)
+	if err != nil {
+		printError("migrations issue " + err.Error())
+	}
+
+	return db, err
 }
