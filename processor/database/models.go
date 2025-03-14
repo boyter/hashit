@@ -25,5 +25,4 @@ type FileHash struct {
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
 	Size       int64
-	Modified   int64
 }

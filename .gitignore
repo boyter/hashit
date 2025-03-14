@@ -17,6 +17,10 @@
 
 hashit
 audit.txt
+
+# sqlite output db
 hashit.db
+hashit.db-shm
+hashit.db-wal
 
 dist/

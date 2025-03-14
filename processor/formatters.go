@@ -371,7 +371,6 @@ func toSqlite(input chan Result) (string, bool) {
 			Sha3384:    toSqlNull(res.Sha3384),
 			Sha3512:    toSqlNull(res.Sha3512),
 			Size:       res.Bytes,
-			Modified:   res.MTime.Unix(),
 		})
 		if err != nil {
 			printError(err.Error())

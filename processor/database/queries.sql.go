@@ -11,7 +11,7 @@ import (
 )
 
 const fileHashByFilePath = `-- name: FileHashByFilePath :one
-select filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, size, modified from file_hashes where filepath = ?
+select filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, size from file_hashes where filepath = ?
 `
 
 func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (FileHash, error) {
@@ -34,7 +34,6 @@ func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (File
 		&i.Sha3384,
 		&i.Sha3512,
 		&i.Size,
-		&i.Modified,
 	)
 	return i, err
 }
@@ -43,9 +42,9 @@ const fileHashInsertReplace = `-- name: FileHashInsertReplace :one
 insert or replace into file_hashes (
     filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512,
     blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512,
-    size, modified
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-returning filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, size, modified
+    size
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+returning filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, size
 `
 
 type FileHashInsertReplaceParams struct {
@@ -65,7 +64,6 @@ type FileHashInsertReplaceParams struct {
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
 	Size       int64
-	Modified   int64
 }
 
 func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertReplaceParams) (FileHash, error) {
@@ -86,7 +84,6 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		arg.Sha3384,
 		arg.Sha3512,
 		arg.Size,
-		arg.Modified,
 	)
 	var i FileHash
 	err := row.Scan(
@@ -106,7 +103,6 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		&i.Sha3384,
 		&i.Sha3512,
 		&i.Size,
-		&i.Modified,
 	)
 	return i, err
 }
