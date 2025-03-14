@@ -1,13 +1,14 @@
 package processor
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/boyter/hashit/assets"
+	"github.com/boyter/hashit/processor/database"
 	_ "modernc.org/sqlite"
 	"os"
-	"path"
 	"strings"
 	"time"
 )
@@ -64,6 +65,8 @@ func fileSummarize(input chan Result) (string, bool) {
 		return toSum(input), true
 	case strings.ToLower(Format) == "hashonly":
 		return toHashOnly(input)
+	case strings.ToLower(Format) == "sqlite":
+		return toSqlite(input)
 	}
 
 	return toText(input)
@@ -313,6 +316,96 @@ func toHashDeep(input chan Result) string {
 	return str.String()
 }
 
+func toSqlite(input chan Result) (string, bool) {
+	// if not file output specified we need to do it ourselves
+	if FileOutput == "" {
+		FileOutput = "hashit.db"
+	}
+
+	// handle sql conversions where null
+	toSqlNull := func(input string) sql.NullString {
+		if input == "" {
+			return sql.NullString{
+				Valid: false,
+			}
+		}
+		return sql.NullString{
+			Valid:  true,
+			String: input,
+		}
+	}
+
+	db, err := connectSqliteDb(FileOutput)
+	if err != nil {
+		printError(fmt.Sprintf("problem connecting to db %s", FileOutput))
+		return "", false
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1) // we are writing, so set the number of writes to 1
+
+	queries := database.New(db)
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		printError(fmt.Sprintf("problem with tx %s", FileOutput))
+		return "", false
+	}
+	withTx := queries.WithTx(tx)
+
+	count := 0
+	for res := range input {
+		_, err = withTx.FileHashInsertReplace(context.Background(), database.FileHashInsertReplaceParams{
+			Filepath:   res.File,
+			Crc32:      toSqlNull(res.CRC32),
+			Xxhash64:   toSqlNull(res.XxHash64),
+			Md4:        toSqlNull(res.MD4),
+			Md5:        toSqlNull(res.MD5),
+			Sha1:       toSqlNull(res.SHA1),
+			Sha256:     toSqlNull(res.SHA256),
+			Sha512:     toSqlNull(res.SHA512),
+			Blake2b256: toSqlNull(res.Blake2b256),
+			Blake2b512: toSqlNull(res.Blake2b512),
+			Blake3:     toSqlNull(res.Blake3),
+			Sha3224:    toSqlNull(res.Sha3224),
+			Sha3256:    toSqlNull(res.Sha3256),
+			Sha3384:    toSqlNull(res.Sha3384),
+			Sha3512:    toSqlNull(res.Sha3512),
+			Size:       res.Bytes,
+			Modified:   res.MTime.Unix(),
+		})
+		if err != nil {
+			printError(err.Error())
+			return "", false
+		}
+
+		if count >= 1000 {
+			count = 0
+
+			err := tx.Commit()
+			if err != nil {
+				printError(err.Error())
+				return "", false
+			}
+
+			tx, err = db.BeginTx(context.Background(), nil)
+			if err != nil {
+				printError(err.Error())
+				return "", false
+			}
+			withTx = queries.WithTx(tx)
+		}
+		count++
+	}
+
+	// its possible this was already commited so ignore
+	err = tx.Commit()
+	if err != nil {
+		printError(err.Error())
+	}
+
+	return "", true
+}
+
 func printHashes() {
 	fmt.Println(fmt.Sprintf("      CRC32 (%s)", HashNames.CRC32))
 	fmt.Println(fmt.Sprintf("   xxHash64 (%s)", HashNames.XxHash64))
@@ -340,8 +433,8 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-func connectSqliteDb(location, name string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", fmt.Sprintf("%s.db?_busy_timeout=5000", path.Join(location, name)))
+func connectSqliteDb(pathName string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("%s?_busy_timeout=5000", pathName))
 	if err != nil {
 		return nil, err
 	}
@@ -352,11 +445,13 @@ pragma temp_store = memory;
 pragma mmap_size = 268435456;
 pragma foreign_keys = on;`)
 	if err != nil {
+		_ = db.Close()
 		printError("pragma issue " + err.Error())
 	}
 
 	_, err = db.Exec(assets.Migrations)
 	if err != nil {
+		_ = db.Close()
 		printError("migrations issue " + err.Error())
 	}
 

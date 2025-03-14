@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.27.0
 
-package db
+package database
 
 import (
 	"database/sql"
@@ -24,6 +24,6 @@ type FileHash struct {
 	Sha3256    sql.NullString
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
-	Size       sql.NullInt64
-	Modified   sql.NullInt64
+	Size       int64
+	Modified   int64
 }

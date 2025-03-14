@@ -3,7 +3,7 @@
 //   sqlc v1.27.0
 // source: queries.sql
 
-package db
+package database
 
 import (
 	"context"
@@ -64,8 +64,8 @@ type FileHashInsertReplaceParams struct {
 	Sha3256    sql.NullString
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
-	Size       sql.NullInt64
-	Modified   sql.NullInt64
+	Size       int64
+	Modified   int64
 }
 
 func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertReplaceParams) (FileHash, error) {
