@@ -10,6 +10,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/zeebo/blake3 v0.2.3
 	golang.org/x/crypto v0.25.0
+	modernc.org/sqlite v1.36.0
 )
 
 require (
@@ -27,5 +28,4 @@ require (
 	modernc.org/libc v1.61.13 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.8.2 // indirect
-	modernc.org/sqlite v1.36.0 // indirect
 )

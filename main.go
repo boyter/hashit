@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/boyter/hashit/processor"
-	"github.com/spf13/cobra"
 	"os"
 	"runtime"
+
+	"github.com/boyter/hashit/processor"
+	"github.com/spf13/cobra"
 )
 
 func main() {

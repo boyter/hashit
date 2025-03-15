@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/boyter/hashit/assets"
-	"github.com/boyter/hashit/processor/database"
-	_ "modernc.org/sqlite"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/boyter/hashit/assets"
+	"github.com/boyter/hashit/processor/database"
+	_ "modernc.org/sqlite"
 )
 
 // Get the time as standard UTC/Zulu format
@@ -21,14 +22,14 @@ func getFormattedTime() string {
 // Prints a message to stdout if flag to enable warning output is set
 func printVerbose(msg string) {
 	if Verbose {
-		fmt.Println(fmt.Sprintf("VERBOSE %s: %s", getFormattedTime(), msg))
+		fmt.Printf("VERBOSE %s: %s\n", getFormattedTime(), msg)
 	}
 }
 
 // Prints a message to stdout if flag to enable debug output is set
 func printDebug(msg string) {
 	if Debug {
-		fmt.Println(fmt.Sprintf("DEBUG %s: %s", getFormattedTime(), msg))
+		fmt.Printf("DEBUG %s: %s\n", getFormattedTime(), msg)
 	}
 }
 
@@ -410,20 +411,20 @@ func toSqlite(input chan Result) (string, bool) {
 }
 
 func printHashes() {
-	fmt.Println(fmt.Sprintf("      CRC32 (%s)", HashNames.CRC32))
-	fmt.Println(fmt.Sprintf("   xxHash64 (%s)", HashNames.XxHash64))
-	fmt.Println(fmt.Sprintf("        MD4 (%s)", HashNames.MD4))
-	fmt.Println(fmt.Sprintf("        MD5 (%s)", HashNames.MD5))
-	fmt.Println(fmt.Sprintf("       SHA1 (%s)", HashNames.SHA1))
-	fmt.Println(fmt.Sprintf("     SHA256 (%s)", HashNames.SHA256))
-	fmt.Println(fmt.Sprintf("     SHA512 (%s)", HashNames.SHA512))
-	fmt.Println(fmt.Sprintf("Blake2b-256 (%s)", HashNames.Blake2b256))
-	fmt.Println(fmt.Sprintf("Blake2b-512 (%s)", HashNames.Blake2b512))
-	fmt.Println(fmt.Sprintf("     Blake3 (%s)", HashNames.Blake3))
-	fmt.Println(fmt.Sprintf("   SHA3-224 (%s)", HashNames.Sha3224))
-	fmt.Println(fmt.Sprintf("   SHA3-256 (%s)", HashNames.Sha3256))
-	fmt.Println(fmt.Sprintf("   SHA3-384 (%s)", HashNames.Sha3384))
-	fmt.Println(fmt.Sprintf("   SHA3-512 (%s)", HashNames.Sha3512))
+	fmt.Printf("      CRC32 (%s)\n", HashNames.CRC32)
+	fmt.Printf("   xxHash64 (%s)\n", HashNames.XxHash64)
+	fmt.Printf("        MD4 (%s)\n", HashNames.MD4)
+	fmt.Printf("        MD5 (%s)\n", HashNames.MD5)
+	fmt.Printf("       SHA1 (%s)\n", HashNames.SHA1)
+	fmt.Printf("     SHA256 (%s)\n", HashNames.SHA256)
+	fmt.Printf("     SHA512 (%s)\n", HashNames.SHA512)
+	fmt.Printf("Blake2b-256 (%s)\n", HashNames.Blake2b256)
+	fmt.Printf("Blake2b-512 (%s)\n", HashNames.Blake2b512)
+	fmt.Printf("     Blake3 (%s)\n", HashNames.Blake3)
+	fmt.Printf("   SHA3-224 (%s)\n", HashNames.Sha3224)
+	fmt.Printf("   SHA3-256 (%s)\n", HashNames.Sha3256)
+	fmt.Printf("   SHA3-384 (%s)\n", HashNames.Sha3384)
+	fmt.Printf("   SHA3-512 (%s)\n", HashNames.Sha3512)
 }
 
 func contains(list []string, v string) bool {
