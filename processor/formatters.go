@@ -402,6 +402,12 @@ func toSqlite(input chan Result) (string, bool) {
 		printError(err.Error())
 	}
 
+	// ensure we merge the WAL into a single file
+	_, err = db.Exec("PRAGMA wal_checkpoint(FULL)")
+	if err != nil {
+		printError(err.Error())
+	}
+
 	return "", true
 }
 

@@ -116,7 +116,7 @@ scripts/include.go (1835 bytes)
      SHA512 b37ac5a309f9006b740fb0933fe5c4569923cab0fe822c1e2fbf0fbd2a15e9787681ec509ca9f7ea13d921a82257ecc3a32e2dfa18cc6892ea82978befe2629c
 ```
 
-hashit can produce `hashdeep` compatible audit files and its ability to do the audit is coming,
+hashit can produce `hashdeep` compatible audit files if you want to verify its output,
 
 ```
 $ hashit --format hashdeep processor
