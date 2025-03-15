@@ -3,7 +3,6 @@ package processor
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -209,7 +208,10 @@ func Process() {
 			os.Exit(1)
 		}
 	} else {
-		_ = ioutil.WriteFile(FileOutput, []byte(result), 0600)
+		// we don't write out sqlite
+		if strings.ToLower(Format) != "sqlite" {
+			_ = os.WriteFile(FileOutput, []byte(result), 0600)
+		}
 		fmt.Println("results written to " + FileOutput)
 	}
 }

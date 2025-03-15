@@ -28,6 +28,16 @@ Binaries will be on [Releases](https://github.com/boyter/hashit/releases) for Wi
 
 If you would like to assist with getting `hashit` added into apt/homebrew/chocolatey/etc... please submit a PR or at least raise an issue with instructions.
 
+### Development
+
+You need to have Go installed. Minimum version is Go 1.24 https://go.dev/
+
+Install the following tools, either via the indicated command or what is suggested on site
+
+- sqlc brew install sqlc https://sqlc.dev/
+
+sqlc is used for the audit functionality as well as the SQLite output format. If you never change this functionality
+it may not be required, however _never_ edit the `./processor/db/` files directly.
 
 ### Pitch
 
@@ -106,7 +116,7 @@ scripts/include.go (1835 bytes)
      SHA512 b37ac5a309f9006b740fb0933fe5c4569923cab0fe822c1e2fbf0fbd2a15e9787681ec509ca9f7ea13d921a82257ecc3a32e2dfa18cc6892ea82978befe2629c
 ```
 
-hashit can produce `hashdeep` compatible audit files and its ability to do the audit is coming,
+hashit can produce `hashdeep` compatible audit files if you want to verify its output,
 
 ```
 $ hashit --format hashdeep processor

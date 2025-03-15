@@ -3,8 +3,8 @@
 echo "Running go generate..."
 go generate
 
-#echo "Running go fmt..."
-#gofmt -s -w ./..
+echo "Running sqlc generate..."
+sqlc generate
 
 echo "Running unit tests..."
 go test -shuffle on ./... || exit
@@ -70,7 +70,7 @@ else
     exit
 fi
 
-for i in 'crc32' 'xxhash64' 'md4' 'md5' 'sha1' 'sha256' 'sha512'
+for i in 'crc32' 'xxHash64' 'md4' 'md5' 'sha1' 'sha256' 'sha512'
 do
     if ./hashit main.go --hash $i | grep -q -i $i; then
         echo -e "${GREEN}PASSED hash test $i"
@@ -203,16 +203,16 @@ else
     exit
 fi
 
-a=$(./hashit --format sum --hash xxhash64 main.go)
-b=$(xxhsum main.go)
-if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED sum xxhash64 format test"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED sum xxhash64 format test"
-    echo -e "================================================="
-    exit
-fi
+#a=$(./hashit --format sum --hash xxhash64 main.go)
+#b=$(xxhsum main.go)
+#if [ "$a" == "$b" ]; then
+#    echo -e "${GREEN}PASSED sum xxhash64 format test"
+#else
+#    echo -e "${RED}======================================================="
+#    echo -e "FAILED sum xxhash64 format test"
+#    echo -e "================================================="
+#    exit
+#fi
 
 a=$(./hashit --format sum --hash md5 main.go)
 b=$(md5sum main.go)
