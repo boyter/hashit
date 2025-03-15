@@ -10,7 +10,7 @@ Yes the name is *very intentional* and similar to what say when I realise I need
 [![Scc Count Badge](https://sloc.xyz/github/boyter/hashit/)](https://github.com/boyter/hashit/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/boyter/hashit)](https://goreportcard.com/report/github.com/boyter/hashit)
 
-Dual-licensed under MIT or the [UNLICENSE](http://unlicense.org).
+Licensed under the MIT license.
 
 Other similar projects,
 

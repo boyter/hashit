@@ -1,4 +1,4 @@
-
+-- SPDX-License-Identifier: MIT
 
 -- name: FileHashInsertReplace :one
 insert or replace into file_hashes (

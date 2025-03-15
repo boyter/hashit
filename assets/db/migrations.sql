@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: MIT
+
 create table if not exists file_hashes (
      filepath text primary key,
      crc32 text,
