@@ -13,7 +13,7 @@ import (
 )
 
 // Global Version
-var Version = "1.5.0"
+var Version = "1.5.0 (beta)"
 
 // Verbose enables verbose logging output
 var Verbose = false
