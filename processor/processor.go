@@ -65,9 +65,6 @@ var FileListQueueSize = 1000
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1_000_000
 
-// If set will enable the internal file audit logic to kick in
-var FileAudit = false
-
 // FileInput indicates we have a file passed in which consists of a
 var FileInput = ""
 
