@@ -92,7 +92,7 @@ func doAudit(input chan Result) (string, bool) {
 		return "", false
 	}
 
-	hdl, err := NewHashdeepLookup(string(file))
+	hdl, err := NewAuditor(string(file))
 	if err != nil {
 		printError(err.Error())
 		return "", false
@@ -136,7 +136,7 @@ func doAudit(input chan Result) (string, bool) {
 	// verbose (not very verbose)
 	return fmt.Sprintf(`
 hashit: Audit %s
-   Input files examinedCount: %d
+   Input files examined: %d
   Known files expecting: %d
           Files matched: %d
 Files partially matched: %d
