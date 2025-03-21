@@ -6,20 +6,21 @@ import (
 	"strings"
 )
 
-// auditRecord represents a single entry from the hashdeep output
+// AuditRecord represents a single entry from the hashdeep output
 // but is designed to work with other formats in the future
-type auditRecord struct {
+type AuditRecord struct {
 	Size     string
 	MD5      string
 	SHA256   string
 	Filename string
+	Matched  bool
 }
 
 // Auditor parses and holds a audit file which can then be used for audit purposes
 // by providing methods to look up values by either name or hash and optimised for all
 type Auditor struct {
-	fileLookup map[string]auditRecord   // filename optimised lookup
-	md5Lookup  map[string][]auditRecord // md5 optimised lookup
+	fileLookup map[string]AuditRecord   // filename optimised lookup
+	md5Lookup  map[string][]AuditRecord // md5 optimised lookup
 }
 
 // TODO modify to accept multiple types
@@ -30,13 +31,7 @@ func NewAuditor(input string) (*Auditor, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	hdl.fileLookup = file
-	hdl.md5Lookup = map[string][]auditRecord{}
-
-	for _, v := range file {
-		hdl.md5Lookup[v.MD5] = append(hdl.md5Lookup[v.MD5], v)
-	}
 
 	return &hdl, nil
 }
@@ -56,20 +51,14 @@ func (hdl *Auditor) Count() int {
 }
 
 func (hdl *Auditor) Find(file, md5, sha256 string) FileStatus {
-	// 1,2 = location
-	// a,b = contents
-	//
-	// 1a 1a = match
-	// 1a 1b = file match but contents changed
-	// 1a    = file missing
-	//    2a = new file, but contents same as existing that had no matches, file likely moved
-	//    2b = new file
-
-	// the below only works for the first 3 steps, we need a second pass after processing for the second two
 	r, ok := hdl.fileLookup[file]
 	if ok {
+		r.Matched = true
+		hdl.fileLookup[file] = r
+
 		// ok file exists, check if the hash's match
 		if r.MD5 == md5 && r.SHA256 == sha256 {
+
 			return FileMatched
 		}
 
@@ -80,12 +69,22 @@ func (hdl *Auditor) Find(file, md5, sha256 string) FileStatus {
 	return FileNew
 }
 
+func (hdl *Auditor) GetUnmatched() []AuditRecord {
+	unmatched := []AuditRecord{}
+	for _, r := range hdl.fileLookup {
+		if !r.Matched {
+			unmatched = append(unmatched, r)
+		}
+	}
+	return unmatched
+}
+
 // parseHashdeepFile accepts a hashdeep format in and builds the internal
 // audit processor on it
-func (hdl *Auditor) parseHashdeepFile(input string) (map[string]auditRecord, error) {
+func (hdl *Auditor) parseHashdeepFile(input string) (map[string]AuditRecord, error) {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var header []string
-	auditLookup := map[string]auditRecord{}
+	auditLookup := map[string]AuditRecord{}
 	csvStarted := false
 
 	// Read the string line by line
@@ -122,8 +121,8 @@ func (hdl *Auditor) parseHashdeepFile(input string) (map[string]auditRecord, err
 				return nil, err
 			}
 
-			// Map record to auditRecord based on header
-			var fh auditRecord
+			// Map record to AuditRecord based on header
+			var fh AuditRecord
 			for i, field := range header {
 				if i >= len(record) {
 					break

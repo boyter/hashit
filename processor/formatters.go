@@ -103,7 +103,6 @@ func doAudit(input chan Result) (string, bool) {
 	filesModified := 0
 	moved := 0
 	newFiles := 0
-	filesMissing := 0
 
 	// TODO we actually need to do two things... check if the file we are
 	// getting from input, as well as check that every file also exists
@@ -120,9 +119,6 @@ func doAudit(input chan Result) (string, bool) {
 				fmt.Printf("%v: Ok\n", res.File)
 			}
 			matched++
-		case FileMoved:
-			moved++
-			status = Failed
 		case FileModified:
 			if Verbose {
 				fmt.Printf("%v: File modified\n", res.File)
@@ -140,20 +136,30 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
-	if examinedCount != hdl.Count() {
+	// with the above done it means we have accounted for every file in the input
+	// we now need to check which files we expected to match but did not
+	unmatched := hdl.GetUnmatched()
+	if Verbose {
+		for _, um := range unmatched {
+			fmt.Printf("%v: File expected but not found\n", um.Filename)
+		}
+	}
+
+	//if examinedCount != hdl.Count() {
+	if len(unmatched) > 0 {
 		status = Failed
 	}
 
 	// the below is output based on what we get from hashdeep
 	// verbose (not very verbose)
 	return fmt.Sprintf(`hashit: Audit %s
-   Input files examined: %d
-  Known files expecting: %d
-          Files matched: %d
-         Files modified: %d
-            Files moved: %d
-        New files found: %d
-          Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, filesMissing), status == Passed
+       Files examined: %d
+Known files expecting: %d
+        Files matched: %d
+       Files modified: %d
+          Files moved: %d
+      New files found: %d
+        Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, len(unmatched)), status == Passed
 
 }
 

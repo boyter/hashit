@@ -9,12 +9,12 @@ func Test_parseHashdeepFile(t *testing.T) {
 	tests := []struct {
 		name string
 		args string
-		want []auditRecord
+		want []AuditRecord
 	}{
 		{
 			name: "two entries",
 			args: sampleHashdeepAudit,
-			want: []auditRecord{
+			want: []AuditRecord{
 				{
 					Size:     "1067",
 					MD5:      "227f999ca03b135a1b4d69bde84afb16",
