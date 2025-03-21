@@ -69,6 +69,16 @@ func (hdl *Auditor) Find(file, md5, sha256 string) FileStatus {
 	return FileNew
 }
 
+func (hdl *Auditor) FindByHash(md5, sha256 string) FileStatus {
+	for _, r := range hdl.fileLookup {
+		if r.MD5 == md5 && r.SHA256 == sha256 {
+			return FileMoved
+		}
+	}
+
+	return FileNew
+}
+
 func (hdl *Auditor) GetUnmatched() []AuditRecord {
 	unmatched := []AuditRecord{}
 	for _, r := range hdl.fileLookup {

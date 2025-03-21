@@ -109,6 +109,7 @@ func doAudit(input chan Result) (string, bool) {
 	// IE if we loop the input the file should be there
 	// but also every file in the hashdeep lookup should be pinged too
 	status := Passed
+	newFilesList := []Result{}
 	for res := range input {
 		examinedCount++
 		r := hdl.Find(res.File, res.MD5, res.SHA256)
@@ -131,6 +132,7 @@ func doAudit(input chan Result) (string, bool) {
 			}
 			newFiles++
 			status = Failed
+			newFilesList = append(newFilesList, res)
 		default:
 			panic("unhandled default case")
 		}
@@ -138,6 +140,7 @@ func doAudit(input chan Result) (string, bool) {
 
 	// with the above done it means we have accounted for every file in the input
 	// we now need to check which files we expected to match but did not
+	// but we also need to consider if the file was renamed or moved...
 	unmatched := hdl.GetUnmatched()
 	if Verbose {
 		for _, um := range unmatched {
@@ -146,8 +149,13 @@ func doAudit(input chan Result) (string, bool) {
 	}
 
 	// moved files...
-	// a moved file is one that is missing from the audit
-	// but when we check its hash we find it later...
+	// a moved file must be the following
+	// flagged as a new file
+	// has a hash the matches something considered unmatched...
+	// if a file is moved, it is not considered new... nor missing so need to adjust
+	for _, res := range newFilesList {
+		fmt.Println(res, hdl.FindByHash(res.MD5, res.SHA256))
+	}
 
 	if len(unmatched) > 0 {
 		status = Failed
