@@ -20,6 +20,9 @@ var Version = "1.5.0 (beta)"
 // Verbose enables verbose logging output
 var Verbose = false
 
+// VeryVerbose enables verbose logging output
+var VeryVerbose = false
+
 // Debug enables debug logging output
 var Debug = false
 

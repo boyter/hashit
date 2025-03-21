@@ -100,10 +100,10 @@ func doAudit(input chan Result) (string, bool) {
 
 	examinedCount := 0
 	matched := 0
-	partialMatch := 0
+	filesModified := 0
 	moved := 0
 	newFiles := 0
-	//missingFile := 0
+	filesMissing := 0
 
 	// TODO we actually need to do two things... check if the file we are
 	// getting from input, as well as check that every file also exists
@@ -116,16 +116,27 @@ func doAudit(input chan Result) (string, bool) {
 
 		switch r {
 		case FileMatched:
+			if VeryVerbose {
+				fmt.Printf("%v: Ok\n", res.File)
+			}
 			matched++
 		case FileMoved:
 			moved++
 			status = Failed
 		case FileModified:
-			partialMatch++
+			if Verbose {
+				fmt.Printf("%v: File modified\n", res.File)
+			}
+			filesModified++
 			status = Failed
 		case FileNew:
+			if Verbose {
+				fmt.Printf("%v: File new\n", res.File)
+			}
 			newFiles++
 			status = Failed
+		default:
+			panic("unhandled default case")
 		}
 	}
 
@@ -140,10 +151,10 @@ hashit: Audit %s
    Input files examined: %d
   Known files expecting: %d
           Files matched: %d
-Files partially matched: %d
+         Files modified: %d
             Files moved: %d
         New files found: %d
-  Known files not found: 4`+"\n", status, examinedCount, hdl.Count(), matched, partialMatch, moved, newFiles), status == Passed
+          Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, filesMissing), status == Passed
 
 }
 

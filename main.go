@@ -88,6 +88,12 @@ func main() {
 		false,
 		"verbose output",
 	)
+	flags.BoolVar(
+		&processor.VeryVerbose,
+		"vv",
+		false,
+		"very verbose output",
+	)
 	flags.BoolVarP(
 		&processor.Progress,
 		"progress",
