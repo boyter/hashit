@@ -79,6 +79,11 @@ func fileSummarize(input chan Result) (string, bool) {
 	return toText(input)
 }
 
+const (
+	Passed = "passed"
+	Failed = "failed"
+)
+
 func doAudit(input chan Result) (string, bool) {
 	// open the audit file
 	file, err := os.ReadFile(AuditFile)
@@ -87,43 +92,60 @@ func doAudit(input chan Result) (string, bool) {
 		return "", false
 	}
 
-	// parse the file into the lookup
-	auditLookup, err := parseHashdeepFile(string(file))
+	hdl, err := NewHashdeepLookup(string(file))
 	if err != nil {
 		printError(err.Error())
 		return "", false
 	}
 
+	examinedCount := 0
 	matched := 0
-	//partialMatch := 0
-	//moved := 0
-	//newFiles := 0
+	partialMatch := 0
+	moved := 0
+	newFiles := 0
 	//missingFile := 0
 
+	// TODO we actually need to do two things... check if the file we are
+	// getting from input, as well as check that every file also exists
+	// IE if we loop the input the file should be there
+	// but also every file in the hashdeep lookup should be pinged too
+	status := Passed
 	for res := range input {
-		_, ok := auditLookup[res.File]
-		//fmt.Println(res.File, ok)
+		examinedCount++
+		r := hdl.Find(res.File, res.MD5, res.SHA256)
 
-		if ok {
+		switch r {
+		case FileMatched:
 			matched++
+		case FileMoved:
+			moved++
+			status = Failed
+		case FileModified:
+			partialMatch++
+			status = Failed
+		case FileUnknown:
+			newFiles++
+			status = Failed
 		}
 	}
 
+	if examinedCount != hdl.Count() {
+		status = Failed
+	}
+
+	// verbose (not very verbose)
 	return fmt.Sprintf(`
-hashdeep: Audit failed
-   Input files examined: 0
-  Known files expecting: 0
+hashit: Audit %s
+   Input files examinedCount: %d
+  Known files expecting: %d
           Files matched: %d
-Files partially matched: 0
-            Files moved: 8
-        New files found: 3
-  Known files not found: 4`, matched), true
+Files partially matched: %d
+            Files moved: %d
+        New files found: %d
+  Known files not found: 4`+"\n", status, examinedCount, hdl.Count(), matched, partialMatch, moved, newFiles), true
 
-	// verbose (not very verybose)
 	// output looks like the below
-	//
 
-	return "", true
 }
 
 // Mimics how md5sum sha1sum etc... work

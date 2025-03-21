@@ -14,10 +14,70 @@ type HashdeepAuditRecord struct {
 	Filename string
 }
 
+// HashdeepLookup parses and holds a hashdeep audit file which can then be used for audit purposes
+// by providing methods to look up values by either name or hash and optimised for all
 type HashdeepLookup struct {
+	fileLookup map[string]HashdeepAuditRecord   // filename optimised lookup
+	md5Lookup  map[string][]HashdeepAuditRecord // md5 optimised lookup
 }
 
-func parseHashdeepFile(input string) (map[string]HashdeepAuditRecord, error) {
+func NewHashdeepLookup(input string) (*HashdeepLookup, error) {
+	hdl := HashdeepLookup{}
+
+	file, err := hdl.parseHashdeepFile(input)
+	if err != nil {
+		return nil, err
+	}
+
+	hdl.fileLookup = file
+	hdl.md5Lookup = map[string][]HashdeepAuditRecord{}
+
+	for _, v := range file {
+		hdl.md5Lookup[v.MD5] = append(hdl.md5Lookup[v.MD5], v)
+	}
+
+	return &hdl, nil
+}
+
+type FileStatus int
+
+const (
+	FileMatched FileStatus = iota
+	FileModified
+	FileMoved
+	FileUnknown
+)
+
+func (hdl *HashdeepLookup) Count() int {
+	return len(hdl.fileLookup)
+}
+
+func (hdl *HashdeepLookup) Find(file, md5, sha256 string) FileStatus {
+	// check if filename exists
+	r, ok := hdl.fileLookup[file]
+	if ok {
+		// ok file exists, check if the hash's match
+		if r.MD5 == md5 && r.SHA256 == sha256 {
+			return FileMatched
+		}
+
+		// hash does not match so file has changed
+		return FileModified
+	}
+
+	matches, ok := hdl.md5Lookup[md5]
+	if ok {
+		for _, m := range matches {
+			if m.MD5 == md5 && r.SHA256 == sha256 {
+				return FileMoved
+			}
+		}
+	}
+
+	return FileUnknown
+}
+
+func (hdl *HashdeepLookup) parseHashdeepFile(input string) (map[string]HashdeepAuditRecord, error) {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var header []string
 	auditLookup := map[string]HashdeepAuditRecord{}
