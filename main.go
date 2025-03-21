@@ -78,7 +78,7 @@ func main() {
 	flags.Int64Var(
 		&processor.StreamSize,
 		"stream-size",
-		1000000,
+		1_000_000,
 		"min size of file in bytes where stream processing starts",
 	)
 	flags.BoolVarP(
