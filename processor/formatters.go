@@ -146,8 +146,7 @@ func doAudit(input chan Result) (string, bool) {
 
 	// the below is output based on what we get from hashdeep
 	// verbose (not very verbose)
-	return fmt.Sprintf(`
-hashit: Audit %s
+	return fmt.Sprintf(`hashit: Audit %s
    Input files examined: %d
   Known files expecting: %d
           Files matched: %d
