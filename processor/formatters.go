@@ -133,6 +133,7 @@ func doAudit(input chan Result) (string, bool) {
 		status = Failed
 	}
 
+	// the below is output based on what we get from hashdeep
 	// verbose (not very verbose)
 	return fmt.Sprintf(`
 hashit: Audit %s
@@ -142,9 +143,7 @@ hashit: Audit %s
 Files partially matched: %d
             Files moved: %d
         New files found: %d
-  Known files not found: 4`+"\n", status, examinedCount, hdl.Count(), matched, partialMatch, moved, newFiles), true
-
-	// output looks like the below
+  Known files not found: 4`+"\n", status, examinedCount, hdl.Count(), matched, partialMatch, moved, newFiles), status == Passed
 
 }
 
