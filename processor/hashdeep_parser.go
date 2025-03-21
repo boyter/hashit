@@ -14,10 +14,13 @@ type HashdeepAuditRecord struct {
 	Filename string
 }
 
-func parseHashdeepFile(input string) ([]HashdeepAuditRecord, error) {
+type HashdeepLookup struct {
+}
+
+func parseHashdeepFile(input string) (map[string]HashdeepAuditRecord, error) {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var header []string
-	var hashes []HashdeepAuditRecord
+	auditLookup := map[string]HashdeepAuditRecord{}
 	csvStarted := false
 
 	// Read the string line by line
@@ -71,7 +74,7 @@ func parseHashdeepFile(input string) ([]HashdeepAuditRecord, error) {
 					fh.Filename = record[i]
 				}
 			}
-			hashes = append(hashes, fh)
+			auditLookup[fh.Filename] = fh
 		}
 	}
 
@@ -79,5 +82,5 @@ func parseHashdeepFile(input string) ([]HashdeepAuditRecord, error) {
 		return nil, err
 	}
 
-	return hashes, nil
+	return auditLookup, nil
 }

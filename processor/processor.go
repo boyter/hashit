@@ -119,6 +119,12 @@ func Process() {
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
+	// Where audit file is set we only want to process the hashes that hashdeep supports for this
+	// NB we will need to expand this in the future when supporting our own format
+	if AuditFile != "" {
+		Hash = []string{"md5", "sha256"}
+	}
+
 	// Results ready to be printed
 	fileSummaryQueue := make(chan Result, FileListQueueSize)
 

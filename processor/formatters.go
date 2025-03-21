@@ -59,6 +59,10 @@ func makeTimestampNano() int64 {
 }
 
 func fileSummarize(input chan Result) (string, bool) {
+	if AuditFile != "" {
+		return doAudit(input)
+	}
+
 	switch {
 	case strings.ToLower(Format) == "json":
 		return toJSON(input), true
@@ -73,6 +77,39 @@ func fileSummarize(input chan Result) (string, bool) {
 	}
 
 	return toText(input)
+}
+
+func doAudit(input chan Result) (string, bool) {
+	// open the audit file
+	file, err := os.ReadFile(AuditFile)
+	if err != nil {
+		printError(err.Error())
+		return "", false
+	}
+
+	// parse the file into the lookup
+	auditLookup, err := parseHashdeepFile(string(file))
+	if err != nil {
+		printError(err.Error())
+		return "", false
+	}
+
+	for res := range input {
+		_, ok := auditLookup[res.File]
+		fmt.Println(res.File, ok)
+	}
+
+	// verbose (not very verybose)
+	// output looks like the below
+	//
+	//hashdeep: Audit failed
+	//          Files matched: 0
+	//Files partially matched: 0
+	//            Files moved: 8
+	//        New files found: 3
+	//  Known files not found: 4
+
+	return "", true
 }
 
 // Mimics how md5sum sha1sum etc... work

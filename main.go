@@ -22,12 +22,7 @@ func main() {
 		Version: processor.Version,
 		Run: func(cmd *cobra.Command, args []string) {
 			processor.DirFilePaths = args
-
-			if processor.AuditFile != "" {
-				processor.Auditer()
-			} else {
-				processor.Process()
-			}
+			processor.Process()
 		},
 	}
 
@@ -52,7 +47,7 @@ func main() {
 		"audit",
 		"a",
 		"",
-		"audit against supplied file; in version "+processor.Version+" file must be in hashdeep output format",
+		"audit against supplied file; audit file must be in hashdeep output format",
 	)
 	flags.BoolVarP(
 		&processor.Recursive,
