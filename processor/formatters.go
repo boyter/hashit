@@ -145,7 +145,10 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
-	//if examinedCount != hdl.Count() {
+	// moved files...
+	// a moved file is one that is missing from the audit
+	// but when we check its hash we find it later...
+
 	if len(unmatched) > 0 {
 		status = Failed
 	}
