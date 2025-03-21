@@ -123,7 +123,7 @@ func doAudit(input chan Result) (string, bool) {
 		case FileModified:
 			partialMatch++
 			status = Failed
-		case FileUnknown:
+		case FileNew:
 			newFiles++
 			status = Failed
 		}

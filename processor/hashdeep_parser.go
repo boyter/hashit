@@ -46,8 +46,9 @@ type FileStatus int
 const (
 	FileMatched FileStatus = iota
 	FileModified
-	FileMoved
-	FileUnknown
+	FileNew
+	FileMoved // both of the below come from parsing the audit
+	FileMissing
 )
 
 func (hdl *Auditor) Count() int {
@@ -55,7 +56,16 @@ func (hdl *Auditor) Count() int {
 }
 
 func (hdl *Auditor) Find(file, md5, sha256 string) FileStatus {
-	// check if filename exists
+	// 1,2 = location
+	// a,b = contents
+	//
+	// 1a 1a = match
+	// 1a 1b = file match but contents changed
+	// 1a    = file missing
+	//    2a = new file, but contents same as existing that had no matches, file likely moved
+	//    2b = new file
+
+	// the below only works for the first 3 steps, we need a second pass after processing for the second two
 	r, ok := hdl.fileLookup[file]
 	if ok {
 		// ok file exists, check if the hash's match
@@ -67,16 +77,7 @@ func (hdl *Auditor) Find(file, md5, sha256 string) FileStatus {
 		return FileModified
 	}
 
-	matches, ok := hdl.md5Lookup[md5]
-	if ok {
-		for _, m := range matches {
-			if m.MD5 == md5 && r.SHA256 == sha256 {
-				return FileMoved
-			}
-		}
-	}
-
-	return FileUnknown
+	return FileNew
 }
 
 // parseHashdeepFile accepts a hashdeep format in and builds the internal
@@ -138,6 +139,7 @@ func (hdl *Auditor) parseHashdeepFile(input string) (map[string]auditRecord, err
 					fh.Filename = record[i]
 				}
 			}
+
 			auditLookup[fh.Filename] = fh
 		}
 	}
