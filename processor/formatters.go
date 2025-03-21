@@ -94,20 +94,34 @@ func doAudit(input chan Result) (string, bool) {
 		return "", false
 	}
 
+	matched := 0
+	//partialMatch := 0
+	//moved := 0
+	//newFiles := 0
+	//missingFile := 0
+
 	for res := range input {
 		_, ok := auditLookup[res.File]
-		fmt.Println(res.File, ok)
+		//fmt.Println(res.File, ok)
+
+		if ok {
+			matched++
+		}
 	}
+
+	return fmt.Sprintf(`
+hashdeep: Audit failed
+   Input files examined: 0
+  Known files expecting: 0
+          Files matched: %d
+Files partially matched: 0
+            Files moved: 8
+        New files found: 3
+  Known files not found: 4`, matched), true
 
 	// verbose (not very verybose)
 	// output looks like the below
 	//
-	//hashdeep: Audit failed
-	//          Files matched: 0
-	//Files partially matched: 0
-	//            Files moved: 8
-	//        New files found: 3
-	//  Known files not found: 4
 
 	return "", true
 }
