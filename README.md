@@ -57,7 +57,7 @@ Full details can be found in `hashit --help` or `hashit -h`.
 ```
 $ hashit -h
 Hash It!
-Version 1.2.0
+Version 1.4.0
 Ben Boyter <ben@boyter.org>
 
 Usage:
@@ -69,12 +69,13 @@ Flags:
   -c, --hash strings      hashes to be run for each file (set to 'all' for all possible hashes) (default [md5,sha1,sha256,sha512])
       --hashes            list all supported hashes
   -h, --help              help for hashit
+      --mtime             enable mtime output
       --no-stream         do not stream out results as processed
   -o, --output string     output filename (default stdout)
   -p, --progress          display progress of files as they are processed
   -r, --recursive         recursive subdirectories are traversed
       --stream-size int   min size of file in bytes where stream processing starts (default 1000000)
-      --threads int       number of threads processing files, by default the number of CPU cores (default 8)
+      --threads int       number of threads processing files, by default the number of CPU cores (default 20)
       --trace             enable trace output
   -v, --verbose           verbose output
       --version           version for hashit
