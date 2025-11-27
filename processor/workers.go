@@ -1133,10 +1133,10 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 		startTime := makeTimestampNano()
 		d := ed2k.New()
 		_, _ = d.Write(*content)
-		result.Sha3512 = hex.EncodeToString(d.Sum(nil))
+		result.Ed2k = hex.EncodeToString(d.Sum(nil))
 
 		if Trace {
-			printTrace(fmt.Sprintf("nanoseconds processing sha3-512: %s: %d", filename, makeTimestampNano()-startTime))
+			printTrace(fmt.Sprintf("nanoseconds processing ed2k: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 
