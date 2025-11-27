@@ -229,6 +229,9 @@ func toSum(input chan Result) string {
 		if hasHash(HashNames.Sha3512) {
 			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
 		}
+		if hasHash(HashNames.Ed2k) {
+			str.WriteString(res.Ed2k + "  " + res.File + "\n")
+		}
 
 		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
@@ -285,6 +288,9 @@ func toHashOnly(input chan Result) (string, bool) {
 		}
 		if hasHash(HashNames.Sha3512) {
 			str.WriteString(res.Sha3512 + "\n")
+		}
+		if hasHash(HashNames.Ed2k) {
+			str.WriteString(res.Ed2k + "\n")
 		}
 
 		if !NoStream && FileOutput == "" {
@@ -351,6 +357,9 @@ func toText(input chan Result) (string, bool) {
 		}
 		if hasHash(HashNames.Sha3512) {
 			str.WriteString("   SHA3-512 " + res.Sha3512 + "\n")
+		}
+		if hasHash(HashNames.Ed2k) {
+			str.WriteString("       ed2k " + res.Ed2k + "\n")
 		}
 
 		if !NoStream && FileOutput == "" {
@@ -470,6 +479,7 @@ func toSqlite(input chan Result) (string, bool) {
 			Sha3256:    toSqlNull(res.Sha3256),
 			Sha3384:    toSqlNull(res.Sha3384),
 			Sha3512:    toSqlNull(res.Sha3512),
+			Ed2k:       toSqlNull(res.Ed2k),
 			Size:       res.Bytes,
 		})
 		if err != nil {
@@ -526,6 +536,7 @@ func printHashes() {
 	fmt.Printf("   SHA3-256 (%s)\n", HashNames.Sha3256)
 	fmt.Printf("   SHA3-384 (%s)\n", HashNames.Sha3384)
 	fmt.Printf("   SHA3-512 (%s)\n", HashNames.Sha3512)
+	fmt.Printf("       ed2k (%s)\n", HashNames.Ed2k)
 }
 
 func contains(list []string, v string) bool {
