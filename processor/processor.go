@@ -89,6 +89,7 @@ var HashNames = Result{
 	Sha3256:    "sha3256",
 	Sha3384:    "sha3384",
 	Sha3512:    "sha3512",
+	Ed2k:       "ed2k",
 }
 
 // Process is the main entry point of the command line it sets everything up and starts running
@@ -107,13 +108,13 @@ func Process() {
 		}
 	}
 
-	// If nothing was supplied as an argument to run against assume run against everything in the
+	// If nothing was supplied as an argument to run against, assume run against everything in the
 	// current directory recursively
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
 	}
 
-	// If a single argument is supplied enable recursive as if its a file no problem
+	// If a single argument is supplied, enable recursive as if it's a file no problem
 	// but if its a directory the user probably wants to hash everything in that directory
 	if len(DirFilePaths) == 1 {
 		Recursive = true

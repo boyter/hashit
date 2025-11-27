@@ -25,6 +25,7 @@ import (
 	"github.com/gosuri/uiprogress"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
+	"go.felesatra.moe/hash/ed2k"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/crypto/sha3"
 )
@@ -166,6 +167,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	sha3_256_d := sha3.New256()
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
+	ed2k_d := ed2k.New()
 
 	crc32c := make(chan []byte, 10)
 	xxhash64c := make(chan []byte, 10)
@@ -181,6 +183,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	sha3_256_c := make(chan []byte, 10)
 	sha3_384_c := make(chan []byte, 10)
 	sha3_512_c := make(chan []byte, 10)
+	ed2k_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -320,6 +323,16 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 			wg.Done()
 		}()
 	}
+	if hasHash(HashNames.Ed2k) {
+		wg.Add(1)
+		go func() {
+			for b := range ed2k_c {
+				// safe as it says it never returns an error
+				_, _ = ed2k_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	sum := 0
 	data := make([]byte, 4_194_304)
@@ -390,6 +403,9 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		if hasHash(HashNames.Sha3512) {
 			sha3_512_c <- tmp[:n]
 		}
+		if hasHash(HashNames.Ed2k) {
+			ed2k_c <- tmp[:n]
+		}
 
 		if err == io.EOF {
 			break
@@ -410,6 +426,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	close(sha3_256_c)
 	close(sha3_384_c)
 	close(sha3_512_c)
+	close(ed2k_c)
 
 	wg.Wait()
 
@@ -430,6 +447,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		Sha3256:    encodeIfHashEnabled(sha3_256_d, HashNames.Sha3256),
 		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
 		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
+		Ed2k:       encodeIfHashEnabled(ed2k_d, HashNames.Ed2k),
 	}, nil
 }
 
@@ -452,6 +470,7 @@ func processStandardInput(output chan Result) {
 	sha3_256_d := sha3.New256()
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
+	ed2k_d := ed2k.New()
 
 	crc32c := make(chan []byte, 10)
 	xxhash64c := make(chan []byte, 10)
@@ -467,6 +486,7 @@ func processStandardInput(output chan Result) {
 	sha3_256_c := make(chan []byte, 10)
 	sha3_384_c := make(chan []byte, 10)
 	sha3_512_c := make(chan []byte, 10)
+	ed2k_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -606,6 +626,15 @@ func processStandardInput(output chan Result) {
 			wg.Done()
 		}()
 	}
+	if hasHash(HashNames.Ed2k) {
+		wg.Add(1)
+		go func() {
+			for b := range ed2k_c {
+				_, _ = ed2k_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	for {
 		n, err := r.Read(buf[:cap(buf)])
@@ -668,6 +697,9 @@ func processStandardInput(output chan Result) {
 		if hasHash(HashNames.Sha3512) {
 			sha3_512_c <- buf
 		}
+		if hasHash(HashNames.Ed2k) {
+			ed2k_c <- buf
+		}
 
 		if err != nil && err != io.EOF {
 			log.Fatal(err)
@@ -688,6 +720,7 @@ func processStandardInput(output chan Result) {
 	close(sha3_256_c)
 	close(sha3_384_c)
 	close(sha3_512_c)
+	close(ed2k_c)
 
 	wg.Wait()
 
@@ -708,6 +741,7 @@ func processStandardInput(output chan Result) {
 		Sha3256:    encodeIfHashEnabled(sha3_256_d, HashNames.Sha3256),
 		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
 		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
+		Ed2k:       encodeIfHashEnabled(ed2k_d, HashNames.Ed2k),
 	}
 
 	close(output)
@@ -918,6 +952,21 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 		}()
 	}
 
+	if hasHash(HashNames.Ed2k) {
+		wg.Add(1)
+		go func() {
+			startTime = makeTimestampNano()
+			d := ed2k.New()
+			_, _ = d.Write(*content)
+			result.Ed2k = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing ed2k: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
 	wg.Wait()
 	return result, nil
 }
@@ -1077,6 +1126,17 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 
 		if Trace {
 			printTrace(fmt.Sprintf("nanoseconds processing sha3-512: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Ed2k) {
+		startTime := makeTimestampNano()
+		d := ed2k.New()
+		_, _ = d.Write(*content)
+		result.Ed2k = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing ed2k: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 
