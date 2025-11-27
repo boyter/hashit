@@ -21,6 +21,7 @@ type Result struct {
 	Sha3256    string `json:",omitempty"`
 	Sha3384    string `json:",omitempty"`
 	Sha3512    string `json:",omitempty"`
+	Ed2k       string `json:"ed2k,omitempty"`
 	Bytes      int64
 	MTime      *time.Time `json:",omitzero"`
 }

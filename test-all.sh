@@ -181,6 +181,15 @@ else
     exit
 fi
 
+if echo "hello" | ./hashit --hash ed2k | grep -q -i '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03'; then
+    echo -e "${GREEN}PASSED stdin ed2k test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to process ed2k stdin"
+    echo -e "======================================================="
+    exit
+fi
+
 a=$(./hashit --no-stream * | sort | md5sum)
 b=$(./hashit * | sort | md5sum)
 if [ "$a" == "$b" ]; then
