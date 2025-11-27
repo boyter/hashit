@@ -181,7 +181,7 @@ else
     exit
 fi
 
-if echo "hello" | ./hashit --hash ed2k | grep -q -i '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03'; then
+if echo "hello" | ./hashit --hash ed2k | grep -q -i '63481c78ae04c201fa01ea9d2b1db56d'; then
     echo -e "${GREEN}PASSED stdin ed2k test"
 else
     echo -e "${RED}======================================================="
