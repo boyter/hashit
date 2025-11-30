@@ -244,7 +244,6 @@ func toSum(input chan Result) string {
 
 func toHashOnly(input chan Result) (string, bool) {
 	var str strings.Builder
-	valid := true
 
 	for res := range input {
 		if hasHash(HashNames.CRC32) {
@@ -299,12 +298,11 @@ func toHashOnly(input chan Result) (string, bool) {
 		}
 	}
 
-	return str.String(), valid
+	return str.String(), true
 }
 
 func toText(input chan Result) (string, bool) {
 	var str strings.Builder
-	valid := true
 	first := true
 
 	for res := range input {
@@ -368,7 +366,7 @@ func toText(input chan Result) (string, bool) {
 		}
 	}
 
-	return str.String(), valid
+	return str.String(), true
 }
 
 func toJSON(input chan Result) string {
@@ -449,7 +447,9 @@ func toSqlite(input chan Result) (string, bool) {
 		printError(fmt.Sprintf("problem connecting to db %s", FileOutput))
 		return "", false
 	}
-	defer db.Close()
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
 	db.SetMaxOpenConns(1) // we are writing, so set the number of writes to 1
 
 	queries := database.New(db)
