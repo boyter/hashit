@@ -59,6 +59,10 @@ func makeTimestampNano() int64 {
 }
 
 func fileSummarize(input chan Result) (string, bool) {
+	if AuditFile != "" {
+		return doAudit(input)
+	}
+
 	switch {
 	case strings.ToLower(Format) == "json":
 		return toJSON(input), true
@@ -73,6 +77,123 @@ func fileSummarize(input chan Result) (string, bool) {
 	}
 
 	return toText(input)
+}
+
+const (
+	Passed = "passed"
+	Failed = "failed"
+)
+
+func doAudit(input chan Result) (string, bool) {
+	// open the audit file
+	file, err := os.ReadFile(AuditFile)
+	if err != nil {
+		printError(err.Error())
+		return "", false
+	}
+
+	hdl, err := NewAuditor(string(file))
+	if err != nil {
+		printError(err.Error())
+		return "", false
+	}
+
+	examinedCount := 0
+	matched := 0
+	filesModified := 0
+	moved := 0
+	newFiles := 0
+
+	// TODO we actually need to do two things... check if the file we are
+	// getting from input, as well as check that every file also exists
+	// IE if we loop the input the file should be there
+	// but also every file in the hashdeep lookup should be pinged too
+	status := Passed
+	newFilesList := []Result{}
+	for res := range input {
+		examinedCount++
+		r := hdl.Find(res.File, res.MD5, res.SHA256)
+
+		switch r {
+		case FileMatched:
+			if VeryVerbose {
+				fmt.Printf("%v: Ok\n", res.File)
+			}
+			matched++
+		case FileModified:
+			if Verbose {
+				fmt.Printf("%v: File modified\n", res.File)
+			}
+			filesModified++
+			status = Failed
+		case FileNew:
+			if Verbose {
+				fmt.Printf("%v: File new\n", res.File)
+			}
+			newFiles++
+			status = Failed
+			newFilesList = append(newFilesList, res)
+		default:
+			panic("unhandled default case")
+		}
+	}
+
+	// with the above done it means we have accounted for every file in the input
+	// we now need to check which files we expected to match but did not
+	// but we also need to consider if the file was renamed or moved...
+	unmatched := hdl.GetUnmatched()
+	printDebug(fmt.Sprintf("doAudit: initial unmatched count: %d", len(unmatched)))
+
+	// Create a map for quick lookup of unmatched files by their combined hash
+	unmatchedByHash := make(map[string]AuditRecord)
+	for _, um := range unmatched {
+		unmatchedByHash[um.MD5+um.SHA256] = um
+	}
+	printDebug(fmt.Sprintf("doAudit: unmatchedByHash count after creation: %d", len(unmatchedByHash)))
+
+	// Process newFilesList to identify moved files
+	var genuinelyNewFiles []Result
+	for _, res := range newFilesList {
+		hashKey := res.MD5 + res.SHA256
+		if umRecord, ok := unmatchedByHash[hashKey]; ok {
+			// This is a moved file
+			moved++
+			if Verbose {
+				fmt.Printf("%v -> %v: File moved\n", umRecord.Filename, res.File)
+			}
+			// Remove from unmatchedByHash so it's not counted as missing
+			delete(unmatchedByHash, hashKey)
+		} else {
+			// This is a genuinely new file
+			genuinelyNewFiles = append(genuinelyNewFiles, res)
+		}
+	}
+	newFiles = len(genuinelyNewFiles) // Update newFiles count
+
+	// Any remaining in unmatchedByHash are truly missing
+	filesMissing := len(unmatchedByHash)
+	printDebug(fmt.Sprintf("doAudit: filesMissing count after processing newFilesList: %d", filesMissing))
+	if Verbose {
+		for _, um := range unmatchedByHash {
+			fmt.Printf("%v: File expected but not found\n", um.Filename)
+		}
+	}
+
+	if filesMissing > 0 || newFiles > 0 || filesModified > 0 {
+		status = Failed
+	}
+
+	// the below is output based on what we get from hashdeep
+	// verbose (not very verbose)
+	return fmt.Sprintf(`hashit: Audit %s
+       Files examined: %d
+Known files expecting: %d
+        Files matched: %d
+       Files modified: %d
+          Files moved: %d
+      New files found: %d
+        Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, filesMissing), status == Passed
+
 }
 
 // Mimics how md5sum sha1sum etc... work
@@ -145,7 +266,6 @@ func toSum(input chan Result) string {
 
 func toHashOnly(input chan Result) (string, bool) {
 	var str strings.Builder
-	valid := true
 
 	for res := range input {
 		if hasHash(HashNames.CRC32) {
@@ -200,12 +320,11 @@ func toHashOnly(input chan Result) (string, bool) {
 		}
 	}
 
-	return str.String(), valid
+	return str.String(), true
 }
 
 func toText(input chan Result) (string, bool) {
 	var str strings.Builder
-	valid := true
 	first := true
 
 	for res := range input {
@@ -269,7 +388,7 @@ func toText(input chan Result) (string, bool) {
 		}
 	}
 
-	return str.String(), valid
+	return str.String(), true
 }
 
 func toJSON(input chan Result) string {
@@ -350,7 +469,9 @@ func toSqlite(input chan Result) (string, bool) {
 		printError(fmt.Sprintf("problem connecting to db %s", FileOutput))
 		return "", false
 	}
-	defer db.Close()
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
 	db.SetMaxOpenConns(1) // we are writing, so set the number of writes to 1
 
 	queries := database.New(db)

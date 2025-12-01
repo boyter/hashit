@@ -42,6 +42,13 @@ func main() {
 		"text",
 		"set output format [text, json, sum, hashdeep, hashonly, sqlite]",
 	)
+	flags.StringVarP(
+		&processor.AuditFile,
+		"audit",
+		"a",
+		"",
+		"audit against supplied file; audit file must be in hashdeep output format",
+	)
 	flags.BoolVarP(
 		&processor.Recursive,
 		"recursive",
@@ -71,7 +78,7 @@ func main() {
 	flags.Int64Var(
 		&processor.StreamSize,
 		"stream-size",
-		1000000,
+		1_000_000,
 		"min size of file in bytes where stream processing starts",
 	)
 	flags.BoolVarP(
@@ -80,6 +87,12 @@ func main() {
 		"v",
 		false,
 		"verbose output",
+	)
+	flags.BoolVar(
+		&processor.VeryVerbose,
+		"vv",
+		false,
+		"very verbose output",
 	)
 	flags.BoolVarP(
 		&processor.Progress,

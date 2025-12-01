@@ -20,6 +20,9 @@ var Version = "1.5.0 (beta)"
 // Verbose enables verbose logging output
 var Verbose = false
 
+// VeryVerbose enables verbose logging output
+var VeryVerbose = false
+
 // Debug enables debug logging output
 var Debug = false
 
@@ -64,9 +67,6 @@ var FileListQueueSize = 1000
 
 // Number of bytes in a size to enable memory maps or streaming
 var StreamSize int64 = 1_000_000
-
-// If set will enable the internal file audit logic to kick in
-var FileAudit = false
 
 // FileInput indicates we have a file passed in which consists of a
 var FileInput = ""
@@ -122,6 +122,12 @@ func Process() {
 
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
+
+	// Where audit file is set we only want to process the hashes that hashdeep supports for this
+	// NB we will need to expand this in the future when supporting our own format
+	if AuditFile != "" {
+		Hash = []string{"md5", "sha256"}
+	}
 
 	// Results ready to be printed
 	fileSummaryQueue := make(chan Result, FileListQueueSize)
