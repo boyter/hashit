@@ -133,6 +133,9 @@ func Process() {
 	fileSummaryQueue := make(chan Result, FileListQueueSize)
 
 	if StandardInput {
+		if MTime {
+			printError("cannot use --mtime option with standard input, ignoring flag")
+		}
 		go processStandardInput(fileSummaryQueue)
 	} else {
 		// Files ready to be read from disk

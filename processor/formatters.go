@@ -142,14 +142,12 @@ func doAudit(input chan Result) (string, bool) {
 	// we now need to check which files we expected to match but did not
 	// but we also need to consider if the file was renamed or moved...
 	unmatched := hdl.GetUnmatched()
-	printDebug(fmt.Sprintf("doAudit: initial unmatched count: %d", len(unmatched)))
 
 	// Create a map for quick lookup of unmatched files by their combined hash
 	unmatchedByHash := make(map[string]AuditRecord)
 	for _, um := range unmatched {
 		unmatchedByHash[um.MD5+um.SHA256] = um
 	}
-	printDebug(fmt.Sprintf("doAudit: unmatchedByHash count after creation: %d", len(unmatchedByHash)))
 
 	// Process newFilesList to identify moved files
 	var genuinelyNewFiles []Result
@@ -172,7 +170,6 @@ func doAudit(input chan Result) (string, bool) {
 
 	// Any remaining in unmatchedByHash are truly missing
 	filesMissing := len(unmatchedByHash)
-	printDebug(fmt.Sprintf("doAudit: filesMissing count after processing newFilesList: %d", filesMissing))
 	if Verbose {
 		for _, um := range unmatchedByHash {
 			fmt.Printf("%v: File expected but not found\n", um.Filename)
@@ -255,6 +252,10 @@ func toSum(input chan Result) string {
 			str.WriteString(res.Ed2k + "  " + res.File + "\n")
 		}
 
+		if MTime && res.MTime != nil {
+			str.WriteString(fmt.Sprintf("%s  %s\n", res.MTime.Format("2006-01-02 15:04:05"), res.File))
+		}
+
 		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
@@ -312,6 +313,10 @@ func toHashOnly(input chan Result) (string, bool) {
 		}
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString(res.Ed2k + "\n")
+		}
+
+		if MTime && res.MTime != nil {
+			str.WriteString(fmt.Sprintf("%s\n", res.MTime.Format("2006-01-02 15:04:05")))
 		}
 
 		if !NoStream && FileOutput == "" {
@@ -382,6 +387,10 @@ func toText(input chan Result) (string, bool) {
 			str.WriteString("       ed2k " + res.Ed2k + "\n")
 		}
 
+		if MTime && res.MTime != nil {
+			str.WriteString(fmt.Sprintf("      MTime %s\n", res.MTime.Format("2006-01-02 15:04:05")))
+		}
+
 		if !NoStream && FileOutput == "" {
 			fmt.Print(str.String())
 			str.Reset()
@@ -419,6 +428,10 @@ func toHashDeep(input chan Result) string {
 		str.WriteString("%%%% size,md5,sha256,filename")
 	}
 
+	if MTime {
+		str.WriteString(",mtime")
+	}
+
 	str.WriteString("\n")
 
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
@@ -439,7 +452,16 @@ func toHashDeep(input chan Result) string {
 		}
 
 		// Finish with filename and newline.
-		str.WriteString(fmt.Sprintf("%s\n", res.File))
+		str.WriteString(fmt.Sprintf("%s", res.File))
+
+		if MTime {
+			str.WriteString(",")
+			if res.MTime != nil {
+				str.WriteString(fmt.Sprintf("%s", res.MTime.Format("2006-01-02 15:04:05")))
+			}
+		}
+
+		str.WriteString("\n")
 	}
 
 	return str.String()

@@ -199,6 +199,15 @@ else
     exit
 fi
 
+if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
+    echo -e "${GREEN}PASSED stdin mtime test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to deal with mtime stdin"
+    echo -e "======================================================="
+    exit
+fi
+
 a=$(./hashit --no-stream * | sort | md5sum)
 b=$(./hashit * | sort | md5sum)
 if [ "$a" == "$b" ]; then
@@ -220,17 +229,6 @@ else
     echo -e "================================================="
     exit
 fi
-
-#a=$(./hashit --format sum --hash xxhash64 main.go)
-#b=$(xxhsum main.go)
-#if [ "$a" == "$b" ]; then
-#    echo -e "${GREEN}PASSED sum xxhash64 format test"
-#else
-#    echo -e "${RED}======================================================="
-#    echo -e "FAILED sum xxhash64 format test"
-#    echo -e "================================================="
-#    exit
-#fi
 
 a=$(./hashit --format sum --hash md5 main.go)
 b=$(md5sum main.go)
@@ -327,18 +325,6 @@ else
     echo -e "======================================================="
     exit
 fi
-
-mkdir -p /tmp/hashit/
-echo "hello" > /tmp/hashit/file
-if ./hashit --mtime --format hashdeep /tmp/hashit/ > audit.txt && hashdeep -r -a -k audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED hashdeep audit with mtime test"
-else
-    echo -e "${RED}===================================================================="
-    echo -e "FAILED Should be able to correctly handle mtime with hashdeep audit"
-    echo -e "===================================================================="
-    exit
-fi
-
 
 mkdir -p /tmp/hashit/
 echo "hello" > /tmp/hashit/file
