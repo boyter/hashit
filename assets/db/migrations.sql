@@ -17,5 +17,6 @@ create table if not exists file_hashes (
      sha3_384 text,
      sha3_512 text,
      ed2k text,
-     size integer not null
+     size integer not null,
+     mtime text null
 );

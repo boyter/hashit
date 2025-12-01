@@ -26,4 +26,5 @@ type FileHash struct {
 	Sha3512    sql.NullString
 	Ed2k       sql.NullString
 	Size       int64
+	Mtime      interface{}
 }

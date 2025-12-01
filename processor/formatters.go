@@ -507,6 +507,12 @@ func toSqlite(input chan Result) (string, bool) {
 
 	count := 0
 	for res := range input {
+
+		mtime := ""
+		if res.MTime != nil {
+			mtime = res.MTime.Format(time.RFC3339Nano)
+		}
+
 		_, err = withTx.FileHashInsertReplace(context.Background(), database.FileHashInsertReplaceParams{
 			Filepath:   res.File,
 			Crc32:      toSqlNull(res.CRC32),
@@ -525,6 +531,7 @@ func toSqlite(input chan Result) (string, bool) {
 			Sha3512:    toSqlNull(res.Sha3512),
 			Ed2k:       toSqlNull(res.Ed2k),
 			Size:       res.Bytes,
+			Mtime:      toSqlNull(mtime),
 		})
 		if err != nil {
 			printError(err.Error())

@@ -11,7 +11,7 @@ import (
 )
 
 const fileHashByFilePath = `-- name: FileHashByFilePath :one
-select filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size from file_hashes where filepath = ?
+select filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = ?
 `
 
 func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (FileHash, error) {
@@ -35,6 +35,7 @@ func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (File
 		&i.Sha3512,
 		&i.Ed2k,
 		&i.Size,
+		&i.Mtime,
 	)
 	return i, err
 }
@@ -44,9 +45,9 @@ const fileHashInsertReplace = `-- name: FileHashInsertReplace :one
 insert or replace into file_hashes (
     filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512,
     blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k,
-    size
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-returning filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size
+    size, mtime
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+returning filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime
 `
 
 type FileHashInsertReplaceParams struct {
@@ -67,6 +68,7 @@ type FileHashInsertReplaceParams struct {
 	Sha3512    sql.NullString
 	Ed2k       sql.NullString
 	Size       int64
+	Mtime      interface{}
 }
 
 // SPDX-License-Identifier: MIT
@@ -89,6 +91,7 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		arg.Sha3512,
 		arg.Ed2k,
 		arg.Size,
+		arg.Mtime,
 	)
 	var i FileHash
 	err := row.Scan(
@@ -109,6 +112,7 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		&i.Sha3512,
 		&i.Ed2k,
 		&i.Size,
+		&i.Mtime,
 	)
 	return i, err
 }
