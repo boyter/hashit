@@ -142,22 +142,44 @@ func doAudit(input chan Result) (string, bool) {
 	// we now need to check which files we expected to match but did not
 	// but we also need to consider if the file was renamed or moved...
 	unmatched := hdl.GetUnmatched()
+	printDebug(fmt.Sprintf("doAudit: initial unmatched count: %d", len(unmatched)))
+
+	// Create a map for quick lookup of unmatched files by their combined hash
+	unmatchedByHash := make(map[string]AuditRecord)
+	for _, um := range unmatched {
+		unmatchedByHash[um.MD5+um.SHA256] = um
+	}
+	printDebug(fmt.Sprintf("doAudit: unmatchedByHash count after creation: %d", len(unmatchedByHash)))
+
+	// Process newFilesList to identify moved files
+	var genuinelyNewFiles []Result
+	for _, res := range newFilesList {
+		hashKey := res.MD5 + res.SHA256
+		if umRecord, ok := unmatchedByHash[hashKey]; ok {
+			// This is a moved file
+			moved++
+			if Verbose {
+				fmt.Printf("%v -> %v: File moved\n", umRecord.Filename, res.File)
+			}
+			// Remove from unmatchedByHash so it's not counted as missing
+			delete(unmatchedByHash, hashKey)
+		} else {
+			// This is a genuinely new file
+			genuinelyNewFiles = append(genuinelyNewFiles, res)
+		}
+	}
+	newFiles = len(genuinelyNewFiles) // Update newFiles count
+
+	// Any remaining in unmatchedByHash are truly missing
+	filesMissing := len(unmatchedByHash)
+	printDebug(fmt.Sprintf("doAudit: filesMissing count after processing newFilesList: %d", filesMissing))
 	if Verbose {
-		for _, um := range unmatched {
+		for _, um := range unmatchedByHash {
 			fmt.Printf("%v: File expected but not found\n", um.Filename)
 		}
 	}
 
-	// moved files...
-	// a moved file must be the following
-	// flagged as a new file
-	// has a hash the matches something considered unmatched...
-	// if a file is moved, it is not considered new... nor missing so need to adjust
-	for _, res := range newFilesList {
-		fmt.Println(res, hdl.FindByHash(res.MD5, res.SHA256))
-	}
-
-	if len(unmatched) > 0 {
+	if filesMissing > 0 || newFiles > 0 || filesModified > 0 {
 		status = Failed
 	}
 
@@ -170,7 +192,7 @@ Known files expecting: %d
        Files modified: %d
           Files moved: %d
       New files found: %d
-        Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, len(unmatched)), status == Passed
+        Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, filesMissing), status == Passed
 
 }
 

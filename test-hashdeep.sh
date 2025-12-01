@@ -102,8 +102,13 @@ test_new_file() {
 
 test_missing_file() {
     echo "Running Test: Missing File Detection"
-    hashdeep -l -r "$TEST_DIR" > "$AUDIT_FILE"
-    output=$(./hashit -a "$AUDIT_FILE" "$TEST_DIR" || true)
+    hashdeep -l -r "$TEST_DIR" > "$AUDIT_FILE" # This creates audit.txt
+    rm "$TEST_DIR/dir1/file1.txt"              # This deletes a file from the test directory
+    
+    ls -l "$AUDIT_FILE" # Debugging line
+    
+    # This is where hashit is called, and it reports audit.txt missing
+    output=$(./hashit -a "$AUDIT_FILE" "$TEST_DIR" --debug 2>&1 || true)
     
     # The current implementation will show 1 missing file, which is what we want to test against.
     # When the logic is improved, this test should still pass but for a different reason.
