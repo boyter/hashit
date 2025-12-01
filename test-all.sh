@@ -199,6 +199,24 @@ else
     exit
 fi
 
+if ./hashit --mtime ./hashit | grep -q -i 'Mtime'; then
+    echo -e "${GREEN}PASSED mtime default"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to deal with mtime default"
+    echo -e "======================================================="
+    exit
+fi
+
+if ./hashit --mtime -f hashdeep ./hashit | grep -q -i 'mtime'; then
+    echo -e "${GREEN}PASSED mtime hashdeep"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Should be able to deal with mtime hashdeep"
+    echo -e "======================================================="
+    exit
+fi
+
 if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
     echo -e "${GREEN}PASSED stdin mtime test"
 else
