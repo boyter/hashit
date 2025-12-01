@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/boyter/hashit/processor"
@@ -21,7 +22,18 @@ func main() {
 		Long:    "Hash It!\nVersion " + processor.Version + "\nBen Boyter <ben@boyter.org>",
 		Version: processor.Version,
 		Run: func(cmd *cobra.Command, args []string) {
-			processor.DirFilePaths = args
+			var filePaths []string
+			for _, arg := range args {
+				matches, err := filepath.Glob(arg)
+				if err != nil || len(matches) == 0 {
+					// If there's an error or no matches, treat the argument as a literal path
+					filePaths = append(filePaths, arg)
+				} else {
+					filePaths = append(filePaths, matches...)
+				}
+			}
+
+			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
 	}

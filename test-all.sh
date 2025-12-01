@@ -43,6 +43,15 @@ else
     exit
 fi
 
+if ./hashit "*.go" | grep -q -i 'main.go'; then
+    echo -e "${GREEN}PASSED globbing test for *.go"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED Globbing test for *.go"
+    echo -e "======================================================="
+    exit
+fi
+
 if ./hashit --debug --trace --verbose -f text --hash md5 --no-stream --stream-size 10 -r main.go > /dev/null ; then
     echo -e "${GREEN}PASSED multiple options test"
 else
