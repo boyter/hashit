@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -33,6 +34,7 @@ func main() {
 				}
 			}
 
+			fmt.Println(processor.GitIgnore, processor.GitModuleIgnore)
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
@@ -143,6 +145,44 @@ func main() {
 		"i",
 		"",
 		"input file of newline seperated file locations to process",
+	)
+
+	flags.BoolVar(
+		&processor.GitIgnore,
+		"gitignore",
+		false,
+		"enable .gitignore file logic",
+	)
+	flags.BoolVar(
+		&processor.GitModuleIgnore,
+		"gitmodule",
+		false,
+		"enable .gitmodules file logic",
+	)
+	flags.StringSliceVar(
+		&processor.PathDenyList,
+		"exclude-dir",
+		[]string{},
+		"directories to exclude",
+	)
+	flags.BoolVar(
+		&processor.Ignore,
+		"ignore",
+		false,
+		"enable .ignore file logic",
+	)
+	flags.BoolVar(
+		&processor.HashIgnore,
+		"hashignore",
+		false,
+		"enable .hashignore file logic",
+	)
+	flags.StringArrayVarP(
+		&processor.Exclude,
+		"not-match",
+		`M`,
+		[]string{},
+		"ignore files and directories matching regular expression",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

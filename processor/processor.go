@@ -71,6 +71,24 @@ var StreamSize int64 = 1_000_000
 // FileInput indicates we have a file passed in which consists of a
 var FileInput = ""
 
+// GitIgnore set true to enable .gitignore checks
+var GitIgnore = false
+
+// GitModuleIgnore set true to enable .gitmodules checks
+var GitModuleIgnore = false
+
+// Ignore set true to enable ignore file checks
+var Ignore = false
+
+// HashIgnore set true to enable hashignore file checks
+var HashIgnore = true
+
+// PathDenyList sets the paths that should be skipped
+var PathDenyList = []string{}
+
+// Exclude is a regular expression which is used to exclude files from being processed
+var Exclude = []string{}
+
 var NoThreads = runtime.NumCPU()
 
 // String mapping for hash names
