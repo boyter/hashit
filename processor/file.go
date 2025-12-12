@@ -36,9 +36,6 @@ func walkDirectoryWithIgnore(toWalk string, output chan string) {
 	fileWalker := gocodewalker.NewFileWalker(toWalk, fileListQueue)
 
 	// we only want to have a custom ignore file
-	fileWalker.IgnoreGitIgnore = true
-	fileWalker.IgnoreIgnoreFile = true
-
 	fileWalker.IgnoreGitIgnore = GitIgnore
 	fileWalker.IgnoreIgnoreFile = Ignore
 	fileWalker.IgnoreGitModules = GitModuleIgnore
@@ -74,6 +71,6 @@ func walkDirectoryWithIgnore(toWalk string, output chan string) {
 	}()
 
 	for f := range fileListQueue {
-		fmt.Println(f.Location)
+		output <- f.Location
 	}
 }

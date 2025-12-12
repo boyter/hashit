@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,7 +33,6 @@ func main() {
 				}
 			}
 
-			fmt.Println(processor.GitIgnore, processor.GitModuleIgnore)
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},

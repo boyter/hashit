@@ -81,7 +81,7 @@ var GitModuleIgnore = false
 var Ignore = false
 
 // HashIgnore set true to enable hashignore file checks
-var HashIgnore = true
+var HashIgnore = false
 
 // PathDenyList sets the paths that should be skipped
 var PathDenyList = []string{}
@@ -174,13 +174,12 @@ func Process() {
 					} else {
 						if fi.IsDir() {
 							if Recursive {
-								walkDirectory(fp, fileListQueue)
+								walkDirectoryWithIgnore(fp, fileListQueue)
 							}
 						} else {
 							fileListQueue <- fp
 						}
 					}
-
 				}
 				close(fileListQueue)
 			}()
