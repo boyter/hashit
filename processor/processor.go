@@ -71,6 +71,24 @@ var StreamSize int64 = 1_000_000
 // FileInput indicates we have a file passed in which consists of a
 var FileInput = ""
 
+// GitIgnore set false to enable .gitignore checks
+var GitIgnore = true
+
+// GitModuleIgnore set false to enable .gitmodules checks
+var GitModuleIgnore = true
+
+// Ignore set false to enable ignore file checks
+var Ignore = true
+
+// HashIgnore set true to enable hashignore file checks
+var HashIgnore = false
+
+// PathDenyList sets the paths that should be skipped
+var PathDenyList = []string{}
+
+// Exclude is a regular expression which is used to exclude files from being processed
+var Exclude = []string{}
+
 var NoThreads = runtime.NumCPU()
 
 // String mapping for hash names
@@ -156,13 +174,12 @@ func Process() {
 					} else {
 						if fi.IsDir() {
 							if Recursive {
-								walkDirectory(fp, fileListQueue)
+								walkDirectoryWithIgnore(fp, fileListQueue)
 							}
 						} else {
 							fileListQueue <- fp
 						}
 					}
-
 				}
 				close(fileListQueue)
 			}()
