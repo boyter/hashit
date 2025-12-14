@@ -30,7 +30,7 @@ If you would like to assist with getting `hashit` added into apt/homebrew/chocol
 
 ### Development
 
-You need to have Go installed. Minimum version is Go 1.24 https://go.dev/
+You need to have Go installed. Minimum version is Go 1.25 https://go.dev/
 
 Install the following tools, either via the indicated command or what is suggested on site
 
