@@ -33,12 +33,14 @@ func walkDirectory(toWalk string, output chan string) {
 
 func walkDirectoryWithIgnore(toWalk string, output chan string) {
 	fileListQueue := make(chan *gocodewalker.File, 1000)
+	//fileWalker := gocodewalker.NewParallelFileWalker([]string{toWalk}, fileListQueue)
 	fileWalker := gocodewalker.NewFileWalker(toWalk, fileListQueue)
 
-	// we only want to have a custom ignore file
-	fileWalker.IgnoreGitIgnore = GitIgnore
-	fileWalker.IgnoreIgnoreFile = Ignore
-	fileWalker.IgnoreGitModules = GitModuleIgnore
+	// The user flags are to enable processing, while gocodewalker is to disable
+	// so we need to invert the values.
+	fileWalker.IgnoreGitIgnore = !GitIgnore
+	fileWalker.IgnoreIgnoreFile = !Ignore
+	fileWalker.IgnoreGitModules = !GitModuleIgnore
 	fileWalker.IncludeHidden = true
 	fileWalker.ExcludeDirectory = PathDenyList
 

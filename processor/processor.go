@@ -71,14 +71,14 @@ var StreamSize int64 = 1_000_000
 // FileInput indicates we have a file passed in which consists of a
 var FileInput = ""
 
-// GitIgnore set true to enable .gitignore checks
-var GitIgnore = false
+// GitIgnore set false to enable .gitignore checks
+var GitIgnore = true
 
-// GitModuleIgnore set true to enable .gitmodules checks
-var GitModuleIgnore = false
+// GitModuleIgnore set false to enable .gitmodules checks
+var GitModuleIgnore = true
 
-// Ignore set true to enable ignore file checks
-var Ignore = false
+// Ignore set false to enable ignore file checks
+var Ignore = true
 
 // HashIgnore set true to enable hashignore file checks
 var HashIgnore = false
