@@ -197,15 +197,7 @@ Known files expecting: %d
 func toSum(input chan Result) string {
 	var str strings.Builder
 
-	first := true
-
 	for res := range input {
-		if !first {
-			str.WriteString("\n")
-		} else {
-			first = false
-		}
-
 		if hasHash(HashNames.CRC32) {
 			str.WriteString(res.CRC32 + "  " + res.File + "\n")
 		}
