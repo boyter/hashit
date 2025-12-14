@@ -33,8 +33,12 @@ func walkDirectory(toWalk string, output chan string) {
 
 func walkDirectoryWithIgnore(toWalk string, output chan string) {
 	fileListQueue := make(chan *gocodewalker.File, 1000)
-	//fileWalker := gocodewalker.NewParallelFileWalker([]string{toWalk}, fileListQueue)
-	fileWalker := gocodewalker.NewFileWalker(toWalk, fileListQueue)
+	var fileWalker *gocodewalker.FileWalker
+	if NoThreads != 1 {
+		fileWalker = gocodewalker.NewParallelFileWalker([]string{toWalk}, fileListQueue)
+	} else {
+		fileWalker = gocodewalker.NewFileWalker(toWalk, fileListQueue)
+	}
 
 	// The user flags are to enable processing, while gocodewalker is to disable
 	// so we need to invert the values.
