@@ -22,7 +22,7 @@ Using `hashit` commercially? If you want priority support for `hashit` you can p
  
 ### Install
 
-If you are comfortable using Go and have >= 1.16 installed the usual `go get -u github.com/boyter/hashit/` will install for you.
+If you are comfortable using Go and have >= 1.25 installed the usual `go get -u github.com/boyter/hashit/` will install for you.
 
 Binaries will be on [Releases](https://github.com/boyter/hashit/releases) for Windows, GNU/Linux and macOS for both i386 and x86_64 bit machines once it hits version 1.0.0.
 
@@ -55,30 +55,38 @@ Command line usage of `hashit` is designed to be as simple as possible.
 Full details can be found in `hashit --help` or `hashit -h`.
 
 ```
-$ hashit -h
 Hash It!
-Version 1.4.0
+Version 1.5.0 (beta)
 Ben Boyter <ben@boyter.org>
 
 Usage:
   hashit [flags]
 
 Flags:
-      --debug             enable debug output
-  -f, --format string     set output format [text, json, sum, hashdeep, hashonly] (default "text")
-  -c, --hash strings      hashes to be run for each file (set to 'all' for all possible hashes) (default [md5,sha1,sha256,sha512])
-      --hashes            list all supported hashes
-  -h, --help              help for hashit
-      --mtime             enable mtime output
-      --no-stream         do not stream out results as processed
-  -o, --output string     output filename (default stdout)
-  -p, --progress          display progress of files as they are processed
-  -r, --recursive         recursive subdirectories are traversed
-      --stream-size int   min size of file in bytes where stream processing starts (default 1000000)
-      --threads int       number of threads processing files, by default the number of CPU cores (default 20)
-      --trace             enable trace output
-  -v, --verbose           verbose output
-      --version           version for hashit
+  -a, --audit string            audit against supplied file; audit file must be in hashdeep output format
+      --debug                   enable debug output
+      --exclude-dir strings     directories to exclude
+  -f, --format string           set output format [text, json, sum, hashdeep, hashonly, sqlite] (default "text")
+      --gitignore               enable .gitignore file logic
+      --gitmodule               enable .gitmodules file logic
+  -c, --hash strings            hashes to be run for each file (set to 'all' for all possible hashes) (default [md5,sha1,sha256,sha512])
+      --hashes                  list all supported hashes
+      --hashignore              enable .hashignore file logic
+  -h, --help                    help for hashit
+      --ignore                  enable .ignore file logic
+  -i, --input string            input file of newline seperated file locations to process
+      --mtime                   enable mtime output
+      --no-stream               do not stream out results as processed
+  -M, --not-match stringArray   ignore files and directories matching regular expression
+  -o, --output string           output filename (default stdout)
+  -p, --progress                display progress of files as they are processed
+  -r, --recursive               recursive subdirectories are traversed
+      --stream-size int         min size of file in bytes where stream processing starts (default 1000000)
+      --threads int             number of threads processing files, by default the number of CPU cores (default 8)
+      --trace                   enable trace output
+  -v, --verbose                 verbose output
+      --version                 version for hashit
+      --vv                      very verbose output
 ```
 
 Output should look something like the below for operations on this repository
