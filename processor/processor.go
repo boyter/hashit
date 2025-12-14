@@ -147,6 +147,15 @@ func Process() {
 		Hash = []string{"md5", "sha256"}
 	}
 
+	// If format is set to hashdeep
+	if strings.ToLower(Format) == "hashdeep" {
+		// if hashdeep, we need to ensure md5 is set or sha256, or both, and if neither are set both
+		if !hasHash("md5") || !hasHash("sha256") {
+			printError("hashdeep format without supported hash - setting md5 and sha256")
+			Hash = []string{"md5", "sha256"}
+		}
+	}
+
 	// Results ready to be printed
 	fileSummaryQueue := make(chan Result, FileListQueueSize)
 
