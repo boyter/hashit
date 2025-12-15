@@ -157,6 +157,13 @@ func main() {
 		false,
 		"enable .gitmodules file logic",
 	)
+
+	flags.BoolVar(
+		&processor.SkipHidden,
+		"skip-hidden",
+		false, // Default to false, meaning hidden files are PROCESSED by default
+		"skip hidden files and directories",
+	)
 	flags.StringSliceVar(
 		&processor.PathDenyList,
 		"exclude-dir",

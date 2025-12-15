@@ -81,6 +81,7 @@ Flags:
   -o, --output string           output filename (default stdout)
   -p, --progress                display progress of files as they are processed
   -r, --recursive               recursive subdirectories are traversed
+      --skip-hidden             skip hidden files and directories
       --stream-size int         min size of file in bytes where stream processing starts (default 1000000)
       --threads int             number of threads processing files, by default the number of CPU cores (default 8)
       --trace                   enable trace output

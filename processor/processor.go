@@ -83,6 +83,9 @@ var Ignore = true
 // HashIgnore set true to enable hashignore file checks
 var HashIgnore = false
 
+// SkipHidden set to false to ignore hidden folders and files
+var SkipHidden = true
+
 // PathDenyList sets the paths that should be skipped
 var PathDenyList = []string{}
 
