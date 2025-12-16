@@ -60,6 +60,9 @@ func makeTimestampNano() int64 {
 
 func fileSummarize(input chan Result) (string, bool) {
 	if AuditFile != "" {
+		if isSQLiteDB(AuditFile) {
+			return doSqliteAudit(input)
+		}
 		return doAudit(input)
 	}
 

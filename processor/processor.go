@@ -144,10 +144,13 @@ func Process() {
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
-	// Where audit file is set we only want to process the hashes that hashdeep supports for this
-	// NB we will need to expand this in the future when supporting our own format
+	// Where audit file is set we need to determine what hashes to use
+	// which is either everything for paranoid mode or specific ones for hashdeep
 	if AuditFile != "" {
-		Hash = []string{"md5", "sha256"}
+		if !isSQLiteDB(AuditFile) {
+			// Assume hashdeep format, which only supports md5 and sha256
+			Hash = []string{"md5", "sha256"}
+		}
 	}
 
 	// If format is set to hashdeep
