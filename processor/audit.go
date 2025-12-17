@@ -4,9 +4,9 @@ package processor
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/boyter/hashit/processor/database"
@@ -43,7 +43,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// For detecting missing files, load all known paths into a map.
 	// This could be memory intensive for very large databases but is the simplest approach.
 
-rows, err := db.Query("SELECT filepath FROM file_hashes")
+	rows, err := db.Query("SELECT filepath FROM file_hashes")
 	if err != nil {
 		printError(fmt.Sprintf("failed to query file paths from audit database: %s", err.Error()))
 		return "", false
@@ -90,39 +90,64 @@ rows, err := db.Query("SELECT filepath FROM file_hashes")
 		// Record found, now perform "paranoid" multi-hash comparison
 		modified := false
 
-		// Use reflection to compare all hash fields
-		resVal := reflect.ValueOf(res)
-		dbVal := reflect.ValueOf(dbRecord)
-
-		for i := 0; i < resVal.NumField(); i++ {
-			fieldName := resVal.Type().Field(i).Name
-			// Skip non-hash fields
-			if fieldName == "File" || fieldName == "Bytes" || fieldName == "MTime" || fieldName == "Err" {
-				continue
-			}
-
-			resHash := resVal.Field(i).String()
-			// Only compare if the new hash was actually calculated
-			if resHash == "" {
-				continue
-			}
-
-			dbField := dbVal.FieldByName(fieldName)
-			if dbField.IsValid() {
-				// The DB field is a sql.NullString, so we need to access its String and Valid properties
-				dbHash := dbField.FieldByName("String").String()
-				dbValid := dbField.FieldByName("Valid").Bool()
-
-				if dbValid && resHash != dbHash {
-					modified = true
-					if Verbose {
-						fmt.Printf("%v: File modified (hash mismatch: %s)\n", res.File, fieldName)
-					}
-					break // No need to check other hashes
+		// Helper function for comparison to reduce boilerplate
+		checkHash := func(hashName, resHash string, dbHash sql.NullString) bool {
+			// If the hash exists in the DB, and the new hash was calculated, compare them.
+			if dbHash.Valid && resHash != "" && resHash != dbHash.String {
+				if Verbose {
+					fmt.Printf("%v: File modified (hash mismatch: %s)\n", res.File, hashName)
 				}
+				return true // Indicates modification
 			}
+			return false
 		}
-		
+
+		if checkHash("crc32", res.CRC32, dbRecord.Crc32) {
+			modified = true
+		}
+		if !modified && checkHash("xxhash64", res.XxHash64, dbRecord.Xxhash64) {
+			modified = true
+		}
+		if !modified && checkHash("md4", res.MD4, dbRecord.Md4) {
+			modified = true
+		}
+		if !modified && checkHash("md5", res.MD5, dbRecord.Md5) {
+			modified = true
+		}
+		if !modified && checkHash("sha1", res.SHA1, dbRecord.Sha1) {
+			modified = true
+		}
+		if !modified && checkHash("sha256", res.SHA256, dbRecord.Sha256) {
+			modified = true
+		}
+		if !modified && checkHash("sha512", res.SHA512, dbRecord.Sha512) {
+			modified = true
+		}
+		if !modified && checkHash("blake2b256", res.Blake2b256, dbRecord.Blake2b256) {
+			modified = true
+		}
+		if !modified && checkHash("blake2b512", res.Blake2b512, dbRecord.Blake2b512) {
+			modified = true
+		}
+		if !modified && checkHash("blake3", res.Blake3, dbRecord.Blake3) {
+			modified = true
+		}
+		if !modified && checkHash("sha3-224", res.Sha3224, dbRecord.Sha3224) {
+			modified = true
+		}
+		if !modified && checkHash("sha3-256", res.Sha3256, dbRecord.Sha3256) {
+			modified = true
+		}
+		if !modified && checkHash("sha3-384", res.Sha3384, dbRecord.Sha3384) {
+			modified = true
+		}
+		if !modified && checkHash("sha3-512", res.Sha3512, dbRecord.Sha3512) {
+			modified = true
+		}
+		if !modified && checkHash("ed2k", res.Ed2k, dbRecord.Ed2k) {
+			modified = true
+		}
+
 		// Also check file size
 		if !modified && res.Bytes != dbRecord.Size {
 			modified = true

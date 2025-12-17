@@ -126,6 +126,46 @@ scripts/include.go (1835 bytes)
      SHA512 b37ac5a309f9006b740fb0933fe5c4569923cab0fe822c1e2fbf0fbd2a15e9787681ec509ca9f7ea13d921a82257ecc3a32e2dfa18cc6892ea82978befe2629c
 ```
 
+### Ignoring Files (`.hashignore`)
+
+When hashing a directory, you may want to exclude certain files or directories from the output, such as `node_modules`, log files, or build artifacts. `hashit` supports this through a `.hashignore` file.
+
+The `.hashignore` file uses the **exact same syntax as a standard `.gitignore` file**. You can specify files, directories, and wildcard patterns that you want `hashit` to ignore during its scan.
+
+By default, processing of `.hashignore` files is disabled. You must explicitly enable it using the `--hashignore` flag.
+
+#### Example
+
+Imagine you have the following directory structure:
+
+```
+my_project/
+├── .hashignore
+├── main.go
+├── data.log
+└── node_modules/
+    └── some_package/
+        └── index.js
+```
+
+And your `.hashignore` file contains:
+
+```
+# Ignore log files
+*.log
+
+# Ignore node_modules directory
+node_modules/
+```
+
+To hash the project while respecting the ignore rules, you would run:
+
+```shell
+$ hashit --hashignore my_project/
+```
+
+In this case, `hashit` would process `main.go` but would skip `data.log` and the entire `node_modules` directory.
+
 ### Auditing
 
 `hashit` provides a powerful auditing feature that is compatible with `hashdeep`. This allows you to verify the integrity of a set of files by comparing their current state against a previously generated list of known hashes.
@@ -216,18 +256,139 @@ $ rm -rf /tmp/hashit-audit-test audit.txt
 
 `hashit` can also detect moved files, distinguishing them from new or missing files.
 
+### SQLite Auditing (Recommended for Large Datasets)
+
+For auditing very large collections of files, using a text-based `hashdeep` file can become slow and memory-intensive. 
+To address this, `hashit` supports using a SQLite database as a scalable and efficient backend for creating and 
+verifying audits.
+
+This method is recommended for any large-scale or repeated auditing tasks.
+
+#### Generating a SQLite Audit Database
+
+To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. It is recommended 
+to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks.
+
+```shell
+# Generate a database with all hashes for the current directory
+$ hashit --format sqlite --output audit.db --hash all .
+results written to audit.db
+```
+
+This creates a file named `audit.db` containing a `file_hashes` table with all the file paths and their corresponding hashes.
+
+#### Verifying with a SQLite Audit Database
+
+To audit a directory against a SQLite database, use the `-a` or `--audit` flag, pointing it to your database 
+file. `hashit` will automatically detect that it's a SQLite file.
+
+```shell
+# Run an audit against the database we just created
+$ hashit -a audit.db .
+hashit: SQLite Audit passed
+       Files examined: 25
+Known files expecting: 25
+        Files matched: 25
+       Files modified: 0
+      New files found: 0
+        Files missing: 0
+```
+
+If a file is modified, the audit will fail and report the change. Because we stored all hashes, the audit checks every available hash for a match, providing a very high level of integrity checking.
+
+```shell
+# Example of a failed audit after modifying a file
+$ echo "new content" >> README.md
+$ hashit -a audit.db .
+hashit: SQLite Audit failed
+       Files examined: 25
+Known files expecting: 25
+        Files matched: 24
+       Files modified: 1
+      New files found: 0
+        Files missing: 0
+```
+
+#### Verifying with your own tools (Python Example)
+
+The SQLite database is a standard, open format, which means you can easily write your own scripts and tools to query it. 
+Here is a simple Python example demonstrating how to connect to the database and verify the SHA256 hash of a single file.
+
+```python
+import sqlite3
+import hashlib
+import sys
+
+def verify_file_hash(db_path, file_to_check):
+    """
+    Connects to the hashit SQLite DB and verifies the SHA256 hash of a file.
+    """
+    # Calculate the SHA256 hash of the file on disk
+    try:
+        with open(file_to_check, "rb") as f:
+            bytes = f.read()  # read entire file as bytes
+            readable_hash = hashlib.sha256(bytes).hexdigest()
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_to_check}")
+        return
+    except Exception as e:
+        print(f"Error reading file {file_to_check}: {e}")
+        return
+
+    # Connect to the SQLite database
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Query for the file's record
+        cursor.execute("SELECT sha256 FROM file_hashes WHERE filepath = ?", (file_to_check,))
+        record = cursor.fetchone()
+
+        if record:
+            stored_hash = record[0]
+            print(f"File: {file_to_check}")
+            print(f"  - On-disk SHA256: {readable_hash}")
+            print(f"  - Stored SHA256:  {stored_hash}")
+            if readable_hash == stored_hash:
+                print("  - Verdict: OK")
+            else:
+                print("  - Verdict: MISMATCH")
+        else:
+            print(f"File not found in audit database: {file_to_check}")
+
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python verify.py <path_to_audit.db> <path_to_file>")
+        sys.exit(1)
+    
+    db_path = sys.argv[1]
+    file_to_check = sys.argv[2]
+    verify_file_hash(db_path, file_to_check)
+```
+
 #### Key Differences from `hashdeep`
 
 While `hashit` aims for compatibility, there are some minor differences in the command-line interface:
 
-*   **Audit Flag:** `hashdeep` uses two flags to start an audit (`-a -k <file>`), whereas `hashit` uses a single flag that takes the audit file as its argument (`-a <file>`).
-*   **Displaying Failed Hashes:** `hashdeep` has an `-X` flag to display the new hashes of modified files. `hashit` does not currently have an equivalent for this feature.
+*   **Audit Flag:** `hashdeep` uses two flags to start an audit (`-a -k <file>`), whereas `hashit` uses a single flag 
+* that takes the audit file as its argument (`-a <file>`).
+*   **Displaying Failed Hashes:** `hashdeep` has an `-X` flag to display the new hashes of modified files. `hashit` 
+* does not currently have an equivalent for this feature.
 
-Note that you don't have to specify the directory you want to run against. Running `hashit` will assume you want to run against the current directory.
+Note that you don't have to specify the directory you want to run against. Running `hashit` will assume you want to 
+run against the current directory.
 
-If you supply a single argument to `hashit` and its a file it will process it. If you supply a single argument and it is a directory it will recurse that directory.
+If you supply a single argument to `hashit` and its a file it will process it. If you supply a single argument and it 
+is a directory it will recurse that directory.
 
-If you supply multiple arguments which consist of files and directories then directories will be skipped. This allows wild card's to be used and just process the files in a directory.
+If you supply multiple arguments which consist of files and directories then directories will be skipped. This allows 
+wild card's to be used and just process the files in a directory.
 
 ```
 $ hashit *
