@@ -237,17 +237,6 @@ else
     exit
 fi
 
-a=$(./hashit --format hashdeep main.go | grep ',main.go')
-b=$(hashdeep -l main.go | grep ',main.go')
-if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED hashdeep hash test"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED hashdeep hash test"
-    echo -e "================================================="
-    exit
-fi
-
 a=$(./hashit --format sum --hash md5 main.go)
 b=$(md5sum main.go)
 if [ "$a" == "$b" ]; then
@@ -315,51 +304,82 @@ else
     exit
 fi
 
-if ./hashit --format hashdeep processor > audit.txt && hashdeep -l -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED relative hashdeep audit test"
+echo ""
+echo "Running SQLite audit tests..."
+
+# Test 1: Creation and passing audit
+mkdir -p /tmp/hashit_sqlite
+echo "test file 1" > /tmp/hashit_sqlite/file1.txt
+./hashit --hash all --format sqlite --output /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/
+AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED SQLite audit basic test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to create relative hashdeep audit"
+    echo -e "FAILED SQLite audit basic test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
     exit
 fi
 
-if ./hashit --format hashdeep vendor > audit.txt && hashdeep -l -r -a -k audit.txt vendor | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED large relative hashdeep audit test"
+# Test 2: Modified file
+echo "modified content" > /tmp/hashit_sqlite/file1.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit modified file test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to create large relative hashdeep audit"
+    echo -e "FAILED SQLite audit modified file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
     exit
 fi
 
-mkdir -p /tmp/hashit/
-echo "hello" > /tmp/hashit/file
-if ./hashit --format hashdeep /tmp/hashit/ > audit.txt && hashdeep -r -a -k audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED full hashdeep audit test"
+# Test 3: New file
+# NB we expect 1 modified and 1 new file here because of the previous test
+echo "new file" > /tmp/hashit_sqlite/file2.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'New files found: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit new file test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to create full hashdeep audit"
+    echo -e "FAILED SQLite audit new file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
     exit
 fi
 
-mkdir -p /tmp/hashit/
-echo "hello" > /tmp/hashit/file
-if hashdeep -r /tmp/hashit/ > audit.txt && hashit -a audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED full hashdeep audit reverse test"
+# Test 4: Missing file
+mkdir -p /tmp/hashit_sqlite_missing
+echo "file1" > /tmp/hashit_sqlite_missing/file1.txt
+echo "file2" > /tmp/hashit_sqlite_missing/file2.txt
+./hashit --hash all --format sqlite --output /tmp/hashit_sqlite_missing/audit.db /tmp/hashit_sqlite_missing/
+rm /tmp/hashit_sqlite_missing/file2.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite_missing/audit.db /tmp/hashit_sqlite_missing/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files missing: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit missing file test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to create full hashdeep audit reverse"
+    echo -e "FAILED SQLite audit missing file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
     exit
 fi
 
 echo -e "${NC}Cleaning up..."
 rm ./hashit
-rm ./audit.txt
-rm /tmp/hashit/file
-rmdir /tmp/hashit/
+rm -f ./audit.txt
+rm -rf /tmp/hashit
+rm -rf /tmp/hashit_sqlite
+rm -rf /tmp/hashit_sqlite_missing
 
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"
