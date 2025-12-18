@@ -36,19 +36,28 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		printError(fmt.Sprintf("failed to open audit database: %s", err.Error()))
 		return "", false
 	}
-	defer db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+			printError(fmt.Sprintf("failed to close audit database: %s", err.Error()))
+		}
+	}(db)
 
 	queries := database.New(db)
 
 	// For detecting missing files, load all known paths into a map.
 	// This could be memory intensive for very large databases but is the simplest approach.
-
 	rows, err := db.Query("SELECT filepath FROM file_hashes")
 	if err != nil {
 		printError(fmt.Sprintf("failed to query file paths from audit database: %s", err.Error()))
 		return "", false
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			printError(fmt.Sprintf("failed to close rows from audit database: %s", err.Error()))
+		}
+	}(rows)
 
 	expectedFiles := make(map[string]bool)
 	for rows.Next() {
@@ -162,7 +171,6 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	}
 
 	// Note: Moved file detection is not implemented in this version for simplicity.
-
 	return fmt.Sprintf(`hashit: SQLite Audit %s
        Files examined: %d
 Known files expecting: %d
