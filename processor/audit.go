@@ -36,77 +36,42 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		printError(fmt.Sprintf("failed to open audit database: %s", err.Error()))
 		return "", false
 	}
-	defer func(db *sql.DB) {
-		err := db.Close()
-		if err != nil {
-			printError(fmt.Sprintf("failed to close audit database: %s", err.Error()))
-		}
-	}(db)
+	defer db.Close()
 
 	queries := database.New(db)
 
-	// For detecting missing files, load all known paths into a map.
-	// This could be memory intensive for very large databases but is the simplest approach.
-	rows, err := db.Query("SELECT filepath FROM file_hashes")
-	if err != nil {
-		printError(fmt.Sprintf("failed to query file paths from audit database: %s", err.Error()))
-		return "", false
-	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			printError(fmt.Sprintf("failed to close rows from audit database: %s", err.Error()))
-		}
-	}(rows)
-
-	expectedFiles := make(map[string]bool)
-	for rows.Next() {
-		var filepath string
-		if err := rows.Scan(&filepath); err != nil {
-			printError(fmt.Sprintf("failed to scan filepath from audit database: %s", err.Error()))
-			continue
-		}
-		expectedFiles[filepath] = true
-	}
-	knownFileCount := len(expectedFiles)
-
+	// --- Phase 1: Process all files found on disk ---
 	examinedCount := 0
 	matched := 0
 	filesModified := 0
-	newFiles := 0
+	newFileCandidates := []Result{}
+	foundFilesOnDisk := make(map[string]bool)
 	status := Passed
 
 	for res := range input {
 		examinedCount++
-		// Remove from expected files map as we have now seen it
-		delete(expectedFiles, res.File)
+		foundFilesOnDisk[res.File] = true
 
 		dbRecord, err := queries.FileHashByFilePath(context.Background(), res.File)
 		if err != nil {
-			// If the record is not found, it's a new file.
+			// If the record is not found by path, it's a candidate for being a new or moved file.
 			if strings.Contains(err.Error(), "no rows in result set") {
-				newFiles++
-				status = Failed
-				if Verbose {
-					fmt.Printf("%v: File new\n", res.File)
-				}
+				newFileCandidates = append(newFileCandidates, res)
 			} else {
 				printError(fmt.Sprintf("failed to query audit database for file %s: %s", res.File, err.Error()))
 			}
 			continue
 		}
 
-		// Record found, now perform "paranoid" multi-hash comparison
+		// Record found by path, so compare its hashes
 		modified := false
 		compared := false // Did we successfully compare at least one hash?
 
-		// Create a small helper function to make this cleaner
 		compare := func(name, resHash string, dbHash sql.NullString) {
 			if modified || resHash == "" || !dbHash.Valid {
-				return // Don't compare if already modified, or if we can't
+				return
 			}
-
-			compared = true // We can and will compare this hash
+			compared = true
 			if resHash != dbHash.String {
 				modified = true
 				if Verbose {
@@ -131,10 +96,9 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		compare("sha3-512", res.Sha3512, dbRecord.Sha3512)
 		compare("ed2k", res.Ed2k, dbRecord.Ed2k)
 
-		// Also check file size
 		if !modified && res.Bytes != dbRecord.Size {
 			modified = true
-			compared = true // A size comparison counts as a comparison
+			compared = true
 			if Verbose {
 				fmt.Printf("%v: File modified (size mismatch: got %d, expected %d)\n", res.File, res.Bytes, dbRecord.Size)
 			}
@@ -142,13 +106,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 
 		if modified {
 			filesModified++
-			status = Failed
 		} else if !compared {
-			// This is the case where the file exists, but we have NO common information to compare.
-			// Treat this as a modification.
 			filesModified++
-			status = Failed
-
 			if Verbose {
 				fmt.Printf("%v: File modified (no common hashes/size to compare)\n", res.File)
 			}
@@ -160,22 +119,91 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		}
 	}
 
-	filesMissing := len(expectedFiles)
-	if filesMissing > 0 {
-		status = Failed
-		if Verbose {
-			for f := range expectedFiles {
-				fmt.Printf("%v: File expected but not found\n", f)
+	// --- Phase 2: Find Missing and Moved files ---
+
+	// First, find all files that are in the DB but were not seen on disk.
+	// We do this in pages to avoid loading everything into memory at once.
+	missingFilePaths := make(map[string]bool)
+	offset := int32(0)
+	limit := int32(1000) // Process in blocks of 1000
+	knownFileCount := 0
+
+	for {
+		dbFilePaths, err := queries.ListFilePathsPaged(context.Background(), database.ListFilePathsPagedParams{
+			Limit:  int64(limit),
+			Offset: int64(offset),
+		})
+		if err != nil {
+			printError(fmt.Sprintf("failed to query paged file paths from audit database: %s", err.Error()))
+			return "", false
+		}
+
+		if len(dbFilePaths) == 0 {
+			break // No more files in the database
+		}
+		knownFileCount += len(dbFilePaths)
+
+		for _, dbFilePath := range dbFilePaths {
+			if _, ok := foundFilesOnDisk[dbFilePath]; !ok {
+				missingFilePaths[dbFilePath] = true
 			}
+		}
+		offset += limit
+	}
+
+	// Now, reconcile new files vs missing files to find moves.
+	moved := 0
+	genuinelyNewFiles := []Result{}
+
+	for _, newFile := range newFileCandidates {
+		foundMove := false
+		if newFile.SHA256 != "" {
+			// Look for a missing file with the same SHA256 hash
+			dbRecord, err := queries.FileHashBySHA256(context.Background(), sql.NullString{String: newFile.SHA256, Valid: true})
+			if err == nil {
+				// We found a record with the same hash. Check if its path is in our missing files list.
+				if _, ok := missingFilePaths[dbRecord.Filepath]; ok {
+					moved++
+					foundMove = true
+					if Verbose {
+						fmt.Printf("%v -> %v: File moved\n", dbRecord.Filepath, newFile.File)
+					}
+					// Remove from missing list so it's not counted as missing
+					delete(missingFilePaths, dbRecord.Filepath)
+				}
+			}
+		}
+
+		if !foundMove {
+			genuinelyNewFiles = append(genuinelyNewFiles, newFile)
 		}
 	}
 
-	// Note: Moved file detection is not implemented in this version for simplicity.
+	if Verbose {
+		for _, res := range genuinelyNewFiles {
+			fmt.Printf("%v: File new\n", res.File)
+		}
+	}
+
+	filesMissing := len(missingFilePaths)
+	if Verbose && filesMissing > 0 {
+		for f := range missingFilePaths {
+			fmt.Printf("%v: File expected but not found\n", f)
+		}
+	}
+
+	newFiles := len(genuinelyNewFiles)
+
+	if filesModified > 0 || newFiles > 0 || filesMissing > 0 || moved > 0 {
+		status = Failed
+	}
+
 	return fmt.Sprintf(`hashit: SQLite Audit %s
        Files examined: %d
 Known files expecting: %d
         Files matched: %d
        Files modified: %d
+          Files moved: %d
       New files found: %d
-        Files missing: %d`+"\n", status, examinedCount, knownFileCount, matched, filesModified, newFiles, filesMissing), status == Passed
+        Files missing: %d`+"\n", status, examinedCount, knownFileCount, matched, filesModified, moved, newFiles, filesMissing), status == Passed
 }

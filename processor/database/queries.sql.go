@@ -40,6 +40,126 @@ func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (File
 	return i, err
 }
 
+const fileHashByMD5 = `-- name: FileHashByMD5 :one
+SELECT filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime FROM file_hashes WHERE md5 = ? limit 1
+`
+
+func (q *Queries) FileHashByMD5(ctx context.Context, md5 sql.NullString) (FileHash, error) {
+	row := q.db.QueryRowContext(ctx, fileHashByMD5, md5)
+	var i FileHash
+	err := row.Scan(
+		&i.Filepath,
+		&i.Crc32,
+		&i.Xxhash64,
+		&i.Md4,
+		&i.Md5,
+		&i.Sha1,
+		&i.Sha256,
+		&i.Sha512,
+		&i.Blake2b256,
+		&i.Blake2b512,
+		&i.Blake3,
+		&i.Sha3224,
+		&i.Sha3256,
+		&i.Sha3384,
+		&i.Sha3512,
+		&i.Ed2k,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
+const fileHashBySHA1 = `-- name: FileHashBySHA1 :one
+SELECT filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime FROM file_hashes WHERE sha1 = ? limit 1
+`
+
+func (q *Queries) FileHashBySHA1(ctx context.Context, sha1 sql.NullString) (FileHash, error) {
+	row := q.db.QueryRowContext(ctx, fileHashBySHA1, sha1)
+	var i FileHash
+	err := row.Scan(
+		&i.Filepath,
+		&i.Crc32,
+		&i.Xxhash64,
+		&i.Md4,
+		&i.Md5,
+		&i.Sha1,
+		&i.Sha256,
+		&i.Sha512,
+		&i.Blake2b256,
+		&i.Blake2b512,
+		&i.Blake3,
+		&i.Sha3224,
+		&i.Sha3256,
+		&i.Sha3384,
+		&i.Sha3512,
+		&i.Ed2k,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
+const fileHashBySHA256 = `-- name: FileHashBySHA256 :one
+SELECT filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime FROM file_hashes WHERE sha256 = ? limit 1
+`
+
+func (q *Queries) FileHashBySHA256(ctx context.Context, sha256 sql.NullString) (FileHash, error) {
+	row := q.db.QueryRowContext(ctx, fileHashBySHA256, sha256)
+	var i FileHash
+	err := row.Scan(
+		&i.Filepath,
+		&i.Crc32,
+		&i.Xxhash64,
+		&i.Md4,
+		&i.Md5,
+		&i.Sha1,
+		&i.Sha256,
+		&i.Sha512,
+		&i.Blake2b256,
+		&i.Blake2b512,
+		&i.Blake3,
+		&i.Sha3224,
+		&i.Sha3256,
+		&i.Sha3384,
+		&i.Sha3512,
+		&i.Ed2k,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
+const fileHashBySHA512 = `-- name: FileHashBySHA512 :one
+SELECT filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime FROM file_hashes WHERE sha512 = ? limit 1
+`
+
+func (q *Queries) FileHashBySHA512(ctx context.Context, sha512 sql.NullString) (FileHash, error) {
+	row := q.db.QueryRowContext(ctx, fileHashBySHA512, sha512)
+	var i FileHash
+	err := row.Scan(
+		&i.Filepath,
+		&i.Crc32,
+		&i.Xxhash64,
+		&i.Md4,
+		&i.Md5,
+		&i.Sha1,
+		&i.Sha256,
+		&i.Sha512,
+		&i.Blake2b256,
+		&i.Blake2b512,
+		&i.Blake3,
+		&i.Sha3224,
+		&i.Sha3256,
+		&i.Sha3384,
+		&i.Sha3512,
+		&i.Ed2k,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
 const fileHashInsertReplace = `-- name: FileHashInsertReplace :one
 
 insert or replace into file_hashes (
@@ -115,4 +235,36 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		&i.Mtime,
 	)
 	return i, err
+}
+
+const listFilePathsPaged = `-- name: ListFilePathsPaged :many
+SELECT filepath FROM file_hashes LIMIT ? OFFSET ?
+`
+
+type ListFilePathsPagedParams struct {
+	Limit  int64
+	Offset int64
+}
+
+func (q *Queries) ListFilePathsPaged(ctx context.Context, arg ListFilePathsPagedParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listFilePathsPaged, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var filepath string
+		if err := rows.Scan(&filepath); err != nil {
+			return nil, err
+		}
+		items = append(items, filepath)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

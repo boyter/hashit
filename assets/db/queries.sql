@@ -10,3 +10,18 @@ returning *;
 
 -- name: FileHashByFilePath :one
 select * from file_hashes where filepath = ?;
+
+-- name: ListFilePathsPaged :many
+SELECT filepath FROM file_hashes LIMIT ? OFFSET ?;
+
+-- name: FileHashByMD5 :one
+SELECT * FROM file_hashes WHERE md5 = ? limit 1;
+
+-- name: FileHashBySHA1 :one
+SELECT * FROM file_hashes WHERE sha1 = ? limit 1;
+
+-- name: FileHashBySHA256 :one
+SELECT * FROM file_hashes WHERE sha256 = ? limit 1;
+
+-- name: FileHashBySHA512 :one
+SELECT * FROM file_hashes WHERE sha512 = ? limit 1;
