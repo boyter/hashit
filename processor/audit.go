@@ -89,68 +89,43 @@ func doSqliteAudit(input chan Result) (string, bool) {
 
 		// Record found, now perform "paranoid" multi-hash comparison
 		modified := false
+		compared := false // Did we successfully compare at least one hash?
 
-		// Helper function for comparison to reduce boilerplate
-		checkHash := func(hashName, resHash string, dbHash sql.NullString) bool {
-			// If the hash exists in the DB, and the new hash was calculated, compare them.
-			if dbHash.Valid && resHash != "" && resHash != dbHash.String {
-				if Verbose {
-					fmt.Printf("%v: File modified (hash mismatch: %s)\n", res.File, hashName)
-				}
-				return true // Indicates modification
+		// Create a small helper function to make this cleaner
+		compare := func(name, resHash string, dbHash sql.NullString) {
+			if modified || resHash == "" || !dbHash.Valid {
+				return // Don't compare if already modified, or if we can't
 			}
-			return false
+
+			compared = true // We can and will compare this hash
+			if resHash != dbHash.String {
+				modified = true
+				if Verbose {
+					fmt.Printf("%v: File modified (hash mismatch: %s)\n", res.File, name)
+				}
+			}
 		}
 
-		if checkHash("crc32", res.CRC32, dbRecord.Crc32) {
-			modified = true
-		}
-		if !modified && checkHash("xxhash64", res.XxHash64, dbRecord.Xxhash64) {
-			modified = true
-		}
-		if !modified && checkHash("md4", res.MD4, dbRecord.Md4) {
-			modified = true
-		}
-		if !modified && checkHash("md5", res.MD5, dbRecord.Md5) {
-			modified = true
-		}
-		if !modified && checkHash("sha1", res.SHA1, dbRecord.Sha1) {
-			modified = true
-		}
-		if !modified && checkHash("sha256", res.SHA256, dbRecord.Sha256) {
-			modified = true
-		}
-		if !modified && checkHash("sha512", res.SHA512, dbRecord.Sha512) {
-			modified = true
-		}
-		if !modified && checkHash("blake2b256", res.Blake2b256, dbRecord.Blake2b256) {
-			modified = true
-		}
-		if !modified && checkHash("blake2b512", res.Blake2b512, dbRecord.Blake2b512) {
-			modified = true
-		}
-		if !modified && checkHash("blake3", res.Blake3, dbRecord.Blake3) {
-			modified = true
-		}
-		if !modified && checkHash("sha3-224", res.Sha3224, dbRecord.Sha3224) {
-			modified = true
-		}
-		if !modified && checkHash("sha3-256", res.Sha3256, dbRecord.Sha3256) {
-			modified = true
-		}
-		if !modified && checkHash("sha3-384", res.Sha3384, dbRecord.Sha3384) {
-			modified = true
-		}
-		if !modified && checkHash("sha3-512", res.Sha3512, dbRecord.Sha3512) {
-			modified = true
-		}
-		if !modified && checkHash("ed2k", res.Ed2k, dbRecord.Ed2k) {
-			modified = true
-		}
+		compare("crc32", res.CRC32, dbRecord.Crc32)
+		compare("xxhash64", res.XxHash64, dbRecord.Xxhash64)
+		compare("md4", res.MD4, dbRecord.Md4)
+		compare("md5", res.MD5, dbRecord.Md5)
+		compare("sha1", res.SHA1, dbRecord.Sha1)
+		compare("sha256", res.SHA256, dbRecord.Sha256)
+		compare("sha512", res.SHA512, dbRecord.Sha512)
+		compare("blake2b256", res.Blake2b256, dbRecord.Blake2b256)
+		compare("blake2b512", res.Blake2b512, dbRecord.Blake2b512)
+		compare("blake3", res.Blake3, dbRecord.Blake3)
+		compare("sha3-224", res.Sha3224, dbRecord.Sha3224)
+		compare("sha3-256", res.Sha3256, dbRecord.Sha3256)
+		compare("sha3-384", res.Sha3384, dbRecord.Sha3384)
+		compare("sha3-512", res.Sha3512, dbRecord.Sha3512)
+		compare("ed2k", res.Ed2k, dbRecord.Ed2k)
 
 		// Also check file size
 		if !modified && res.Bytes != dbRecord.Size {
 			modified = true
+			compared = true // A size comparison counts as a comparison
 			if Verbose {
 				fmt.Printf("%v: File modified (size mismatch: got %d, expected %d)\n", res.File, res.Bytes, dbRecord.Size)
 			}
@@ -159,6 +134,15 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		if modified {
 			filesModified++
 			status = Failed
+		} else if !compared {
+			// This is the case where the file exists, but we have NO common information to compare.
+			// Treat this as a modification.
+			filesModified++
+			status = Failed
+
+			if Verbose {
+				fmt.Printf("%v: File modified (no common hashes/size to compare)\n", res.File)
+			}
 		} else {
 			matched++
 			if VeryVerbose {

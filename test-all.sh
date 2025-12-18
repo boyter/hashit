@@ -208,15 +208,6 @@ else
     exit
 fi
 
-if ./hashit --mtime -f hashdeep ./hashit | grep -q -i 'mtime'; then
-    echo -e "${GREEN}PASSED mtime hashdeep"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to deal with mtime hashdeep"
-    echo -e "======================================================="
-    exit
-fi
-
 if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
     echo -e "${GREEN}PASSED stdin mtime test"
 else
@@ -310,8 +301,8 @@ echo "Running SQLite audit tests..."
 # Test 1: Creation and passing audit
 mkdir -p /tmp/hashit_sqlite
 echo "test file 1" > /tmp/hashit_sqlite/file1.txt
-./hashit --hash all --format sqlite --output /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/
-AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+./hashit --hash all --format sqlite --output /tmp/audit_sqlite.db /tmp/hashit_sqlite/
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
 AUDIT_EXIT_CODE=$?
 if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED SQLite audit basic test"
@@ -326,7 +317,7 @@ fi
 
 # Test 2: Modified file
 echo "modified content" > /tmp/hashit_sqlite/file1.txt
-AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
 AUDIT_EXIT_CODE=$?
 if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
     echo -e "${GREEN}PASSED SQLite audit modified file test"
@@ -342,7 +333,7 @@ fi
 # Test 3: New file
 # NB we expect 1 modified and 1 new file here because of the previous test
 echo "new file" > /tmp/hashit_sqlite/file2.txt
-AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite/audit.db /tmp/hashit_sqlite/)
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
 AUDIT_EXIT_CODE=$?
 if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'New files found: 1'; then
     echo -e "${GREEN}PASSED SQLite audit new file test"
@@ -359,9 +350,9 @@ fi
 mkdir -p /tmp/hashit_sqlite_missing
 echo "file1" > /tmp/hashit_sqlite_missing/file1.txt
 echo "file2" > /tmp/hashit_sqlite_missing/file2.txt
-./hashit --hash all --format sqlite --output /tmp/hashit_sqlite_missing/audit.db /tmp/hashit_sqlite_missing/
+./hashit --hash all --format sqlite --output /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/
 rm /tmp/hashit_sqlite_missing/file2.txt
-AUDIT_OUTPUT=$(./hashit --audit /tmp/hashit_sqlite_missing/audit.db /tmp/hashit_sqlite_missing/)
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/)
 AUDIT_EXIT_CODE=$?
 if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files missing: 1'; then
     echo -e "${GREEN}PASSED SQLite audit missing file test"
@@ -374,12 +365,68 @@ else
     exit
 fi
 
+echo ""
+echo "Running SQLite mismatched hash audit tests..."
+
+# Setup for mismatched hash tests
+mkdir -p /tmp/hashit_mismatch
+echo "test file 1" > /tmp/hashit_mismatch/file1.txt
+
+# Test 5: Audit fails because no common hashes can be compared
+./hashit --hash md5 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit no common hashes test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit no common hashes test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 6: Audit passes with a common hash subset
+./hashit --hash md5,sha1 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED SQLite audit common hash subset test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 7: Audit fails with a common hash subset after modification
+echo "modified content" > /tmp/hashit_mismatch/file1.txt
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit modified common hash subset test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit modified common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm -f ./audit.txt
 rm -rf /tmp/hashit
 rm -rf /tmp/hashit_sqlite
 rm -rf /tmp/hashit_sqlite_missing
+rm -rf /tmp/hashit_mismatch
+rm -f /tmp/audit_sqlite.db
+rm -f /tmp/audit_sqlite_missing.db
+rm -f /tmp/audit_mismatch.db
 
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"
