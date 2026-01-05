@@ -76,12 +76,22 @@ func (h *Hash) limitNextChunk(b []byte) []byte {
 // Sum appends the current hash to b and returns the resulting slice.
 // It does not change the underlying hash state.
 func (h *Hash) Sum(b []byte) []byte {
-	if h.written < ChunkSize {
+	if h.written == 0 {
 		return h.subhash.Sum(b)
 	}
-	if h.written == ChunkSize {
+
+	// If there's an uncommitted chunk, hash it and add to the hashlist
+	if h.written%ChunkSize != 0 {
+		h.hashlist = h.subhash.Sum(h.hashlist)
+	}
+
+	// If the total written data is less than or equal to one chunk,
+	// the hashlist already contains the final hash (or the hash of the single chunk).
+	if h.written <= ChunkSize {
 		return append(b, h.hashlist...)
 	}
+
+	// For multiple chunks, hash the hashlist itself.
 	h2 := md4.New()
 	h2.Write(h.hashlist)
 	return h2.Sum(b)
