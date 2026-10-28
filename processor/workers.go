@@ -668,50 +668,55 @@ func processStandardInput(output chan Result) {
 		nChunks++
 		total += int64(len(buf))
 
+		// the hashes run in their own goroutines and buf is reused by the next read, so each
+		// needs its own copy otherwise the data can be overwritten before it is hashed
+		chunk := make([]byte, n)
+		copy(chunk, buf)
+
 		if hasHash(HashNames.CRC32) {
-			crc32c <- buf
+			crc32c <- chunk
 		}
 		if hasHash(HashNames.XxHash64) {
-			xxhash64c <- buf
+			xxhash64c <- chunk
 		}
 		if hasHash(HashNames.MD4) {
-			md4c <- buf
+			md4c <- chunk
 		}
 		if hasHash(HashNames.MD5) {
-			md5c <- buf
+			md5c <- chunk
 		}
 		if hasHash(HashNames.SHA1) {
-			sha1c <- buf
+			sha1c <- chunk
 		}
 		if hasHash(HashNames.SHA256) {
-			sha256c <- buf
+			sha256c <- chunk
 		}
 		if hasHash(HashNames.SHA512) {
-			sha512c <- buf
+			sha512c <- chunk
 		}
 		if hasHash(HashNames.Blake2b256) {
-			blake2b_256_c <- buf
+			blake2b_256_c <- chunk
 		}
 		if hasHash(HashNames.Blake2b512) {
-			blake2b_512_c <- buf
+			blake2b_512_c <- chunk
 		}
 		if hasHash(HashNames.Blake3) {
-			blake3c <- buf
+			blake3c <- chunk
 		}
 		if hasHash(HashNames.Sha3224) {
-			sha3_224_c <- buf
+			sha3_224_c <- chunk
 		}
 		if hasHash(HashNames.Sha3256) {
-			sha3_256_c <- buf
+			sha3_256_c <- chunk
 		}
 		if hasHash(HashNames.Sha3384) {
-			sha3_384_c <- buf
+			sha3_384_c <- chunk
 		}
 		if hasHash(HashNames.Sha3512) {
-			sha3_512_c <- buf
+			sha3_512_c <- chunk
 		}
 		if hasHash(HashNames.Ed2k) {
-			ed2k_c <- buf
+			ed2k_c <- chunk
 		}
 
 		if err != nil && err != io.EOF {
