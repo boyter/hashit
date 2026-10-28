@@ -88,8 +88,8 @@ func fileHashToRecord(f database.FileHash) *AuditRecord {
 	return r
 }
 
-// sqliteAuditHashes returns the hashes stored in the audit database, which are the hashes we
-// need to calculate. Every row is written by the same run, so the first row is representative
+// sqliteAuditHashes returns the hashes stored in the audit database, strongest first. Every row
+// is written by the same run, so the first row is representative
 func sqliteAuditHashes(pathName string) ([]string, error) {
 	db, err := connectSqliteDbReadOnly(pathName)
 	if err != nil {
@@ -245,8 +245,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		return "", false
 	}
 
-	// index new files by their strongest hash, which every record also has
-	hashes := Hash
+	// index new files by the strongest hash we calculated which every record also has
+	hashes := sqliteCompareHashes
 	moveIndex := map[string][]int{}
 	if len(hashes) != 0 {
 		for i, res := range newFileCandidates {
@@ -347,7 +347,7 @@ order by f.filepath`)
 		status = Failed
 	}
 
-	return fmt.Sprintf(`hashit: Audit %s
+	return fmt.Sprintf(`hashit: SQLite Audit %s
        Files examined: %d
 Known files expecting: %d
         Files matched: %d

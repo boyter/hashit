@@ -62,6 +62,9 @@ var AuditFile = ""
 // auditor holds the parsed AuditFile
 var auditor *Auditor
 
+// sqliteCompareHashes are the hashes both requested and stored in a SQLite AuditFile, strongest first
+var sqliteCompareHashes []string
+
 // skipFiles holds the absolute paths of files which should never be processed, such as the audit
 // file or output file when they are inside the directory being processed
 var skipFiles = map[string]bool{}
@@ -176,12 +179,21 @@ func Process() {
 	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
 		if isSQLiteDB(AuditFile) {
-			hashes, err := sqliteAuditHashes(AuditFile)
+			// we calculate the hashes requested and compare those the database also has
+			stored, err := sqliteAuditHashes(AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to read audit database %s: %s", AuditFile, err.Error()))
 				os.Exit(1)
 			}
-			Hash = hashes
+			sqliteCompareHashes = nil
+			for _, h := range stored {
+				if hasHash(h) {
+					sqliteCompareHashes = append(sqliteCompareHashes, h)
+				}
+			}
+			if len(sqliteCompareHashes) == 0 {
+				printError(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
+			}
 		} else {
 			file, err := os.ReadFile(AuditFile)
 			if err != nil {

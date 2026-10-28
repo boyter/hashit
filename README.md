@@ -307,7 +307,7 @@ To audit a directory against a SQLite database, use the `-a` or `--audit` flag, 
 ```shell
 # Run an audit against the database we just created
 $ hashit -a audit.db .
-hashit: Audit passed
+hashit: SQLite Audit passed
        Files examined: 25
 Known files expecting: 25
         Files matched: 25
@@ -317,7 +317,12 @@ Known files expecting: 25
         Files missing: 0
 ```
 
-If a file is modified, the audit will fail and report the change. The audit calculates and compares every hash stored in the database, regardless of `--hash`, so storing all hashes provides a very high level of integrity checking.
+If a file is modified, the audit will fail and report the change. The audit calculates the hashes requested with `--hash`, or the defaults when not supplied, and compares each one the database also stores. To compare every stored hash use `--hash all` when auditing as well. If none of the requested hashes are in the database a warning is printed and every file is reported as modified.
+
+```shell
+# the most thorough check, calculating and comparing every hash
+$ hashit --hash all -a audit.db .
+```
 
 The database is opened read-only and is never modified by an audit. Which files have been seen is tracked in a temporary table on disk rather than in memory, so memory use stays flat regardless of how many files are in the database. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
 
@@ -325,7 +330,7 @@ The database is opened read-only and is never modified by an audit. Which files 
 # Example of a failed audit after modifying a file
 $ echo "new content" >> README.md
 $ hashit -a audit.db .
-hashit: Audit failed
+hashit: SQLite Audit failed
        Files examined: 25
 Known files expecting: 25
         Files matched: 24

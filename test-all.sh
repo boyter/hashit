@@ -412,30 +412,45 @@ echo "Running SQLite mismatched hash audit tests..."
 mkdir -p /tmp/hashit_mismatch
 echo "test file 1" > /tmp/hashit_mismatch/file1.txt
 
-# Test 5: Audit uses the hashes stored in the database regardless of --hash
+# Test 5: Audit fails because no common hashes can be compared
 ./hashit --hash md5 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
 AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
 AUDIT_EXIT_CODE=$?
-if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
-    echo -e "${GREEN}PASSED SQLite audit uses stored hashes test"
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit no common hashes test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED SQLite audit uses stored hashes test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "FAILED SQLite audit no common hashes test (Exit Code: $AUDIT_EXIT_CODE)"
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
     exit
 fi
 
-# Test 6: Audit fails after modification
-echo "modified content" > /tmp/hashit_mismatch/file1.txt
-AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+# Test 6: Audit passes with a common hash subset
+./hashit --hash md5,sha1 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
 AUDIT_EXIT_CODE=$?
-if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
-    echo -e "${GREEN}PASSED SQLite audit modified stored hash test"
+if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED SQLite audit common hash subset test"
 else
     echo -e "${RED}======================================================="
-    echo -e "FAILED SQLite audit modified stored hash test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "FAILED SQLite audit common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 7: Audit fails with a common hash subset after modification
+echo "modified content" > /tmp/hashit_mismatch/file1.txt
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit modified common hash subset test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit modified common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
