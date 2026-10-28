@@ -346,7 +346,7 @@ fi
 
 mkdir -p /tmp/hashit/
 echo "hello" > /tmp/hashit/file
-if hashdeep -r /tmp/hashit/ > audit.txt && hashit -a audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
+if hashdeep -r /tmp/hashit/ > audit.txt && ./hashit -a audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED full hashdeep audit reverse test"
 else
     echo -e "${RED}======================================================="
@@ -354,6 +354,63 @@ else
     echo -e "======================================================="
     exit
 fi
+
+# Audit edge cases, see https://github.com/boyter/hashit/issues/12
+AUDITDIR=$(mktemp -d)
+mkdir -p "$AUDITDIR/media/sub"
+echo a > "$AUDITDIR/media/a.txt"
+echo b > "$AUDITDIR/media/b, with comma.txt"
+echo c > "$AUDITDIR/media/c \"quoted\".txt"
+echo d > "$AUDITDIR/media/sub/ünïcode.txt"
+echo e > "$AUDITDIR/media/back\\slash.txt"
+HASHIT=$(pwd)/hashit
+
+audit_test() {
+    # $1 description, $2 command which must pass
+    if (eval "$2") | grep -q -i 'Audit passed'; then
+        echo -e "${GREEN}PASSED $1"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $1"
+        echo -e "======================================================="
+        exit
+    fi
+}
+
+audit_test "audit file inside audited directory test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep -o hashes.txt . > /dev/null && '$HASHIT' -a hashes.txt ."
+audit_test "audit with absolute path against relative hashdeep file test" \
+    "cd / && '$HASHIT' -a '$AUDITDIR/media/hashes.txt' '$AUDITDIR/media/'"
+audit_test "audit md5 only hashdeep file test" \
+    "cd '$AUDITDIR/media' && hashdeep -c md5 -r -l . > ../md5.txt && '$HASHIT' -a ../md5.txt ."
+audit_test "audit hashdeep relative file from parent directory test" \
+    "cd '$AUDITDIR/media' && hashdeep -r -l . > ../hd.txt && cd .. && '$HASHIT' -a hd.txt media"
+audit_test "audit md5sum file test" \
+    "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 md5sum > ../sums.md5 && '$HASHIT' -a ../sums.md5 ."
+audit_test "audit sha256sum bsd tag file test" \
+    "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 sha256sum --tag > ../sums.sha256 && '$HASHIT' -a ../sums.sha256 ."
+audit_test "audit hashit sum file test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -c md5,sha1,sha256 -f sum -o ../sums.txt . > /dev/null && '$HASHIT' -a ../sums.txt ."
+
+if (cd "$AUDITDIR/media" && "$HASHIT" -c md5 -f sum -o ../check.md5 . > /dev/null && md5sum -c --quiet ../check.md5); then
+    echo -e "${GREEN}PASSED md5sum can verify sum format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED md5sum can verify sum format test"
+    echo -e "======================================================="
+    exit
+fi
+
+echo changed >> "$AUDITDIR/media/a.txt"
+if (cd "$AUDITDIR/media" && "$HASHIT" -a ../sums.md5 . | grep -q 'Files modified: 1'); then
+    echo -e "${GREEN}PASSED audit detects modified file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED audit detects modified file test"
+    echo -e "======================================================="
+    exit
+fi
+rm -rf "$AUDITDIR"
 
 echo -e "${NC}Cleaning up..."
 rm ./hashit

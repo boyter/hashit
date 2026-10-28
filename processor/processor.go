@@ -59,6 +59,12 @@ var FileOutput = ""
 // AuditFile sets the file that we want to audit against similar to hashdeep
 var AuditFile = ""
 
+// auditor holds the parsed AuditFile
+var auditor *Auditor
+
+// auditFileInfo is used to skip the AuditFile when it is inside the directory being audited
+var auditFileInfo os.FileInfo
+
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
 
@@ -144,10 +150,23 @@ func Process() {
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
-	// Where audit file is set we only want to process the hashes that hashdeep supports for this
-	// NB we will need to expand this in the future when supporting our own format
+	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
-		Hash = []string{"md5", "sha256"}
+		file, err := os.ReadFile(AuditFile)
+		if err != nil {
+			printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
+			os.Exit(1)
+		}
+
+		auditor, err = NewAuditor(string(file), AuditFile)
+		if err != nil {
+			printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
+			os.Exit(1)
+		}
+		// the audit file cannot contain its own hash, so never process or expect it
+		auditor.Exclude(AuditFile)
+		auditFileInfo, _ = os.Stat(AuditFile)
+		Hash = auditor.HashNames()
 	}
 
 	// If format is set to hashdeep

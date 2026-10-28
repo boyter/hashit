@@ -85,98 +85,86 @@ const (
 )
 
 func doAudit(input chan Result) (string, bool) {
-	// open the audit file
-	file, err := os.ReadFile(AuditFile)
-	if err != nil {
-		printError(err.Error())
-		return "", false
-	}
-
-	hdl, err := NewAuditor(string(file))
-	if err != nil {
-		printError(err.Error())
-		return "", false
-	}
-
 	examinedCount := 0
 	matched := 0
 	filesModified := 0
 	moved := 0
-	newFiles := 0
 
-	// TODO we actually need to do two things... check if the file we are
-	// getting from input, as well as check that every file also exists
-	// IE if we loop the input the file should be there
-	// but also every file in the hashdeep lookup should be pinged too
-	status := Passed
-	newFilesList := []Result{}
+	// Files are processed in parallel so arrive in any order. We hold the outcome for each
+	// record and report at the end in the order of the audit file, followed by new files
+	type outcome struct {
+		status FileStatus
+		file   string // file on disk, which differs from the record for moved files
+	}
+	outcomes := map[*AuditRecord]outcome{}
+	var newFileCandidates []Result
+
 	for res := range input {
 		examinedCount++
-		r := hdl.Find(res.File, res.MD5, res.SHA256)
+		r, status := auditor.Find(res)
 
-		switch r {
+		switch status {
 		case FileMatched:
-			if VeryVerbose {
-				fmt.Printf("%v: Ok\n", res.File)
-			}
 			matched++
+			outcomes[r] = outcome{status: status, file: res.File}
 		case FileModified:
-			if Verbose {
-				fmt.Printf("%v: File modified\n", res.File)
-			}
 			filesModified++
-			status = Failed
+			outcomes[r] = outcome{status: status, file: res.File}
 		case FileNew:
-			if Verbose {
-				fmt.Printf("%v: File new\n", res.File)
-			}
-			newFiles++
-			status = Failed
-			newFilesList = append(newFilesList, res)
+			newFileCandidates = append(newFileCandidates, res)
 		default:
 			panic("unhandled default case")
 		}
 	}
 
-	// with the above done it means we have accounted for every file in the input
-	// we now need to check which files we expected to match but did not
-	// but we also need to consider if the file was renamed or moved...
-	unmatched := hdl.GetUnmatched()
-
-	// Create a map for quick lookup of unmatched files by their combined hash
-	unmatchedByHash := make(map[string]AuditRecord)
-	for _, um := range unmatched {
-		unmatchedByHash[um.MD5+um.SHA256] = um
-	}
-
-	// Process newFilesList to identify moved files
-	var genuinelyNewFiles []Result
-	for _, res := range newFilesList {
-		hashKey := res.MD5 + res.SHA256
-		if umRecord, ok := unmatchedByHash[hashKey]; ok {
-			// This is a moved file
+	// With every file on disk accounted for, anything new may be a known file which was
+	// moved or renamed, which we identify by matching size and hashes against unmatched records
+	var newFiles []Result
+	for _, res := range newFileCandidates {
+		if r := auditor.FindMoved(res); r != nil {
 			moved++
-			if Verbose {
-				fmt.Printf("%v -> %v: File moved\n", umRecord.Filename, res.File)
-			}
-			// Remove from unmatchedByHash so it's not counted as missing
-			delete(unmatchedByHash, hashKey)
+			outcomes[r] = outcome{status: FileMoved, file: res.File}
 		} else {
-			// This is a genuinely new file
-			genuinelyNewFiles = append(genuinelyNewFiles, res)
+			newFiles = append(newFiles, res)
 		}
 	}
-	newFiles = len(genuinelyNewFiles) // Update newFiles count
 
-	// Any remaining in unmatchedByHash are truly missing
-	filesMissing := len(unmatchedByHash)
+	filesMissing := 0
+	for _, r := range auditor.Records() {
+		o, ok := outcomes[r]
+		if !ok {
+			filesMissing++
+			if Verbose {
+				fmt.Printf("%v: File expected but not found\n", r.Filename)
+			}
+			continue
+		}
+
+		switch o.status {
+		case FileMatched:
+			if VeryVerbose {
+				fmt.Printf("%v: Ok\n", o.file)
+			}
+		case FileModified:
+			if Verbose {
+				fmt.Printf("%v: File modified\n", o.file)
+			}
+		case FileMoved:
+			if Verbose {
+				fmt.Printf("%v -> %v: File moved\n", r.Filename, o.file)
+			}
+		}
+	}
+
 	if Verbose {
-		for _, um := range unmatchedByHash {
-			fmt.Printf("%v: File expected but not found\n", um.Filename)
+		for _, res := range sortedPaths(newFiles) {
+			fmt.Printf("%v: File new\n", res.File)
 		}
 	}
 
-	if filesMissing > 0 || newFiles > 0 || filesModified > 0 {
+	// Same as hashdeep, the audit only passes when everything is exactly where it was
+	status := Passed
+	if filesMissing > 0 || len(newFiles) > 0 || filesModified > 0 || moved > 0 {
 		status = Failed
 	}
 
@@ -189,8 +177,7 @@ Known files expecting: %d
        Files modified: %d
           Files moved: %d
       New files found: %d
-        Files missing: %d`+"\n", status, examinedCount, hdl.Count(), matched, filesModified, moved, newFiles, filesMissing), status == Passed
-
+        Files missing: %d`+"\n", status, examinedCount, auditor.Count(), matched, filesModified, moved, len(newFiles), filesMissing), status == Passed
 }
 
 // Mimics how md5sum sha1sum etc... work
@@ -199,49 +186,49 @@ func toSum(input chan Result) string {
 
 	for res := range input {
 		if hasHash(HashNames.CRC32) {
-			str.WriteString(res.CRC32 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.CRC32, res.File))
 		}
 		if hasHash(HashNames.XxHash64) {
-			str.WriteString(res.XxHash64 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.XxHash64, res.File))
 		}
 		if hasHash(HashNames.MD4) {
-			str.WriteString(res.MD4 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.MD4, res.File))
 		}
 		if hasHash(HashNames.MD5) {
-			str.WriteString(res.MD5 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.MD5, res.File))
 		}
 		if hasHash(HashNames.SHA1) {
-			str.WriteString(res.SHA1 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.SHA1, res.File))
 		}
 		if hasHash(HashNames.SHA256) {
-			str.WriteString(res.SHA256 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.SHA256, res.File))
 		}
 		if hasHash(HashNames.SHA512) {
-			str.WriteString(res.SHA512 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.SHA512, res.File))
 		}
 		if hasHash(HashNames.Blake2b256) {
-			str.WriteString(res.Blake2b256 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Blake2b256, res.File))
 		}
 		if hasHash(HashNames.Blake2b512) {
-			str.WriteString(res.Blake2b512 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Blake2b512, res.File))
 		}
 		if hasHash(HashNames.Blake3) {
-			str.WriteString(res.Blake3 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Blake3, res.File))
 		}
 		if hasHash(HashNames.Sha3224) {
-			str.WriteString(res.Sha3224 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Sha3224, res.File))
 		}
 		if hasHash(HashNames.Sha3256) {
-			str.WriteString(res.Sha3256 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Sha3256, res.File))
 		}
 		if hasHash(HashNames.Sha3384) {
-			str.WriteString(res.Sha3384 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Sha3384, res.File))
 		}
 		if hasHash(HashNames.Sha3512) {
-			str.WriteString(res.Sha3512 + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Sha3512, res.File))
 		}
 		if hasHash(HashNames.Ed2k) {
-			str.WriteString(res.Ed2k + "  " + res.File + "\n")
+			str.WriteString(sumLine(res.Ed2k, res.File))
 		}
 
 		if MTime && res.MTime != nil {
@@ -255,6 +242,16 @@ func toSum(input chan Result) string {
 	}
 
 	return str.String()
+}
+
+// sumLine formats a single line the same way md5sum does, which escapes filenames
+// containing a backslash or newline and marks the line with a leading backslash
+func sumLine(hash string, file string) string {
+	if strings.ContainsAny(file, "\\\n\r") {
+		r := strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\r", "\\r")
+		return "\\" + hash + "  " + r.Replace(file) + "\n"
+	}
+	return hash + "  " + file + "\n"
 }
 
 func toHashOnly(input chan Result) (string, bool) {

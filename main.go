@@ -59,7 +59,7 @@ func main() {
 		"audit",
 		"a",
 		"",
-		"audit against supplied file; audit file must be in hashdeep output format",
+		"audit against supplied file; accepts hashdeep or sum (md5sum, sha256sum etc...) format",
 	)
 	flags.BoolVarP(
 		&processor.Recursive,

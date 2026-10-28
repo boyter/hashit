@@ -71,6 +71,12 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		fi, err := file.Stat()
 		if err != nil {
 			printError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
+			_ = file.Close()
+			continue
+		}
+
+		if auditFileInfo != nil && os.SameFile(fi, auditFileInfo) {
+			_ = file.Close()
 			continue
 		}
 
