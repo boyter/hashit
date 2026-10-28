@@ -234,8 +234,9 @@ func toSum(input chan Result) string {
 			str.WriteString(sumLine(res.Ed2k, res.File))
 		}
 
+		// written as a comment so md5sum -c and similar tools ignore it rather than warn
 		if MTime && res.MTime != nil {
-			str.WriteString(fmt.Sprintf("%s  %s\n", res.MTime.Format("2006-01-02 15:04:05"), res.File))
+			str.WriteString(fmt.Sprintf("# mtime %s  %s\n", res.MTime.Format("2006-01-02 15:04:05"), sumEscaper.Replace(res.File)))
 		}
 
 		if !NoStream && FileOutput == "" {
@@ -247,12 +248,13 @@ func toSum(input chan Result) string {
 	return str.String()
 }
 
+var sumEscaper = strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\r", "\\r")
+
 // sumLine formats a single line the same way md5sum does, which escapes filenames
 // containing a backslash or newline and marks the line with a leading backslash
 func sumLine(hash string, file string) string {
 	if strings.ContainsAny(file, "\\\n\r") {
-		r := strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\r", "\\r")
-		return "\\" + hash + "  " + r.Replace(file) + "\n"
+		return "\\" + hash + "  " + sumEscaper.Replace(file) + "\n"
 	}
 	return hash + "  " + file + "\n"
 }

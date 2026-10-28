@@ -492,6 +492,17 @@ else
     exit
 fi
 
+MTIME_OUTPUT=$(cd "$AUDITDIR/media" && "$HASHIT" -c md5 --mtime -f sum -o ../mtime.md5 . > /dev/null && md5sum -c --quiet ../mtime.md5 2>&1)
+if [ $? -eq 0 ] && grep -q '^# mtime ' "$AUDITDIR/mtime.md5" && ! echo "$MTIME_OUTPUT" | grep -q -i 'improperly'; then
+    echo -e "${GREEN}PASSED md5sum can verify sum format with mtime test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED md5sum can verify sum format with mtime test"
+    echo -e "$MTIME_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
 echo changed >> "$AUDITDIR/media/a.txt"
 if (cd "$AUDITDIR/media" && "$HASHIT" -a ../sums.md5 . | grep -q 'Files modified: 1'); then
     echo -e "${GREEN}PASSED audit detects modified file test"

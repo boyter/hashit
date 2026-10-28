@@ -280,6 +280,8 @@ $ hashit --hash md5 --format sum . > checksums.md5
 $ md5sum -c checksums.md5
 ```
 
+With `--mtime` the modification time of each file is written as a comment line such as `# mtime 2026-01-01 10:00:00  ./file`, which `md5sum -c` ignores.
+
 ### SQLite Auditing (Recommended for Large Datasets)
 
 For auditing very large collections of files, using a text-based `hashdeep` file can become slow and memory-intensive. To address this, `hashit` supports using a SQLite database as a scalable and efficient backend for creating and verifying audits.

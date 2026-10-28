@@ -464,7 +464,8 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 			continue
 		}
 
-		// hashit's sum format with --mtime writes a "2006-01-02 15:04:05  filename" line per file
+		// hashit's sum format with --mtime before 1.5.0 wrote a "2006-01-02 15:04:05  filename" line
+		// per file, it now writes them as comments which are skipped above
 		if sumMtimeLine.MatchString(line) {
 			continue
 		}
