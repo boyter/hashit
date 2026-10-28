@@ -330,6 +330,7 @@ echo "Running SQLite audit tests..."
 # Test 1: Creation and passing audit
 mkdir -p /tmp/hashit_sqlite
 echo "test file 1" > /tmp/hashit_sqlite/file1.txt
+rm -f /tmp/audit_sqlite.db
 ./hashit --hash all --format sqlite --output /tmp/audit_sqlite.db /tmp/hashit_sqlite/
 AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
 AUDIT_EXIT_CODE=$?
@@ -390,6 +391,7 @@ fi
 mkdir -p /tmp/hashit_sqlite_missing
 echo "file1" > /tmp/hashit_sqlite_missing/file1.txt
 echo "file2" > /tmp/hashit_sqlite_missing/file2.txt
+rm -f /tmp/audit_sqlite_missing.db
 ./hashit --hash all --format sqlite --output /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/
 rm /tmp/hashit_sqlite_missing/file2.txt
 AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/)
@@ -413,6 +415,7 @@ mkdir -p /tmp/hashit_mismatch
 echo "test file 1" > /tmp/hashit_mismatch/file1.txt
 
 # Test 5: Audit fails because no common hashes can be compared
+rm -f /tmp/audit_mismatch.db
 ./hashit --hash md5 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
 AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
 AUDIT_EXIT_CODE=$?
@@ -428,7 +431,7 @@ else
 fi
 
 # Test 6: Audit passes with a common hash subset
-./hashit --hash md5,sha1 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+./hashit --hash md5,sha1 --format sqlite --overwrite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
 AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
 AUDIT_EXIT_CODE=$?
 if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
@@ -529,6 +532,27 @@ else
 fi
 audit_test "sqlite audit file inside audited directory test" \
     "cd '$AUDITDIR/media' && '$HASHIT' -f sqlite -o audit.db . > /dev/null && '$HASHIT' -a audit.db ."
+if (cd "$AUDITDIR/media" && ! "$HASHIT" -f sqlite -o audit.db . > /dev/null 2>&1); then
+    echo -e "${GREEN}PASSED sqlite refuses to overwrite existing database test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite refuses to overwrite existing database test"
+    echo -e "======================================================="
+    exit
+fi
+
+echo "not a database" > "$AUDITDIR/notadb.txt"
+if ! "$HASHIT" -f sqlite --overwrite -o "$AUDITDIR/notadb.txt" "$AUDITDIR/media" > /dev/null 2>&1 && grep -q "not a database" "$AUDITDIR/notadb.txt"; then
+    echo -e "${GREEN}PASSED sqlite overwrite refuses to replace non database test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite overwrite refuses to replace non database test"
+    echo -e "======================================================="
+    exit
+fi
+
+audit_test "sqlite overwrite replaces existing database test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f sqlite --overwrite -o audit.db . > /dev/null && '$HASHIT' -a audit.db ."
 audit_test "sqlite audit with absolute path against relative database test" \
     "cd / && '$HASHIT' -a '$AUDITDIR/media/audit.db' '$AUDITDIR/media/'"
 audit_test "sqlite audit from parent directory test" \

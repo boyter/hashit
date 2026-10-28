@@ -41,6 +41,9 @@ var Recursive = false
 // Do not print out results as they are processed
 var NoStream = false
 
+// Overwrite allows the sqlite format to replace an existing database
+var Overwrite = false
+
 // If data is being piped in using stdin
 var StandardInput = false
 
@@ -213,11 +216,20 @@ func Process() {
 		addSkipFile(AuditFile)
 	}
 
+	// The sqlite format writes to the database as we go, so default the name up front
+	if strings.ToLower(Format) == "sqlite" && AuditFile == "" {
+		if FileOutput == "" {
+			FileOutput = "hashit.db"
+		}
+		if err := prepareSqliteOutput(FileOutput); err != nil {
+			printError(err.Error())
+			os.Exit(1)
+		}
+	}
+
 	// The output file is being written while we process, so its hash is meaningless
 	if FileOutput != "" {
 		addSkipFile(FileOutput)
-	} else if strings.ToLower(Format) == "sqlite" {
-		addSkipFile("hashit.db")
 	}
 
 	// If format is set to hashdeep
@@ -332,6 +344,33 @@ func Process() {
 		}
 		fmt.Println("results written to " + FileOutput)
 	}
+}
+
+// prepareSqliteOutput refuses to write over an existing database, as doing so would merge into
+// or destroy a previous audit, unless overwrite has been allowed in which case it is removed
+func prepareSqliteOutput(path string) error {
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("unable to check output file %s: %s", path, err.Error())
+	}
+
+	if !Overwrite {
+		return fmt.Errorf("output file %s already exists, use --overwrite to replace it", path)
+	}
+
+	// guard against a mistyped output name destroying something which is not a database
+	if fi, err := os.Stat(path); err == nil && fi.Size() != 0 && !isSQLiteDB(path) {
+		return fmt.Errorf("output file %s is not a SQLite database, refusing to replace it", path)
+	}
+
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("unable to remove existing output file %s: %s", path+suffix, err.Error())
+		}
+	}
+	return nil
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

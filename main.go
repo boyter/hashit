@@ -82,6 +82,12 @@ func main() {
 		"output filename (default stdout)",
 	)
 	flags.BoolVar(
+		&processor.Overwrite,
+		"overwrite",
+		false,
+		"allow sqlite format to replace an existing output database",
+	)
+	flags.BoolVar(
 		&processor.NoStream,
 		"no-stream",
 		false,
