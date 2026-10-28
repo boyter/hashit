@@ -7,7 +7,9 @@ import (
 	"regexp"
 )
 
-func walkDirectoryWithIgnore(toWalk string, output chan string) {
+// walkDirectoryWithIgnore walks the directory sending every file found to output, with
+// prefix added to the start of each path
+func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 	fileListQueue := make(chan *gocodewalker.File, 1000)
 	var fileWalker *gocodewalker.FileWalker
 	if NoThreads != 1 {
@@ -53,6 +55,6 @@ func walkDirectoryWithIgnore(toWalk string, output chan string) {
 	}()
 
 	for f := range fileListQueue {
-		output <- f.Location
+		output <- prefix + f.Location
 	}
 }

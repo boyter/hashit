@@ -41,6 +41,9 @@ var Recursive = false
 // Do not print out results as they are processed
 var NoStream = false
 
+// Overwrite allows the sqlite format to replace an existing database
+var Overwrite = false
+
 // If data is being piped in using stdin
 var StandardInput = false
 
@@ -58,6 +61,36 @@ var FileOutput = ""
 
 // AuditFile sets the file that we want to audit against similar to hashdeep
 var AuditFile = ""
+
+// auditor holds the parsed AuditFile
+var auditor *Auditor
+
+// sqliteCompareHashes are the hashes both requested and stored in a SQLite AuditFile, strongest first
+var sqliteCompareHashes []string
+
+// skipFiles holds the absolute paths of files which should never be processed, such as the audit
+// file or output file when they are inside the directory being processed
+var skipFiles = map[string]bool{}
+
+// addSkipFile adds a file to skipFiles, along with the files SQLite creates alongside a database
+func addSkipFile(path string) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		skipFiles[abs+suffix] = true
+	}
+}
+
+// shouldSkipFile reports if the file is one we should never process
+func shouldSkipFile(path string) bool {
+	if len(skipFiles) == 0 {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	return err == nil && skipFiles[abs]
+}
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
@@ -131,8 +164,10 @@ func Process() {
 
 	// If nothing was supplied as an argument to run against, assume run against everything in the
 	// current directory recursively
+	defaultPath := false
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
+		defaultPath = true
 	}
 
 	// If a single argument is supplied, enable recursive as if it's a file no problem
@@ -144,10 +179,60 @@ func Process() {
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
-	// Where audit file is set we only want to process the hashes that hashdeep supports for this
-	// NB we will need to expand this in the future when supporting our own format
+	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
-		Hash = []string{"md5", "sha256"}
+		if isSQLiteDB(AuditFile) {
+			// we calculate the hashes requested and compare those the database also has
+			stored, err := sqliteAuditHashes(AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to read audit database %s: %s", AuditFile, err.Error()))
+				os.Exit(1)
+			}
+			sqliteCompareHashes = nil
+			for _, h := range stored {
+				if hasHash(h) {
+					sqliteCompareHashes = append(sqliteCompareHashes, h)
+				}
+			}
+			if len(sqliteCompareHashes) == 0 {
+				printError(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
+			}
+		} else {
+			file, err := os.ReadFile(AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
+				os.Exit(1)
+			}
+
+			auditor, err = NewAuditor(string(file), AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
+				os.Exit(1)
+			}
+			// the audit file cannot contain its own hash, so never process or expect it
+			auditor.Exclude(AuditFile)
+			Hash = auditor.HashNames()
+		}
+		addSkipFile(AuditFile)
+	}
+
+	// The sqlite format writes to the database as we go, so default the name up front
+	sqliteOutput := strings.ToLower(Format) == "sqlite" && AuditFile == ""
+	if sqliteOutput && FileOutput == "" {
+		FileOutput = "hashit.db"
+	}
+
+	// Check before doing any work that we are not going to destroy an existing file
+	if FileOutput != "" {
+		if err := prepareOutput(FileOutput, sqliteOutput); err != nil {
+			printError(err.Error())
+			os.Exit(1)
+		}
+	}
+
+	// The output file is being written while we process, so its hash is meaningless
+	if FileOutput != "" {
+		addSkipFile(FileOutput)
 	}
 
 	// If format is set to hashdeep
@@ -179,6 +264,13 @@ func Process() {
 					fp := filepath.Clean(f)
 					fi, err := os.Stat(fp)
 
+					// keep a leading ./ the user supplied as hashdeep and md5sum do, so that our
+					// output matches theirs when run the same way
+					prefix := ""
+					if !defaultPath {
+						prefix = dotPrefix(f, fp)
+					}
+
 					// If there is an error which is usually does not exist then exit non zero
 					if err != nil {
 						printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
@@ -186,10 +278,10 @@ func Process() {
 					} else {
 						if fi.IsDir() {
 							if Recursive {
-								walkDirectoryWithIgnore(fp, fileListQueue)
+								walkDirectoryWithIgnore(fp, prefix, fileListQueue)
 							}
 						} else {
-							fileListQueue <- fp
+							fileListQueue <- prefix + fp
 						}
 					}
 				}
@@ -249,12 +341,63 @@ func Process() {
 			os.Exit(1)
 		}
 	} else {
-		// we don't write out sqlite
-		if strings.ToLower(Format) != "sqlite" {
-			_ = os.WriteFile(FileOutput, []byte(result), 0600)
+		// we don't write out sqlite as it is written as we go
+		if !sqliteOutput {
+			if err := os.WriteFile(FileOutput, []byte(result), 0600); err != nil {
+				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
+				os.Exit(1)
+			}
 		}
 		fmt.Println("results written to " + FileOutput)
+		if !valid {
+			os.Exit(1)
+		}
 	}
+}
+
+// prepareOutput refuses to write over an existing file unless overwrite has been allowed. An
+// existing sqlite database is removed, as writing into it would merge with the previous results
+func prepareOutput(path string, sqlite bool) error {
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("unable to check output file %s: %s", path, err.Error())
+	}
+
+	if !Overwrite {
+		return fmt.Errorf("output file %s already exists, use --overwrite to replace it", path)
+	}
+
+	if !sqlite {
+		return nil
+	}
+
+	// guard against a mistyped output name destroying something which is not a database
+	if fi, err := os.Stat(path); err == nil && fi.Size() != 0 && !isSQLiteDB(path) {
+		return fmt.Errorf("output file %s is not a SQLite database, refusing to replace it", path)
+	}
+
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("unable to remove existing output file %s: %s", path+suffix, err.Error())
+		}
+	}
+	return nil
+}
+
+// dotPrefix returns "./" when the supplied path started with it, or was the current directory,
+// and the cleaned path does not already start with it. Paths which are absolute or leave the
+// current directory such as "./../a" are returned as cleaned without a prefix
+func dotPrefix(supplied string, cleaned string) string {
+	sep := string(filepath.Separator)
+	if supplied != "." && !strings.HasPrefix(supplied, "./") && !strings.HasPrefix(supplied, "."+sep) {
+		return ""
+	}
+	if filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+sep) {
+		return ""
+	}
+	return "." + sep
 }
 
 // ToLower all of the input hashes so we can match them easily

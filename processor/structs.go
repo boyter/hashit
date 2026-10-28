@@ -25,3 +25,40 @@ type Result struct {
 	Bytes      int64
 	MTime      *time.Time `json:",omitzero"`
 }
+
+// hashValue returns the value of the hash with the supplied name, or empty if not calculated
+func (r Result) hashValue(name string) string {
+	switch name {
+	case HashNames.CRC32:
+		return r.CRC32
+	case HashNames.XxHash64:
+		return r.XxHash64
+	case HashNames.MD4:
+		return r.MD4
+	case HashNames.MD5:
+		return r.MD5
+	case HashNames.SHA1:
+		return r.SHA1
+	case HashNames.SHA256:
+		return r.SHA256
+	case HashNames.SHA512:
+		return r.SHA512
+	case HashNames.Blake2b256:
+		return r.Blake2b256
+	case HashNames.Blake2b512:
+		return r.Blake2b512
+	case HashNames.Blake3:
+		return r.Blake3
+	case HashNames.Sha3224:
+		return r.Sha3224
+	case HashNames.Sha3256:
+		return r.Sha3256
+	case HashNames.Sha3384:
+		return r.Sha3384
+	case HashNames.Sha3512:
+		return r.Sha3512
+	case HashNames.Ed2k:
+		return r.Ed2k
+	}
+	return ""
+}

@@ -59,7 +59,7 @@ func main() {
 		"audit",
 		"a",
 		"",
-		"audit against supplied file; audit file must be in hashdeep output format",
+		"audit against supplied file; accepts hashdeep, sum (md5sum, sha256sum etc...) or hashit sqlite format",
 	)
 	flags.BoolVarP(
 		&processor.Recursive,
@@ -80,6 +80,12 @@ func main() {
 		"o",
 		"",
 		"output filename (default stdout)",
+	)
+	flags.BoolVar(
+		&processor.Overwrite,
+		"overwrite",
+		false,
+		"allow output to replace an existing file",
 	)
 	flags.BoolVar(
 		&processor.NoStream,

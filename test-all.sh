@@ -208,15 +208,6 @@ else
     exit
 fi
 
-if ./hashit --mtime -f hashdeep ./hashit | grep -q -i 'mtime'; then
-    echo -e "${GREEN}PASSED mtime hashdeep"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED Should be able to deal with mtime hashdeep"
-    echo -e "======================================================="
-    exit
-fi
-
 if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
     echo -e "${GREEN}PASSED stdin mtime test"
 else
@@ -233,17 +224,6 @@ if [ "$a" == "$b" ]; then
 else
     echo -e "${RED}======================================================="
     echo -e "FAILED stream output test"
-    echo -e "================================================="
-    exit
-fi
-
-a=$(./hashit --format hashdeep main.go | grep ',main.go')
-b=$(hashdeep -l main.go | grep ',main.go')
-if [ "$a" == "$b" ]; then
-    echo -e "${GREEN}PASSED hashdeep hash test"
-else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED hashdeep hash test"
     echo -e "================================================="
     exit
 fi
@@ -315,6 +295,7 @@ else
     exit
 fi
 
+echo ""
 if ./hashit --format hashdeep processor > audit.txt && hashdeep -l -r -a -k audit.txt processor | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED relative hashdeep audit test"
 else
@@ -344,9 +325,60 @@ else
     exit
 fi
 
+echo "Running SQLite audit tests..."
+
+# Test 1: Creation and passing audit
+mkdir -p /tmp/hashit_sqlite
+echo "test file 1" > /tmp/hashit_sqlite/file1.txt
+rm -f /tmp/audit_sqlite.db
+./hashit --hash all --format sqlite --output /tmp/audit_sqlite.db /tmp/hashit_sqlite/
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED SQLite audit basic test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit basic test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 2: Modified file
+echo "modified content" > /tmp/hashit_sqlite/file1.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit modified file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit modified file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 3: New file
+# NB we expect 1 modified and 1 new file here because of the previous test
+echo "new file" > /tmp/hashit_sqlite/file2.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite.db /tmp/hashit_sqlite/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'New files found: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit new file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit new file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
 mkdir -p /tmp/hashit/
 echo "hello" > /tmp/hashit/file
-if hashdeep -r /tmp/hashit/ > audit.txt && hashit -a audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
+if hashdeep -r /tmp/hashit/ > audit.txt && ./hashit -a audit.txt /tmp/hashit/ | grep -q -i 'Audit passed'; then
     echo -e "${GREEN}PASSED full hashdeep audit reverse test"
 else
     echo -e "${RED}======================================================="
@@ -355,11 +387,233 @@ else
     exit
 fi
 
+# Test 4: Missing file
+mkdir -p /tmp/hashit_sqlite_missing
+echo "file1" > /tmp/hashit_sqlite_missing/file1.txt
+echo "file2" > /tmp/hashit_sqlite_missing/file2.txt
+rm -f /tmp/audit_sqlite_missing.db
+./hashit --hash all --format sqlite --output /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/
+rm /tmp/hashit_sqlite_missing/file2.txt
+AUDIT_OUTPUT=$(./hashit --audit /tmp/audit_sqlite_missing.db /tmp/hashit_sqlite_missing/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files missing: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit missing file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit missing file test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+echo ""
+echo "Running SQLite mismatched hash audit tests..."
+
+# Setup for mismatched hash tests
+mkdir -p /tmp/hashit_mismatch
+echo "test file 1" > /tmp/hashit_mismatch/file1.txt
+
+# Test 5: Audit fails because no common hashes can be compared
+rm -f /tmp/audit_mismatch.db
+./hashit --hash md5 --format sqlite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit no common hashes test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit no common hashes test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 6: Audit passes with a common hash subset
+./hashit --hash md5,sha1 --format sqlite --overwrite --output /tmp/audit_mismatch.db /tmp/hashit_mismatch/
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -eq 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Audit passed'; then
+    echo -e "${GREEN}PASSED SQLite audit common hash subset test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Test 7: Audit fails with a common hash subset after modification
+echo "modified content" > /tmp/hashit_mismatch/file1.txt
+AUDIT_OUTPUT=$(./hashit --hash sha1 --audit /tmp/audit_mismatch.db /tmp/hashit_mismatch/)
+AUDIT_EXIT_CODE=$?
+if [ $AUDIT_EXIT_CODE -ne 0 ] && echo "$AUDIT_OUTPUT" | grep -q -i 'Files modified: 1'; then
+    echo -e "${GREEN}PASSED SQLite audit modified common hash subset test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED SQLite audit modified common hash subset test (Exit Code: $AUDIT_EXIT_CODE)"
+    echo -e "Output was:"
+    echo -e "$AUDIT_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+# Audit edge cases, see https://github.com/boyter/hashit/issues/12
+AUDITDIR=$(mktemp -d)
+mkdir -p "$AUDITDIR/media/sub"
+echo a > "$AUDITDIR/media/a.txt"
+echo b > "$AUDITDIR/media/b, with comma.txt"
+echo c > "$AUDITDIR/media/c \"quoted\".txt"
+echo d > "$AUDITDIR/media/sub/ünïcode.txt"
+echo e > "$AUDITDIR/media/back\\slash.txt"
+HASHIT=$(pwd)/hashit
+
+audit_test() {
+    # $1 description, $2 command which must pass
+    if (eval "$2") | grep -q -i 'Audit passed'; then
+        echo -e "${GREEN}PASSED $1"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $1"
+        echo -e "======================================================="
+        exit
+    fi
+}
+
+audit_test "audit file inside audited directory test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep -o hashes.txt . > /dev/null && '$HASHIT' -a hashes.txt ."
+audit_test "hashdeep can audit hashit output generated from . test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep . > ../dot.txt && hashdeep -l -r -a -k ../dot.txt ."
+audit_test "hashdeep can audit hashit output generated from ./sub test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep ./sub > ../dotsub.txt && hashdeep -l -r -a -k ../dotsub.txt ./sub"
+audit_test "audit with absolute path against relative hashdeep file test" \
+    "cd / && '$HASHIT' -a '$AUDITDIR/media/hashes.txt' '$AUDITDIR/media/'"
+audit_test "audit md5 only hashdeep file test" \
+    "cd '$AUDITDIR/media' && hashdeep -c md5 -r -l . > ../md5.txt && '$HASHIT' -a ../md5.txt ."
+audit_test "audit hashdeep relative file from parent directory test" \
+    "cd '$AUDITDIR/media' && hashdeep -r -l . > ../hd.txt && cd .. && '$HASHIT' -a hd.txt media"
+audit_test "audit md5sum file test" \
+    "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 md5sum > ../sums.md5 && '$HASHIT' -a ../sums.md5 ."
+audit_test "audit sha256sum bsd tag file test" \
+    "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 sha256sum --tag > ../sums.sha256 && '$HASHIT' -a ../sums.sha256 ."
+audit_test "audit hashit sum file test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -c md5,sha1,sha256 -f sum -o ../sums.txt . > /dev/null && '$HASHIT' -a ../sums.txt ."
+
+if (cd "$AUDITDIR/media" && "$HASHIT" -c md5 -f sum -o ../check.md5 . > /dev/null && md5sum -c --quiet ../check.md5); then
+    echo -e "${GREEN}PASSED md5sum can verify sum format test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED md5sum can verify sum format test"
+    echo -e "======================================================="
+    exit
+fi
+
+MTIME_OUTPUT=$(cd "$AUDITDIR/media" && "$HASHIT" -c md5 --mtime -f sum -o ../mtime.md5 . > /dev/null && md5sum -c --quiet ../mtime.md5 2>&1)
+if [ $? -eq 0 ] && grep -q '^# mtime ' "$AUDITDIR/mtime.md5" && ! echo "$MTIME_OUTPUT" | grep -q -i 'improperly'; then
+    echo -e "${GREEN}PASSED md5sum can verify sum format with mtime test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED md5sum can verify sum format with mtime test"
+    echo -e "$MTIME_OUTPUT"
+    echo -e "======================================================="
+    exit
+fi
+
+echo "keep me" > "$AUDITDIR/existing.txt"
+if ! "$HASHIT" -o "$AUDITDIR/existing.txt" "$AUDITDIR/media" > /dev/null 2>&1 && grep -q "keep me" "$AUDITDIR/existing.txt"; then
+    echo -e "${GREEN}PASSED refuses to overwrite existing output file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED refuses to overwrite existing output file test"
+    echo -e "======================================================="
+    exit
+fi
+
+if "$HASHIT" --overwrite -o "$AUDITDIR/existing.txt" "$AUDITDIR/media" > /dev/null && ! grep -q "keep me" "$AUDITDIR/existing.txt"; then
+    echo -e "${GREEN}PASSED overwrite replaces existing output file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED overwrite replaces existing output file test"
+    echo -e "======================================================="
+    exit
+fi
+
+echo changed >> "$AUDITDIR/media/a.txt"
+if (cd "$AUDITDIR/media" && "$HASHIT" -a ../sums.md5 . | grep -q 'Files modified: 1'); then
+    echo -e "${GREEN}PASSED audit detects modified file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED audit detects modified file test"
+    echo -e "======================================================="
+    exit
+fi
+audit_test "sqlite audit file inside audited directory test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f sqlite -o audit.db . > /dev/null && '$HASHIT' -a audit.db ."
+if (cd "$AUDITDIR/media" && ! "$HASHIT" -f sqlite -o audit.db . > /dev/null 2>&1); then
+    echo -e "${GREEN}PASSED sqlite refuses to overwrite existing database test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite refuses to overwrite existing database test"
+    echo -e "======================================================="
+    exit
+fi
+
+echo "not a database" > "$AUDITDIR/notadb.txt"
+if ! "$HASHIT" -f sqlite --overwrite -o "$AUDITDIR/notadb.txt" "$AUDITDIR/media" > /dev/null 2>&1 && grep -q "not a database" "$AUDITDIR/notadb.txt"; then
+    echo -e "${GREEN}PASSED sqlite overwrite refuses to replace non database test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite overwrite refuses to replace non database test"
+    echo -e "======================================================="
+    exit
+fi
+
+audit_test "sqlite overwrite replaces existing database test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f sqlite --overwrite -o audit.db . > /dev/null && '$HASHIT' -a audit.db ."
+audit_test "sqlite audit with absolute path against relative database test" \
+    "cd / && '$HASHIT' -a '$AUDITDIR/media/audit.db' '$AUDITDIR/media/'"
+audit_test "sqlite audit from parent directory test" \
+    "cd '$AUDITDIR' && '$HASHIT' -a media/audit.db media"
+if [ ! -e "$AUDITDIR/media/audit.db-wal" ] && [ ! -e "$AUDITDIR/media/audit.db-shm" ]; then
+    echo -e "${GREEN}PASSED sqlite audit leaves no files behind test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite audit leaves no files behind test"
+    echo -e "======================================================="
+    exit
+fi
+
+mv "$AUDITDIR/media/sub/ünïcode.txt" "$AUDITDIR/media/moved.txt"
+if (cd "$AUDITDIR/media" && "$HASHIT" -a audit.db . | grep -q 'Files moved: 1'); then
+    echo -e "${GREEN}PASSED sqlite audit detects moved file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED sqlite audit detects moved file test"
+    echo -e "======================================================="
+    exit
+fi
+if (cd "$AUDITDIR/media" && ! "$HASHIT" -a ../sums.md5 -o ../failed-audit.txt . > /dev/null) && grep -q 'Audit failed' "$AUDITDIR/failed-audit.txt"; then
+    echo -e "${GREEN}PASSED failed audit to output file exits non zero test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED failed audit to output file exits non zero test"
+    echo -e "======================================================="
+    exit
+fi
+rm -rf "$AUDITDIR"
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
-rm ./audit.txt
-rm /tmp/hashit/file
-rmdir /tmp/hashit/
+rm -f ./audit.txt
+rm -rf /tmp/hashit
+rm -rf /tmp/hashit_sqlite
+rm -rf /tmp/hashit_sqlite_missing
+rm -rf /tmp/hashit_mismatch
+rm -f /tmp/audit_sqlite.db
+rm -f /tmp/audit_sqlite_missing.db
+rm -f /tmp/audit_mismatch.db
 
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"

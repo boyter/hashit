@@ -28,3 +28,8 @@ type FileHash struct {
 	Size       int64
 	Mtime      interface{}
 }
+
+type Metadata struct {
+	Key   string
+	Value string
+}

@@ -40,6 +40,47 @@ func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (File
 	return i, err
 }
 
+const fileHashCount = `-- name: FileHashCount :one
+select count(*) from file_hashes
+`
+
+func (q *Queries) FileHashCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, fileHashCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const fileHashFirst = `-- name: FileHashFirst :one
+select filepath, crc32, xxhash64, md4, md5, sha1, sha256, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes limit 1
+`
+
+func (q *Queries) FileHashFirst(ctx context.Context) (FileHash, error) {
+	row := q.db.QueryRowContext(ctx, fileHashFirst)
+	var i FileHash
+	err := row.Scan(
+		&i.Filepath,
+		&i.Crc32,
+		&i.Xxhash64,
+		&i.Md4,
+		&i.Md5,
+		&i.Sha1,
+		&i.Sha256,
+		&i.Sha512,
+		&i.Blake2b256,
+		&i.Blake2b512,
+		&i.Blake3,
+		&i.Sha3224,
+		&i.Sha3256,
+		&i.Sha3384,
+		&i.Sha3512,
+		&i.Ed2k,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
 const fileHashInsertReplace = `-- name: FileHashInsertReplace :one
 
 insert or replace into file_hashes (
@@ -115,4 +156,29 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		&i.Mtime,
 	)
 	return i, err
+}
+
+const metadataGet = `-- name: MetadataGet :one
+select value from metadata where key = ?
+`
+
+func (q *Queries) MetadataGet(ctx context.Context, key string) (string, error) {
+	row := q.db.QueryRowContext(ctx, metadataGet, key)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
+const metadataSet = `-- name: MetadataSet :exec
+insert or replace into metadata (key, value) values (?, ?)
+`
+
+type MetadataSetParams struct {
+	Key   string
+	Value string
+}
+
+func (q *Queries) MetadataSet(ctx context.Context, arg MetadataSetParams) error {
+	_, err := q.db.ExecContext(ctx, metadataSet, arg.Key, arg.Value)
+	return err
 }

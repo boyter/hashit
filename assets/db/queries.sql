@@ -10,3 +10,15 @@ returning *;
 
 -- name: FileHashByFilePath :one
 select * from file_hashes where filepath = ?;
+
+-- name: FileHashFirst :one
+select * from file_hashes limit 1;
+
+-- name: FileHashCount :one
+select count(*) from file_hashes;
+
+-- name: MetadataSet :exec
+insert or replace into metadata (key, value) values (?, ?);
+
+-- name: MetadataGet :one
+select value from metadata where key = ?;

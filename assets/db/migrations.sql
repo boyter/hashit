@@ -20,3 +20,8 @@ create table if not exists file_hashes (
      size integer not null,
      mtime text null
 );
+
+create table if not exists metadata (
+    key text primary key,
+    value text not null
+);
