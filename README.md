@@ -258,6 +258,10 @@ $ rm -rf /tmp/hashit-audit-test audit.txt
 
 `hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. Use `-v` to list every file which is modified, moved, new or missing. Results are reported in the order of the audit file, followed by any new files.
 
+#### Modification Times
+
+With `--mtime` the modification time of each file is written as a comment line after it, such as `## mtime 2026-01-01 10:00:00`. `hashdeep` ignores comment lines, so the file remains compatible with it, and filenames containing commas are not ambiguous.
+
 #### Absolute Paths
 
 `hashdeep` outputs absolute paths unless run with `-l`, whereas `hashit` outputs paths as supplied, which is the same as `hashdeep -l`. Relative paths make a manifest which can be shipped with the files and verified elsewhere. To match `hashdeep`'s default use `--absolute`.

@@ -606,6 +606,12 @@ fi
 audit_test "hashdeep can audit hashit --absolute output test" \
     "cd '$AUDITDIR/media' && '$HASHIT' --absolute -f hashdeep . > ../absolute.txt && hashdeep -r -a -k ../absolute.txt . < /dev/null"
 
+# https://github.com/boyter/hashit/issues/20
+audit_test "hashdeep can audit hashit --mtime output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' --mtime -f hashdeep . > ../mtime-hashdeep.txt && grep -q '^## mtime ' ../mtime-hashdeep.txt && hashdeep -l -r -a -k ../mtime-hashdeep.txt . < /dev/null"
+audit_test "hashit can audit hashit --mtime hashdeep output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -a ../mtime-hashdeep.txt ."
+
 # https://github.com/boyter/hashit/issues/27
 audit_test "hashdeep can audit hashit sha256 only output test" \
     "cd '$AUDITDIR/media' && '$HASHIT' -c sha256 -f hashdeep . > ../sha256only.txt && hashdeep -l -r -a -k ../sha256only.txt . < /dev/null"
