@@ -466,6 +466,10 @@ audit_test() {
 
 audit_test "audit file inside audited directory test" \
     "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep -o hashes.txt . > /dev/null && '$HASHIT' -a hashes.txt ."
+audit_test "hashdeep can audit hashit output generated from . test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep . > ../dot.txt && hashdeep -l -r -a -k ../dot.txt ."
+audit_test "hashdeep can audit hashit output generated from ./sub test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep ./sub > ../dotsub.txt && hashdeep -l -r -a -k ../dotsub.txt ./sub"
 audit_test "audit with absolute path against relative hashdeep file test" \
     "cd / && '$HASHIT' -a '$AUDITDIR/media/hashes.txt' '$AUDITDIR/media/'"
 audit_test "audit md5 only hashdeep file test" \

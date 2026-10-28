@@ -121,8 +121,27 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 // sqlitePathCandidates returns the paths a file on disk may be stored under in the database,
 // in order of preference. Relative paths are stored relative to where hashit was invoked from
 func sqlitePathCandidates(file string, invokedFrom string) []string {
+	var candidates []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			candidates = append(candidates, p)
+		}
+	}
+
+	// relative paths may have been stored with or without a leading ./ depending on how
+	// hashit was run, so try both
+	addRelative := func(p string) {
+		add(p)
+		if !filepath.IsAbs(p) && !strings.HasPrefix(p, "..") {
+			add("." + string(filepath.Separator) + p)
+		}
+	}
+
 	clean := filepath.Clean(file)
-	candidates := []string{clean}
+	add(file)
+	addRelative(clean)
 
 	abs, err := filepath.Abs(clean)
 	if err != nil {
@@ -130,13 +149,11 @@ func sqlitePathCandidates(file string, invokedFrom string) []string {
 	}
 
 	if invokedFrom != "" {
-		if rel, err := filepath.Rel(invokedFrom, abs); err == nil && rel != clean && !strings.HasPrefix(rel, "..") {
-			candidates = append(candidates, rel)
+		if rel, err := filepath.Rel(invokedFrom, abs); err == nil && !strings.HasPrefix(rel, "..") {
+			addRelative(rel)
 		}
 	}
-	if abs != clean {
-		candidates = append(candidates, abs)
-	}
+	add(abs)
 	return candidates
 }
 

@@ -158,8 +158,10 @@ func Process() {
 
 	// If nothing was supplied as an argument to run against, assume run against everything in the
 	// current directory recursively
+	defaultPath := false
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
+		defaultPath = true
 	}
 
 	// If a single argument is supplied, enable recursive as if it's a file no problem
@@ -235,6 +237,13 @@ func Process() {
 					fp := filepath.Clean(f)
 					fi, err := os.Stat(fp)
 
+					// keep a leading ./ the user supplied as hashdeep and md5sum do, so that our
+					// output matches theirs when run the same way
+					prefix := ""
+					if !defaultPath {
+						prefix = dotPrefix(f, fp)
+					}
+
 					// If there is an error which is usually does not exist then exit non zero
 					if err != nil {
 						printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
@@ -242,10 +251,10 @@ func Process() {
 					} else {
 						if fi.IsDir() {
 							if Recursive {
-								walkDirectoryWithIgnore(fp, fileListQueue)
+								walkDirectoryWithIgnore(fp, prefix, fileListQueue)
 							}
 						} else {
-							fileListQueue <- fp
+							fileListQueue <- prefix + fp
 						}
 					}
 				}
@@ -311,6 +320,20 @@ func Process() {
 		}
 		fmt.Println("results written to " + FileOutput)
 	}
+}
+
+// dotPrefix returns "./" when the supplied path started with it, or was the current directory,
+// and the cleaned path does not already start with it. Paths which are absolute or leave the
+// current directory such as "./../a" are returned as cleaned without a prefix
+func dotPrefix(supplied string, cleaned string) string {
+	sep := string(filepath.Separator)
+	if supplied != "." && !strings.HasPrefix(supplied, "./") && !strings.HasPrefix(supplied, "."+sep) {
+		return ""
+	}
+	if filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+sep) {
+		return ""
+	}
+	return "." + sep
 }
 
 // ToLower all of the input hashes so we can match them easily
