@@ -50,6 +50,10 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			printDebug(fmt.Sprintf("processing %s", res))
 		}
 
+		if shouldSkipFile(res) {
+			continue
+		}
+
 		// Open the file and determine if we should read it from disk or memory map
 		// based on how large it is reported as being
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
@@ -71,11 +75,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		fi, err := file.Stat()
 		if err != nil {
 			printError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
-			_ = file.Close()
-			continue
-		}
-
-		if auditFileInfo != nil && os.SameFile(fi, auditFileInfo) {
 			_ = file.Close()
 			continue
 		}
@@ -149,7 +148,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 	}
 }
 
-// TODO compare this to memory maps
 // Random tests indicate that mmap is faster when not in power save mode
 func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
 	file, err := os.Open(filename)
@@ -157,7 +155,12 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
 		return Result{}, err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			printError(fmt.Sprintf("closing file %s: %s", filename, err.Error()))
+		}
+	}(file)
 
 	crc32_d := crc32.NewIEEE()
 	xxhash64_d := xxhash.New()
@@ -175,21 +178,23 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	sha3_512_d := sha3.New512()
 	ed2k_d := ed2k.New()
 
-	crc32c := make(chan []byte, 10)
-	xxhash64c := make(chan []byte, 10)
-	md4c := make(chan []byte, 10)
-	md5c := make(chan []byte, 10)
-	sha1c := make(chan []byte, 10)
-	sha256c := make(chan []byte, 10)
-	sha512c := make(chan []byte, 10)
-	blake2b_256_c := make(chan []byte, 10)
-	blake2b_512_c := make(chan []byte, 10)
-	blake3c := make(chan []byte, 10)
-	sha3_224_c := make(chan []byte, 10)
-	sha3_256_c := make(chan []byte, 10)
-	sha3_384_c := make(chan []byte, 10)
-	sha3_512_c := make(chan []byte, 10)
-	ed2k_c := make(chan []byte, 10)
+	chanSize := 50 // 50 in tests has less backpressure than 10 but isn't so large as to cause issues
+
+	crc32c := make(chan []byte, chanSize)
+	xxhash64c := make(chan []byte, chanSize)
+	md4c := make(chan []byte, chanSize)
+	md5c := make(chan []byte, chanSize)
+	sha1c := make(chan []byte, chanSize)
+	sha256c := make(chan []byte, chanSize)
+	sha512c := make(chan []byte, chanSize)
+	blake2b_256_c := make(chan []byte, chanSize)
+	blake2b_512_c := make(chan []byte, chanSize)
+	blake3c := make(chan []byte, chanSize)
+	sha3_224_c := make(chan []byte, chanSize)
+	sha3_256_c := make(chan []byte, chanSize)
+	sha3_384_c := make(chan []byte, chanSize)
+	sha3_512_c := make(chan []byte, chanSize)
+	ed2k_c := make(chan []byte, chanSize)
 
 	var wg sync.WaitGroup
 
@@ -197,7 +202,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 		wg.Add(1)
 		go func() {
 			for b := range crc32c {
-				crc32_d.Write(b)
+				_, _ = crc32_d.Write(b)
 			}
 			wg.Done()
 		}()
@@ -768,7 +773,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 		go func() {
 			startTime = makeTimestampNano()
 			d := crc32.NewIEEE()
-			d.Write(*content)
+			_, _ = d.Write(*content)
 			result.CRC32 = hex.EncodeToString(d.Sum(nil))
 
 			if Trace {
@@ -984,7 +989,7 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.CRC32) {
 		startTime := makeTimestampNano()
 		d := crc32.NewIEEE()
-		d.Write(*content)
+		_, _ = d.Write(*content)
 		result.CRC32 = hex.EncodeToString(d.Sum(nil))
 
 		if Trace {

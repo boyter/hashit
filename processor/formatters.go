@@ -60,6 +60,9 @@ func makeTimestampNano() int64 {
 
 func fileSummarize(input chan Result) (string, bool) {
 	if AuditFile != "" {
+		if isSQLiteDB(AuditFile) {
+			return doSqliteAudit(input)
+		}
 		return doAudit(input)
 	}
 
@@ -494,6 +497,14 @@ func toSqlite(input chan Result) (string, bool) {
 	}
 	withTx := queries.WithTx(tx)
 
+	// relative paths are relative to where we were run from, which the audit needs to resolve them
+	if pwd, err := os.Getwd(); err == nil {
+		if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataInvokedFrom, Value: pwd}); err != nil {
+			printError(err.Error())
+			return "", false
+		}
+	}
+
 	count := 0
 	for res := range input {
 
@@ -552,8 +563,9 @@ func toSqlite(input chan Result) (string, bool) {
 		printError(err.Error())
 	}
 
-	// ensure we merge the WAL into a single file
-	_, err = db.Exec("PRAGMA wal_checkpoint(FULL)")
+	// ensure we merge the WAL into a single file, and leave the database out of WAL mode so that
+	// opening it read-only to audit does not create -wal and -shm files next to it
+	_, err = db.Exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
 	if err != nil {
 		printError(err.Error())
 	}

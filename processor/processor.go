@@ -62,8 +62,29 @@ var AuditFile = ""
 // auditor holds the parsed AuditFile
 var auditor *Auditor
 
-// auditFileInfo is used to skip the AuditFile when it is inside the directory being audited
-var auditFileInfo os.FileInfo
+// skipFiles holds the absolute paths of files which should never be processed, such as the audit
+// file or output file when they are inside the directory being processed
+var skipFiles = map[string]bool{}
+
+// addSkipFile adds a file to skipFiles, along with the files SQLite creates alongside a database
+func addSkipFile(path string) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		skipFiles[abs+suffix] = true
+	}
+}
+
+// shouldSkipFile reports if the file is one we should never process
+func shouldSkipFile(path string) bool {
+	if len(skipFiles) == 0 {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	return err == nil && skipFiles[abs]
+}
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
 var DirFilePaths = []string{}
@@ -152,21 +173,37 @@ func Process() {
 
 	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
-		file, err := os.ReadFile(AuditFile)
-		if err != nil {
-			printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
-			os.Exit(1)
-		}
+		if isSQLiteDB(AuditFile) {
+			hashes, err := sqliteAuditHashes(AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to read audit database %s: %s", AuditFile, err.Error()))
+				os.Exit(1)
+			}
+			Hash = hashes
+		} else {
+			file, err := os.ReadFile(AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
+				os.Exit(1)
+			}
 
-		auditor, err = NewAuditor(string(file), AuditFile)
-		if err != nil {
-			printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
-			os.Exit(1)
+			auditor, err = NewAuditor(string(file), AuditFile)
+			if err != nil {
+				printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
+				os.Exit(1)
+			}
+			// the audit file cannot contain its own hash, so never process or expect it
+			auditor.Exclude(AuditFile)
+			Hash = auditor.HashNames()
 		}
-		// the audit file cannot contain its own hash, so never process or expect it
-		auditor.Exclude(AuditFile)
-		auditFileInfo, _ = os.Stat(AuditFile)
-		Hash = auditor.HashNames()
+		addSkipFile(AuditFile)
+	}
+
+	// The output file is being written while we process, so its hash is meaningless
+	if FileOutput != "" {
+		addSkipFile(FileOutput)
+	} else if strings.ToLower(Format) == "sqlite" {
+		addSkipFile("hashit.db")
 	}
 
 	// If format is set to hashdeep
