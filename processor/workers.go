@@ -62,14 +62,16 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			continue
 		}
 
-		var mtime time.Time
+		// where mtime cannot be read we still want the hashes, so report it and leave mtime unset
+		var mtime *time.Time
 		if MTime {
 			stat, err := times.Stat(res)
 			if err != nil {
 				printError(fmt.Sprintf("Unable to read mtime file %s with error %s", res, err.Error()))
-				return
+			} else {
+				m := stat.ModTime()
+				mtime = &m
 			}
-			mtime = stat.ModTime()
 		}
 
 		fi, err := file.Stat()
@@ -103,7 +105,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			if err == nil {
 				r.File = res
 				r.Bytes = fsize
-				r.MTime = &mtime
+				r.MTime = mtime
 				output <- r
 			}
 
@@ -140,7 +142,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			if err == nil {
 				r.File = res
 				r.Bytes = fsize
-				r.MTime = &mtime
+				r.MTime = mtime
 				output <- r
 			}
 		}
