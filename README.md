@@ -77,7 +77,7 @@ Flags:
   -i, --input string            input file of newline seperated file locations to process
       --mtime                   enable mtime output
       --no-stream               do not stream out results as processed
-      --overwrite               allow sqlite format to replace an existing output database
+      --overwrite               allow output to replace an existing file
   -M, --not-match stringArray   ignore files and directories matching regular expression
   -o, --output string           output filename (default stdout)
   -p, --progress                display progress of files as they are processed
@@ -301,7 +301,7 @@ results written to audit.db
 
 This creates a file named `audit.db` containing a `file_hashes` table with all the file paths and their corresponding hashes.
 
-`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database.
+`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database. The same applies to every other format, `--output` never replaces an existing file without `--overwrite`.
 
 ```shell
 $ hashit --format sqlite --output audit.db --hash all .

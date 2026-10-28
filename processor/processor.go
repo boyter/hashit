@@ -217,11 +217,14 @@ func Process() {
 	}
 
 	// The sqlite format writes to the database as we go, so default the name up front
-	if strings.ToLower(Format) == "sqlite" && AuditFile == "" {
-		if FileOutput == "" {
-			FileOutput = "hashit.db"
-		}
-		if err := prepareSqliteOutput(FileOutput); err != nil {
+	sqliteOutput := strings.ToLower(Format) == "sqlite" && AuditFile == ""
+	if sqliteOutput && FileOutput == "" {
+		FileOutput = "hashit.db"
+	}
+
+	// Check before doing any work that we are not going to destroy an existing file
+	if FileOutput != "" {
+		if err := prepareOutput(FileOutput, sqliteOutput); err != nil {
 			printError(err.Error())
 			os.Exit(1)
 		}
@@ -338,17 +341,23 @@ func Process() {
 			os.Exit(1)
 		}
 	} else {
-		// we don't write out sqlite
-		if strings.ToLower(Format) != "sqlite" {
-			_ = os.WriteFile(FileOutput, []byte(result), 0600)
+		// we don't write out sqlite as it is written as we go
+		if !sqliteOutput {
+			if err := os.WriteFile(FileOutput, []byte(result), 0600); err != nil {
+				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
+				os.Exit(1)
+			}
 		}
 		fmt.Println("results written to " + FileOutput)
+		if !valid {
+			os.Exit(1)
+		}
 	}
 }
 
-// prepareSqliteOutput refuses to write over an existing database, as doing so would merge into
-// or destroy a previous audit, unless overwrite has been allowed in which case it is removed
-func prepareSqliteOutput(path string) error {
+// prepareOutput refuses to write over an existing file unless overwrite has been allowed. An
+// existing sqlite database is removed, as writing into it would merge with the previous results
+func prepareOutput(path string, sqlite bool) error {
 	if _, err := os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -358,6 +367,10 @@ func prepareSqliteOutput(path string) error {
 
 	if !Overwrite {
 		return fmt.Errorf("output file %s already exists, use --overwrite to replace it", path)
+	}
+
+	if !sqlite {
+		return nil
 	}
 
 	// guard against a mistyped output name destroying something which is not a database

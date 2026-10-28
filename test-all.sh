@@ -521,6 +521,25 @@ else
     exit
 fi
 
+echo "keep me" > "$AUDITDIR/existing.txt"
+if ! "$HASHIT" -o "$AUDITDIR/existing.txt" "$AUDITDIR/media" > /dev/null 2>&1 && grep -q "keep me" "$AUDITDIR/existing.txt"; then
+    echo -e "${GREEN}PASSED refuses to overwrite existing output file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED refuses to overwrite existing output file test"
+    echo -e "======================================================="
+    exit
+fi
+
+if "$HASHIT" --overwrite -o "$AUDITDIR/existing.txt" "$AUDITDIR/media" > /dev/null && ! grep -q "keep me" "$AUDITDIR/existing.txt"; then
+    echo -e "${GREEN}PASSED overwrite replaces existing output file test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED overwrite replaces existing output file test"
+    echo -e "======================================================="
+    exit
+fi
+
 echo changed >> "$AUDITDIR/media/a.txt"
 if (cd "$AUDITDIR/media" && "$HASHIT" -a ../sums.md5 . | grep -q 'Files modified: 1'); then
     echo -e "${GREEN}PASSED audit detects modified file test"
@@ -572,6 +591,14 @@ if (cd "$AUDITDIR/media" && "$HASHIT" -a audit.db . | grep -q 'Files moved: 1');
 else
     echo -e "${RED}======================================================="
     echo -e "FAILED sqlite audit detects moved file test"
+    echo -e "======================================================="
+    exit
+fi
+if (cd "$AUDITDIR/media" && ! "$HASHIT" -a ../sums.md5 -o ../failed-audit.txt . > /dev/null) && grep -q 'Audit failed' "$AUDITDIR/failed-audit.txt"; then
+    echo -e "${GREEN}PASSED failed audit to output file exits non zero test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED failed audit to output file exits non zero test"
     echo -e "======================================================="
     exit
 fi

@@ -85,7 +85,7 @@ func main() {
 		&processor.Overwrite,
 		"overwrite",
 		false,
-		"allow sqlite format to replace an existing output database",
+		"allow output to replace an existing file",
 	)
 	flags.BoolVar(
 		&processor.NoStream,
