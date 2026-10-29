@@ -759,6 +759,68 @@ ln -s real_nm "$AUDITDIR/pnpm/node_modules"
 check "exclude-dir applies to symlinked directories test" \
     "! '$HASHIT' -c md5 -f sum --exclude-dir node_modules '$AUDITDIR/pnpm' 2>/dev/null | grep -q 'node_modules/'"
 
+# output replacement keeps permissions and symlinks, and cleans up when interrupted
+mkdir -p "$AUDITDIR/perm/d" "$AUDITDIR/perm/keep"
+echo 1 > "$AUDITDIR/perm/d/a"
+(umask 0022 && "$HASHIT" -o "$AUDITDIR/perm/new.txt" "$AUDITDIR/perm/d" > /dev/null)
+check "new output file honours umask test" "[ \"\$(stat -c '%a' '$AUDITDIR/perm/new.txt')\" == '644' ]"
+echo old > "$AUDITDIR/perm/p.txt" && chmod 640 "$AUDITDIR/perm/p.txt"
+"$HASHIT" -o "$AUDITDIR/perm/p.txt" --overwrite "$AUDITDIR/perm/d" > /dev/null
+check "replaced output file keeps its permissions test" "[ \"\$(stat -c '%a' '$AUDITDIR/perm/p.txt')\" == '640' ]"
+echo old > "$AUDITDIR/perm/keep/real.txt"
+ln -s keep/real.txt "$AUDITDIR/perm/link.txt"
+"$HASHIT" -o "$AUDITDIR/perm/link.txt" --overwrite "$AUDITDIR/perm/d" > /dev/null
+check "symlinked output updates the file it points to test" "[ -L '$AUDITDIR/perm/link.txt' ] && grep -q 'bytes' '$AUDITDIR/perm/keep/real.txt'"
+(sleep 3; echo x) | "$HASHIT" -o "$AUDITDIR/perm/slow.txt" &
+SLOWPID=$!
+sleep 1
+kill -INT $SLOWPID
+wait $SLOWPID 2>/dev/null
+check "interrupted run leaves no temporary file test" "! ls -a '$AUDITDIR/perm' | grep -q 'hashit.tmp'"
+mkdir -p "$AUDITDIR/linked/real"
+echo a > "$AUDITDIR/linked/real/a"
+ln -s real "$AUDITDIR/linked/lnk"
+"$HASHIT" -f sqlite -o "$AUDITDIR/linked/real/audit.db" "$AUDITDIR/linked/lnk/" > /dev/null
+check "output reached through a symlinked path is not hashed test" \
+    "[ \"\$(sqlite3 '$AUDITDIR/linked/real/audit.db' 'select count(*) from file_hashes')\" == '1' ] && '$HASHIT' -a '$AUDITDIR/linked/real/audit.db' '$AUDITDIR/linked/lnk/' | grep -q 'Audit passed'"
+"$HASHIT" -f sqlite -o "$AUDITDIR/linked/x?y.db" "$AUDITDIR/linked/real" > /dev/null
+check "sqlite output name containing a question mark test" "'$HASHIT' -a '$AUDITDIR/linked/x?y.db' '$AUDITDIR/linked/real' | grep -q 'Audit passed'"
+check "empty hash list is an error test" "'$HASHIT' -c '' '$AUDITDIR/linked/real' > /dev/null 2>&1; [ \$? -eq 2 ]"
+
+# audit matching
+mkdir -p "$AUDITDIR/absmatch/X" "$AUDITDIR/absmatch/Z"
+echo a > "$AUDITDIR/absmatch/X/a"
+(cd "$AUDITDIR/absmatch/X" && "$HASHIT" -f hashdeep -o ../Z/m.txt . > /dev/null)
+cp -r "$AUDITDIR/absmatch/X" "$AUDITDIR/absmatch/Y" && rm -r "$AUDITDIR/absmatch/X"
+check "copied tree audited by absolute path test" "cd '$AUDITDIR/absmatch/Y' && '$HASHIT' -a ../Z/m.txt \"\$PWD\" | grep -q 'Audit passed'"
+(cat "$AUDITDIR/absmatch/Z/m.txt"; tail -1 "$AUDITDIR/absmatch/Z/m.txt") > "$AUDITDIR/absmatch/dup.txt"
+check "path listed twice in audit file test" "cd '$AUDITDIR/absmatch/Y' && '$HASHIT' -a ../dup.txt . 2>/dev/null | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/unread"
+echo 1 > "$AUDITDIR/unread/a"
+(cd "$AUDITDIR/unread" && "$HASHIT" -f hashdeep . > ../unread.txt)
+echo 2 > "$AUDITDIR/unread/b" && chmod 000 "$AUDITDIR/unread/b"
+if [ ! -r "$AUDITDIR/unread/b" ]; then
+    check "unreadable new file is listed test" "cd '$AUDITDIR/unread' && '$HASHIT' -v -a ../unread.txt . 2>/dev/null | grep -q 'b: File could not be read'"
+fi
+chmod 644 "$AUDITDIR/unread/b"
+if command -v rhash > /dev/null; then
+    check "rhash bsd ed2k file test" "cd '$AUDITDIR/unread' && rhash --ed2k --bsd a > ../ed2k.txt && '$HASHIT' -a ../ed2k.txt a | grep -q 'Audit passed'"
+fi
+
+# explicitly supplied special files and broken links are errors, found while walking they are skipped
+mkdir -p "$AUDITDIR/explicit"
+echo 1 > "$AUDITDIR/explicit/a"
+ln -s nowhere "$AUDITDIR/explicit/broken"
+check "broken symlink found while walking is skipped test" "'$HASHIT' '$AUDITDIR/explicit' > /dev/null 2>&1"
+printf '%s\n' "$AUDITDIR/explicit/broken" > "$AUDITDIR/explicit-list.txt"
+check "broken symlink in input file is an error test" "'$HASHIT' -i '$AUDITDIR/explicit-list.txt' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "explicit special file is an error test" "'$HASHIT' /dev/null > /dev/null 2>&1; [ \$? -eq 2 ]"
+mkdir -p "$AUDITDIR/vendored/w/vendor" "$AUDITDIR/vendored/tgt"
+echo t > "$AUDITDIR/vendored/tgt/t.me"
+ln -s ../../tgt "$AUDITDIR/vendored/w/vendor/cache"
+check "exclude-dir path end applies to symlinked directories test" \
+    "! '$HASHIT' -c md5 -f sum --exclude-dir vendor/cache '$AUDITDIR/vendored/w' | grep -q 't.me'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
