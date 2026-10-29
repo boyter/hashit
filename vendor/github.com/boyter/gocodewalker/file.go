@@ -518,7 +518,7 @@ func (f *FileWalker) walkDirectoryRecursive(iteration int,
 			buffer := make([]byte, f.IgnoreBinaryFileBytes)
 
 			// Read up to buffer size
-			_, err = io.ReadFull(fi, buffer)
+			n, err := io.ReadFull(fi, buffer)
 			if err != nil && err != io.EOF && !errors.Is(err, io.ErrUnexpectedEOF) {
 				if !f.errorsHandler(err) {
 					return err
@@ -528,7 +528,8 @@ func (f *FileWalker) walkDirectoryRecursive(iteration int,
 			// cheaply check if is binary file by checking for null byte.
 			// note that this could be improved later on by checking for magic numbers and the like
 			// but that should probably be its own package
-			for _, b := range buffer {
+			for i := 0; i < n; i++ {
+				b := buffer[i]
 				if b == 0 {
 					shouldIgnore = true
 					break

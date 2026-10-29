@@ -82,6 +82,12 @@ func main() {
 		"output filename (default stdout)",
 	)
 	flags.BoolVar(
+		&processor.Absolute,
+		"absolute",
+		false,
+		"output absolute paths, which is what hashdeep does without -l",
+	)
+	flags.BoolVar(
 		&processor.Overwrite,
 		"overwrite",
 		false,

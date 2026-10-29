@@ -602,6 +602,40 @@ else
     echo -e "======================================================="
     exit
 fi
+# https://github.com/boyter/hashit/issues/19
+audit_test "hashdeep can audit hashit --absolute output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' --absolute -f hashdeep . > ../absolute.txt && hashdeep -r -a -k ../absolute.txt . < /dev/null"
+
+# https://github.com/boyter/hashit/issues/20
+audit_test "hashdeep can audit hashit --mtime output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' --mtime -f hashdeep . > ../mtime-hashdeep.txt && grep -q '^## mtime ' ../mtime-hashdeep.txt && hashdeep -l -r -a -k ../mtime-hashdeep.txt . < /dev/null"
+audit_test "hashit can audit hashit --mtime hashdeep output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -a ../mtime-hashdeep.txt ."
+
+# https://github.com/boyter/hashit/issues/27
+audit_test "hashdeep can audit hashit sha256 only output test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -c sha256 -f hashdeep . > ../sha256only.txt && hashdeep -l -r -a -k ../sha256only.txt . < /dev/null"
+
+head -c 20000000 /dev/urandom > "$AUDITDIR/large-stdin.bin"
+if [ "$("$HASHIT" -c sha256 -f hashonly < "$AUDITDIR/large-stdin.bin")" == "$(sha256sum < "$AUDITDIR/large-stdin.bin" | cut -d' ' -f1)" ]; then
+    echo -e "${GREEN}PASSED large stdin hash test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED large stdin hash test"
+    echo -e "======================================================="
+    exit
+fi
+
+echo "$AUDITDIR/media/a.txt" > "$AUDITDIR/input-list.txt"
+if echo "not this" | "$HASHIT" -c md5 -f sum -i "$AUDITDIR/input-list.txt" | grep -q "a.txt"; then
+    echo -e "${GREEN}PASSED input file used when stdin is a pipe test"
+else
+    echo -e "${RED}======================================================="
+    echo -e "FAILED input file used when stdin is a pipe test"
+    echo -e "======================================================="
+    exit
+fi
+
 rm -rf "$AUDITDIR"
 
 echo -e "${NC}Cleaning up..."

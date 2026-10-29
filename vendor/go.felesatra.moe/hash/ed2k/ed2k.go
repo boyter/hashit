@@ -40,7 +40,7 @@ type Hash struct {
 	subhash  hash.Hash
 }
 
-// New returns a new Hash computing the eD2k checksum.
+// New returns a new [Hash] computing the eD2k checksum.
 func New() *Hash {
 	return &Hash{
 		subhash: md4.New(),
@@ -76,42 +76,66 @@ func (h *Hash) limitNextChunk(b []byte) []byte {
 // Sum appends the current hash to b and returns the resulting slice.
 // It does not change the underlying hash state.
 func (h *Hash) Sum(b []byte) []byte {
-	if h.written == 0 {
+	if h.written < ChunkSize {
 		return h.subhash.Sum(b)
 	}
-
-	// If there's an uncommitted chunk, hash it and add to the hashlist
-	if h.written%ChunkSize != 0 {
-		h.hashlist = h.subhash.Sum(h.hashlist)
-	}
-
-	// If the total written data is less than or equal to one chunk,
-	// the hashlist already contains the final hash (or the hash of the single chunk).
-	if h.written <= ChunkSize {
+	if h.written == ChunkSize {
 		return append(b, h.hashlist...)
 	}
-
-	// For multiple chunks, hash the hashlist itself.
 	h2 := md4.New()
 	h2.Write(h.hashlist)
+	if h.written%ChunkSize != 0 {
+		h2.Write(h.subhash.Sum(nil))
+	}
 	return h2.Sum(b)
 }
 
-// Reset resets the Hash to its initial state.
+// Reset resets the [Hash] to its initial state.
 func (h *Hash) Reset() {
 	h.written = 0
 	h.hashlist = h.hashlist[:0]
 }
 
-// Size returns the number of bytes Sum will return.
+// Size returns the number of bytes [Hash.Sum] will return.
 func (h *Hash) Size() int {
 	return Size
 }
 
-// BlockSize returns the hash's underlying block size.
-// The Write method must be able to accept any amount
+// BlockSize returns the underlying block size of the [Hash].
+// [Hash.Write] must be able to accept any amount
 // of data, but it may operate more efficiently if all writes
 // are a multiple of the block size.
 func (h *Hash) BlockSize() int {
 	return BlockSize
+}
+
+// An AltHash is the alternate/wrong implementation of eD2k, where an
+// additional zero block is appended whenever the input is an exact
+// multiple of the block size.
+//
+// This is discouraged, but some old implementations use it.
+type AltHash struct {
+	Hash
+}
+
+// NewAlt returns a new [AltHash], which see for more info and
+// disclaimers.
+func NewAlt() *AltHash {
+	return &AltHash{
+		Hash: Hash{
+			subhash: md4.New(),
+		},
+	}
+}
+
+// Sum appends the current hash to b and returns the resulting slice.
+// It does not change the underlying hash state.
+func (h *AltHash) Sum(b []byte) []byte {
+	if h.written < ChunkSize {
+		return h.subhash.Sum(b)
+	}
+	h2 := md4.New()
+	h2.Write(h.hashlist)
+	h2.Write(h.subhash.Sum(nil))
+	return h2.Sum(b)
 }

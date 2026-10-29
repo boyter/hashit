@@ -422,10 +422,6 @@ func toHashDeep(input chan Result) string {
 		str.WriteString("%%%% size,md5,sha256,filename")
 	}
 
-	if MTime {
-		str.WriteString(",mtime")
-	}
-
 	str.WriteString("\n")
 
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
@@ -446,16 +442,15 @@ func toHashDeep(input chan Result) string {
 		}
 
 		// Finish with filename and newline.
-		str.WriteString(fmt.Sprintf("%s", res.File))
-
-		if MTime {
-			str.WriteString(",")
-			if res.MTime != nil {
-				str.WriteString(fmt.Sprintf("%s", res.MTime.Format("2006-01-02 15:04:05")))
-			}
-		}
-
+		str.WriteString(res.File)
 		str.WriteString("\n")
+
+		// hashdeep rejects files with columns it does not know, and a column after the filename
+		// is ambiguous when the filename contains a comma, so mtime is written as a comment line
+		// after the file which hashdeep ignores
+		if MTime && res.MTime != nil {
+			str.WriteString(fmt.Sprintf("## mtime %s\n", res.MTime.Format("2006-01-02 15:04:05")))
+		}
 	}
 
 	return str.String()

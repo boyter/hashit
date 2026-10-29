@@ -41,8 +41,11 @@ var Recursive = false
 // Do not print out results as they are processed
 var NoStream = false
 
-// Overwrite allows the sqlite format to replace an existing database
+// Overwrite allows output to replace an existing file
 var Overwrite = false
+
+// Absolute outputs absolute paths, which is the default for hashdeep
+var Absolute = false
 
 // If data is being piped in using stdin
 var StandardInput = false
@@ -154,8 +157,9 @@ func Process() {
 		return
 	}
 
-	// Check if we are accepting data from stdin
-	if len(DirFilePaths) == 0 {
+	// Check if we are accepting data from stdin, which is never the case when reading the files
+	// to process from an input file or auditing, as both are about files on disk
+	if len(DirFilePaths) == 0 && FileInput == "" && AuditFile == "" {
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
 			StandardInput = true
@@ -238,7 +242,7 @@ func Process() {
 	// If format is set to hashdeep
 	if strings.ToLower(Format) == "hashdeep" {
 		// if hashdeep, we need to ensure md5 is set or sha256, or both, and if neither are set both
-		if !hasHash("md5") || !hasHash("sha256") {
+		if !hasHash("md5") && !hasHash("sha256") {
 			printError("hashdeep format without supported hash - setting md5 and sha256")
 			Hash = []string{"md5", "sha256"}
 		}
@@ -267,7 +271,11 @@ func Process() {
 					// keep a leading ./ the user supplied as hashdeep and md5sum do, so that our
 					// output matches theirs when run the same way
 					prefix := ""
-					if !defaultPath {
+					if Absolute {
+						if abs, err := filepath.Abs(fp); err == nil {
+							fp = abs
+						}
+					} else if !defaultPath {
 						prefix = dotPrefix(f, fp)
 					}
 
@@ -302,6 +310,11 @@ func Process() {
 				// Read the file line by line
 				for scanner.Scan() {
 					line := scanner.Text()
+					if Absolute {
+						if abs, err := filepath.Abs(line); err == nil {
+							line = abs
+						}
+					}
 					fileListQueue <- line
 				}
 				close(fileListQueue)
