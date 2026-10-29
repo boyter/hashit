@@ -162,12 +162,9 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 		return nil, err
 	}
 
-	if len(hdl.records) == 0 {
-		return nil, errors.New("audit file contains no records")
-	}
-
+	// an audit file of an empty directory has no records, and passes when audited against one
 	hdl.buildLookups()
-	if len(hdl.hashNames) == 0 {
+	if len(hdl.records) != 0 && len(hdl.hashNames) == 0 {
 		return nil, errors.New("audit file contains no hashes that hashit supports")
 	}
 
@@ -571,7 +568,8 @@ func parseSumLine(line string, extHashes []string) (string, string, string, bool
 		if open <= 0 || closeIdx < open {
 			return "", "", "", false
 		}
-		n, ok := bsdTagNames[line[:open]]
+		// rhash pads the name to align the output, such as "MD4   (file) = hash"
+		n, ok := bsdTagNames[strings.TrimSpace(line[:open])]
 		if !ok {
 			return "", "", "", false
 		}

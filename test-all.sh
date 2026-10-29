@@ -681,6 +681,28 @@ check "zero threads is an error test" "! '$HASHIT' --threads 0 '$AUDITDIR/links'
 printf '%s\n\n' "$AUDITDIR/links/a" > "$AUDITDIR/blank-lines.txt"
 check "blank lines in input file are ignored test" "'$HASHIT' -c md5 -f sum -i '$AUDITDIR/blank-lines.txt' > /dev/null 2>&1"
 
+# symlink cycles through another symlink are detected as hashdeep does
+mkdir -p "$AUDITDIR/cross/A" "$AUDITDIR/cross/B"
+echo a > "$AUDITDIR/cross/A/fa"
+echo b > "$AUDITDIR/cross/B/fb"
+ln -s ../B "$AUDITDIR/cross/A/l1"
+ln -s ../A "$AUDITDIR/cross/B/l2"
+check "symlink cycles match hashdeep test" \
+    "cd '$AUDITDIR/cross' && [ \"\$(timeout 20 '$HASHIT' -c md5 -f sum . 2>/dev/null | cut -d' ' -f3 | sort | tr '\n' ' ')\" == \"\$(timeout 20 hashdeep -l -r -c md5 . < /dev/null 2>/dev/null | tail -n +6 | cut -d, -f3 | sort | tr '\n' ' ')\" ]"
+ln -s nowhere "$AUDITDIR/cross/A/broken"
+check "broken symlink is skipped test" "'$HASHIT' -c md5 -f sum '$AUDITDIR/cross' > /dev/null 2>&1"
+
+mkdir -p "$AUDITDIR/outdir"
+check "overwrite refuses to replace a directory test" "! '$HASHIT' -f sqlite --overwrite -o '$AUDITDIR/outdir' '$AUDITDIR/cross' > /dev/null 2>&1 && [ -d '$AUDITDIR/outdir' ]"
+mkdir -p "$AUDITDIR/emptydir"
+check "audit of an empty directory passes test" \
+    "'$HASHIT' -f sqlite -o '$AUDITDIR/empty.db' '$AUDITDIR/emptydir' > /dev/null && '$HASHIT' -a '$AUDITDIR/empty.db' '$AUDITDIR/emptydir' | grep -q 'Audit passed' && '$HASHIT' -f hashdeep '$AUDITDIR/emptydir' > '$AUDITDIR/empty.txt' && '$HASHIT' -a '$AUDITDIR/empty.txt' '$AUDITDIR/emptydir' | grep -q 'Audit passed'"
+echo literal > "$AUDITDIR/a[1].txt"
+echo other > "$AUDITDIR/a1.txt"
+check "filename with glob characters is used literally test" "'$HASHIT' -c md5 -f sum '$AUDITDIR/a[1].txt' | grep -q 'a\[1\].txt'"
+check "-vv is the same as --vv test" "cd '$AUDITDIR/cross' && '$HASHIT' -f hashdeep . > ../cross.txt && '$HASHIT' -vv -a ../cross.txt . | grep -q ': Ok'"
+check "audit with a missing path fails test" "cd '$AUDITDIR/cross' && ! '$HASHIT' -a ../cross.txt . nope 2>/dev/null | grep -q 'Audit passed'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

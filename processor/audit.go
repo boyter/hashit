@@ -108,9 +108,10 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		return nil, errors.New("audit database was created by an older development version of hashit, regenerate it with --format sqlite --overwrite")
 	}
 
+	// a database of an empty directory has no records, and passes when audited against one
 	first, err := database.New(db).FileHashFirst(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, errors.New("audit database contains no records")
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err

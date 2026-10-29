@@ -7,14 +7,36 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/boyter/gocodewalker"
 )
 
-// walkedDirectories holds the real path of every directory walked or followed through a symlink,
-// so a symlink back to a directory already being walked does not loop forever. Walks happen one
-// at a time from a single goroutine so it needs no locking
-var walkedDirectories = map[string]bool{}
+// isAncestorOrSelf reports if dir is the same as or contains path, both being real absolute paths
+func isAncestorOrSelf(dir string, path string) bool {
+	if dir == path {
+		return true
+	}
+	return strings.HasPrefix(path, strings.TrimSuffix(dir, string(filepath.Separator))+string(filepath.Separator))
+}
+
+// isSymlinkCycle reports if following the symlink at location to target would re-enter a
+// directory on the path to it, which is how hashdeep detects cycles. Each directory on the path is
+// resolved, as earlier symlinks on the path may lead anywhere. This only runs for symlinks to
+// directories so the extra lookups are rare
+func isSymlinkCycle(location string, target string) bool {
+	dir := filepath.Dir(location)
+	for {
+		if real := realPath(dir); real != "" && isAncestorOrSelf(target, real) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
 
 func realPath(path string) string {
 	real, err := filepath.EvalSymlinks(path)
@@ -31,10 +53,6 @@ func realPath(path string) string {
 // walkDirectoryWithIgnore walks the directory sending every file found to output, with
 // prefix added to the start of each path
 func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
-	if real := realPath(toWalk); real != "" {
-		walkedDirectories[real] = true
-	}
-
 	fileListQueue := make(chan *gocodewalker.File, 1000)
 	var fileWalker *gocodewalker.FileWalker
 	if NoThreads != 1 {
@@ -78,11 +96,11 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 
 	for f := range fileListQueue {
 		// the walker does not follow symlinks, so a symlink to a directory arrives as a file.
-		// Follow it as hashdeep does, unless it leads back to a directory already walked
+		// Follow it as hashdeep does, unless it leads back into a directory already being walked
 		if fi, err := os.Lstat(f.Location); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 			if target, err := os.Stat(f.Location); err == nil && target.IsDir() {
-				if real := realPath(f.Location); real != "" && walkedDirectories[real] {
-					printWarn(fmt.Sprintf("Skipping symlink %s as it leads to a directory already being processed", prefix+f.Location))
+				if real := realPath(f.Location); real == "" || isSymlinkCycle(f.Location, real) {
+					printWarn(fmt.Sprintf("Skipping symlink %s as it creates a cycle", prefix+f.Location))
 				} else {
 					walkDirectoryWithIgnore(f.Location, prefix, output)
 				}
