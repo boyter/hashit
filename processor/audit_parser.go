@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -68,6 +69,7 @@ var bsdTagNames = map[string]string{
 	"BLAKE2b":     HashNames.Blake2b512,
 	"BLAKE2b-512": HashNames.Blake2b512,
 	"BLAKE3":      HashNames.Blake3,
+	"ED2K":        HashNames.Ed2k,
 	"SHA3-224":    HashNames.Sha3224,
 	"SHA3-256":    HashNames.Sha3256,
 	"SHA3-384":    HashNames.Sha3384,
@@ -160,6 +162,11 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if abs, err := filepath.Abs(filepath.Dir(auditFilename)); err == nil {
 		hdl.baseDirs = append(hdl.baseDirs, abs)
 	}
+	// and the working directory, so a path supplied as absolute matches as well as a relative one
+	if wd, err := os.Getwd(); err == nil {
+		hdl.baseDirs = append(hdl.baseDirs, wd)
+	}
+	hdl.removeDuplicates()
 	if err != nil {
 		return nil, err
 	}
@@ -302,10 +309,11 @@ func (hdl *Auditor) Exclude(path string) {
 	if err != nil {
 		return
 	}
+	target := auditFileTarget{abs: abs, real: realPath(path)}
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !hdl.isOwnEntry(r, abs) {
+		if !hdl.isOwnEntry(r, target) {
 			records = append(records, r)
 		}
 	}
@@ -347,11 +355,54 @@ func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
 // other way, such as through the audit file's own directory after a tree has been copied, must
 // also describe an empty file, as the audit file was when it was hashed. Otherwise it may be a
 // different file which happens to share the audit file's name, and must still be audited
-func (hdl *Auditor) isOwnEntry(r *AuditRecord, abs string) bool {
-	if contains(pathKeys(r.Filename, hdl.primaryBase), abs) {
+func (hdl *Auditor) isOwnEntry(r *AuditRecord, target auditFileTarget) bool {
+	if target.matches(pathKeys(r.Filename, hdl.primaryBase)) {
 		return true
 	}
-	return contains(hdl.recordKeys(r), abs) && isEmptyRecord(r)
+	return target.matches(hdl.recordKeys(r)) && isEmptyRecord(r)
+}
+
+// auditFileTarget is the audit file being excluded, by absolute and real path, as it may be
+// supplied through a symlinked path which differs from the path its records were written with
+type auditFileTarget struct {
+	abs  string
+	real string
+}
+
+// matches reports if any of the keys is the audit file. Keys are only resolved when they share
+// the audit file's name, so large audit files do not resolve every record
+func (t auditFileTarget) matches(keys []string) bool {
+	for _, k := range keys {
+		if k == t.abs {
+			return true
+		}
+		if t.real != "" && filepath.IsAbs(k) && filepath.Base(k) == filepath.Base(t.abs) && realPath(k) == t.real {
+			return true
+		}
+	}
+	return false
+}
+
+// removeDuplicates drops records for a path already listed, keeping the first, as otherwise the
+// duplicate is never matched and is reported as missing although the file exists
+func (hdl *Auditor) removeDuplicates() {
+	seen := map[string]bool{}
+	var records []*AuditRecord
+	for _, r := range hdl.records {
+		key := filepath.Clean(r.Filename)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		records = append(records, r)
+	}
+	if dupes := len(hdl.records) - len(records); dupes != 0 {
+		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", dupes))
+		hdl.records = nil
+		for _, r := range records {
+			hdl.addRecord(r)
+		}
+	}
 }
 
 // isEmptyRecord reports if the record describes an empty file, by size or when the size is not
@@ -561,9 +612,9 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	if improper != 0 {
 		// a file such as text or json output has no valid lines, and is not an audit file at all
 		if len(hdl.records) == 0 {
-			return fmt.Errorf("audit file has %d lines and none are in a supported format", improper)
+			return fmt.Errorf("audit file has no lines in a supported format, %d were not recognised", improper)
 		}
-		printWarn(fmt.Sprintf("audit file has %d improperly formatted lines which were ignored", improper))
+		printWarn(fmt.Sprintf("audit file has improperly formatted lines which were ignored: %d", improper))
 	}
 
 	return nil

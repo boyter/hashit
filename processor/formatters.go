@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,6 +81,11 @@ func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
 }
 
+// PrintError is printError for use outside the package
+func PrintError(msg string) {
+	printError(msg)
+}
+
 // exitCode returns the code to exit with once processing is done
 func exitCode(valid bool) int {
 	if errorOccurred.Load() {
@@ -102,6 +109,22 @@ var fileErrors atomic.Bool
 // failedFiles holds the paths of files which could not be read, so an audit can report them as
 // unreadable rather than missing
 var failedFiles sync.Map
+
+// failedDirs holds the absolute paths of directories which could not be read
+var failedDirs sync.Map
+
+// isUnderFailedDir reports if the absolute path is inside a directory which could not be read
+func isUnderFailedDir(abs string) bool {
+	found := false
+	failedDirs.Range(func(key, _ any) bool {
+		if isAncestorOrSelf(key.(string), abs) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
 
 // fileFailed reports a file which could not be read and records it for the audit and exit code
 func fileFailed(path string, msg string) {
@@ -240,12 +263,26 @@ func doAudit(input chan Result) (string, bool) {
 
 	// files which exist but could not be read are reported as such rather than as not found
 	unreadable := map[*AuditRecord]bool{}
+	var unreadableNew []string
 	failedFiles.Range(func(key, _ any) bool {
 		if r := auditor.Lookup(key.(string)); r != nil {
 			unreadable[r] = true
+		} else {
+			unreadableNew = append(unreadableNew, key.(string))
 		}
 		return true
 	})
+	isUnreadable := func(r *AuditRecord) bool {
+		if unreadable[r] {
+			return true
+		}
+		for _, k := range auditor.recordKeys(r) {
+			if filepath.IsAbs(k) && isUnderFailedDir(k) {
+				return true
+			}
+		}
+		return false
+	}
 
 	filesMissing := 0
 	for _, r := range auditor.Records() {
@@ -253,7 +290,7 @@ func doAudit(input chan Result) (string, bool) {
 		if !ok {
 			filesMissing++
 			if Verbose {
-				if unreadable[r] {
+				if isUnreadable(r) {
 					fmt.Fprintf(stdout, "%v: File could not be read\n", r.Filename)
 				} else {
 					fmt.Fprintf(stdout, "%v: File expected but not found\n", r.Filename)
@@ -281,6 +318,11 @@ func doAudit(input chan Result) (string, bool) {
 	if Verbose {
 		for _, res := range sortedPaths(newFiles) {
 			fmt.Fprintf(stdout, "%v: File new\n", res.File)
+		}
+		// files on disk which are not in the audit file and could not be read
+		sort.Strings(unreadableNew)
+		for _, f := range unreadableNew {
+			fmt.Fprintf(stdout, "%v: File could not be read\n", f)
 		}
 	}
 
@@ -739,7 +781,13 @@ func contains(list []string, v string) bool {
 }
 
 func connectSqliteDb(pathName string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", fmt.Sprintf("%s?_busy_timeout=5000", pathName))
+	// build a file URI so a path containing ? or # is not taken as the start of parameters
+	abs, err := filepath.Abs(pathName)
+	if err != nil {
+		return nil, err
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: "_pragma=busy_timeout(5000)"}
+	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
 		return nil, err
 	}

@@ -61,7 +61,7 @@ func main() {
 		"hash",
 		"c",
 		[]string{"md5", "sha1", "sha256", "sha512"},
-		"hashes to be run for each file (set to 'all' for all possible hashes)",
+		"hashes to be run for each file (set to 'all' for all possible hashes); hashdeep and sum audits use the hashes in the audit file",
 	)
 	flags.StringVarP(
 		&processor.Format,
@@ -95,7 +95,7 @@ func main() {
 		"output",
 		"o",
 		"",
-		"output filename (default stdout)",
+		"output filename (default stdout, or hashit.db for the sqlite format)",
 	)
 	flags.BoolVar(
 		&processor.AllowMoved,
@@ -223,8 +223,10 @@ func main() {
 		"ignore files and directories whose name matches regular expression when walking directories",
 	)
 
-	// an invalid flag or argument is an error the same as any other
+	// an invalid flag or argument is an error the same as any other, and is printed the same way
+	rootCmd.SilenceErrors = true
 	if err := rootCmd.Execute(); err != nil {
+		processor.PrintError(err.Error())
 		os.Exit(processor.ExitError)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/boyter/hashit/processor/database"
@@ -98,6 +99,14 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		return nil, err
 	}
 	defer db.Close()
+
+	var hasTable int
+	if err := db.QueryRow("select count(*) from sqlite_master where type = 'table' and name = 'file_hashes'").Scan(&hasTable); err != nil {
+		return nil, err
+	}
+	if hasTable == 0 {
+		return nil, errors.New("audit database is not a hashit database, it has no file_hashes table")
+	}
 
 	// databases from development builds before sha224 and sha384 were added lack those columns
 	var hasColumn int
@@ -288,12 +297,29 @@ order by f.filepath`)
 
 	// files which exist but could not be read are reported as such rather than as not found
 	unreadable := map[string]bool{}
+	var failedList []string
 	failedFiles.Range(func(key, _ any) bool {
+		failedList = append(failedList, key.(string))
 		for _, p := range sqlitePathCandidates(key.(string), invokedFrom) {
 			unreadable[p] = true
 		}
 		return true
 	})
+	reportedUnreadable := map[string]bool{}
+	isUnreadable := func(filename string) bool {
+		if unreadable[filename] {
+			reportedUnreadable[filename] = true
+			return true
+		}
+		abs := filename
+		if !filepath.IsAbs(abs) && invokedFrom != "" {
+			abs = filepath.Join(invokedFrom, abs)
+		}
+		if a, err := filepath.Abs(abs); err == nil && isUnderFailedDir(a) {
+			return true
+		}
+		return false
+	}
 
 	knownFileCount := 0
 	moved := 0
@@ -346,7 +372,7 @@ order by f.filepath`)
 		if !foundMove {
 			filesMissing++
 			if Verbose {
-				if unreadable[record.Filename] {
+				if isUnreadable(record.Filename) {
 					fmt.Fprintf(stdout, "%v: File could not be read\n", record.Filename)
 				} else {
 					fmt.Fprintf(stdout, "%v: File expected but not found\n", record.Filename)
@@ -369,6 +395,19 @@ order by f.filepath`)
 	if Verbose {
 		for _, res := range sortedPaths(newFiles) {
 			fmt.Fprintf(stdout, "%v: File new\n", res.File)
+		}
+		// files on disk which are not in the database and could not be read
+		sort.Strings(failedList)
+		for _, f := range failedList {
+			known := false
+			for _, p := range sqlitePathCandidates(f, invokedFrom) {
+				if reportedUnreadable[p] {
+					known = true
+				}
+			}
+			if !known {
+				fmt.Fprintf(stdout, "%v: File could not be read\n", f)
+			}
 		}
 	}
 
