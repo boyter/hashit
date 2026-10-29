@@ -20,7 +20,6 @@ import (
 
 	"github.com/boyter/hashit/assets"
 	"github.com/boyter/hashit/processor/database"
-	_ "modernc.org/sqlite"
 )
 
 // Get the time as standard UTC/Zulu format

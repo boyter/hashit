@@ -25,7 +25,6 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/djherbis/times"
-	"github.com/gosuri/uiprogress"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
 	"go.felesatra.moe/hash/ed2k"
@@ -61,11 +60,10 @@ func skippedOwnFile(job fileJob) {
 
 func fileProcessorWorker(input chan fileJob, output chan Result) {
 
-	var bar *uiprogress.Bar
+	var bar progressBar
 	filename := ""
 	if Progress {
-		bar = progressBars.AddBar(UiBarMax)
-		bar.AppendFunc(func(b *uiprogress.Bar) string {
+		bar = newProgressBar(func() string {
 			return "file: " + filename
 		})
 	}
@@ -223,7 +221,7 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 }
 
 // Random tests indicate that mmap is faster when not in power save mode
-func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
+func processScanner(filename string, fsize int, bar progressBar) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		fileFailed(filename, fmt.Sprintf("opening file %s: %s", filename, err.Error()))

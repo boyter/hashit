@@ -45,6 +45,7 @@ Why use `hashit`?
  - It is very fast
  - You can get multiple hashes "for free" on any CPU with multiple cores
  - Works very well across multiple platforms without slowdown (Windows, Linux, macOS)
+ - Builds on illumos and Solaris, without the `sqlite` format, auditing SQLite databases or `--progress`, as the libraries they use do not support those platforms
  - Supports many hashes `hashit --hashes` CRC32, xxHash64, MD4, MD5, SHA1, SHA224, SHA256, SHA384, SHA512, Blake2b-256, Blake2b-512, Blake3, SHA3-224, SHA3-256, SHA3-384, SHA3-512, ed2k. Select them with `--hash` using the lowercase names shown in brackets by `hashit --hashes`, such as `sha3256` or `blake2b256`, or `--hash all`. The `ed2k` hash of a file which is an exact multiple of 9,728,000 bytes uses the variant without an extra empty chunk, so differs from tools such as `rhash` for those sizes
  - Output is compatible with `hashdeep`, and audits can be verified by either tool (see [Absolute Paths](#absolute-paths))
 

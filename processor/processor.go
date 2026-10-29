@@ -15,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-
-	"github.com/gosuri/uiprogress"
 )
 
 // Global Version
@@ -78,9 +76,6 @@ var FileOutput = ""
 
 // AuditFile sets the file that we want to audit against similar to hashdeep
 var AuditFile = ""
-
-// progressBars renders the --progress bars
-var progressBars *uiprogress.Progress
 
 // auditor holds the parsed AuditFile
 var auditor *Auditor
@@ -286,6 +281,11 @@ func Process() {
 		os.Exit(ExitError)
 	}
 
+	if Progress && !progressSupported {
+		printWarn(fmt.Sprintf("--progress is not supported on %s, ignoring flag", runtime.GOOS))
+		Progress = false
+	}
+
 	if FormatSupplied && AuditFile != "" && strings.ToLower(Format) != "text" {
 		printWarn("--format is ignored when auditing")
 	}
@@ -302,6 +302,10 @@ func Process() {
 		auditContent, auditSQLite, err := readAuditFile(AuditFile)
 		if err != nil {
 			printError(err.Error())
+			os.Exit(ExitError)
+		}
+		if auditSQLite && !sqliteSupported {
+			printError(fmt.Sprintf("unable to audit against %s as SQLite databases are not supported on %s", AuditFile, runtime.GOOS))
 			os.Exit(ExitError)
 		}
 		if auditSQLite {
@@ -468,10 +472,7 @@ func Process() {
 		}
 
 		if Progress {
-			// render to stderr so the bars do not end up in redirected output
-			progressBars = uiprogress.New()
-			progressBars.SetOut(os.Stderr)
-			progressBars.Start()
+			startProgress()
 		}
 
 		var wg sync.WaitGroup
@@ -523,6 +524,10 @@ var validFormats = []string{"text", "json", "sum", "hashdeep", "hashonly", "sqli
 func validateOptions() error {
 	if !contains(validFormats, strings.ToLower(Format)) {
 		return fmt.Errorf("unknown format %q, supported formats are %s", Format, strings.Join(validFormats, ", "))
+	}
+
+	if strings.ToLower(Format) == "sqlite" && AuditFile == "" && !sqliteSupported {
+		return fmt.Errorf("the sqlite format is not supported on %s", runtime.GOOS)
 	}
 
 	if len(Hash) == 0 {
