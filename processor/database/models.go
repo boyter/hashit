@@ -15,7 +15,9 @@ type FileHash struct {
 	Md4        sql.NullString
 	Md5        sql.NullString
 	Sha1       sql.NullString
+	Sha224     sql.NullString
 	Sha256     sql.NullString
+	Sha384     sql.NullString
 	Sha512     sql.NullString
 	Blake2b256 sql.NullString
 	Blake2b512 sql.NullString

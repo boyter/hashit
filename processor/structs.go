@@ -12,7 +12,9 @@ type Result struct {
 	MD4        string `json:",omitempty"`
 	MD5        string `json:",omitempty"`
 	SHA1       string `json:",omitempty"`
+	SHA224     string `json:",omitempty"`
 	SHA256     string `json:",omitempty"`
+	SHA384     string `json:",omitempty"`
 	SHA512     string `json:",omitempty"`
 	Blake2b256 string `json:",omitempty"`
 	Blake2b512 string `json:",omitempty"`
@@ -39,8 +41,12 @@ func (r Result) hashValue(name string) string {
 		return r.MD5
 	case HashNames.SHA1:
 		return r.SHA1
+	case HashNames.SHA224:
+		return r.SHA224
 	case HashNames.SHA256:
 		return r.SHA256
+	case HashNames.SHA384:
+		return r.SHA384
 	case HashNames.SHA512:
 		return r.SHA512
 	case HashNames.Blake2b256:

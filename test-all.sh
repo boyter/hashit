@@ -660,8 +660,16 @@ check "very verbose audit includes modified files test" \
 check "b2sum 256 bit audit test" \
     "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 b2sum -l 256 > ../sums.b2 && '$HASHIT' -a ../sums.b2 . | grep -q 'Audit passed'"
 
-# files are hashed differently depending on size, every hash must agree across the thresholds
 head -c 300000 /dev/urandom > "$AUDITDIR/threshold.bin"
+for SUMTOOL in sha224sum sha384sum; do
+    HASHNAME=${SUMTOOL%sum}
+    check "$HASHNAME matches $SUMTOOL test" \
+        "[ \"\$('$HASHIT' -c $HASHNAME -f hashonly '$AUDITDIR/threshold.bin')\" == \"\$($SUMTOOL '$AUDITDIR/threshold.bin' | cut -d' ' -f1)\" ]"
+    check "audit $SUMTOOL file test" \
+        "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 $SUMTOOL > ../sums.$HASHNAME && '$HASHIT' -a ../sums.$HASHNAME . | grep -q 'Audit passed'"
+done
+
+# files are hashed differently depending on size, every hash must agree across the thresholds
 for HASHNAME in $("$HASHIT" --hashes | sed -n 's/.*(\(.*\))/\1/p'); do
     A=$("$HASHIT" -c "$HASHNAME" -f hashonly "$AUDITDIR/threshold.bin")
     B=$("$HASHIT" -c "$HASHNAME" -f hashonly --stream-size 0 "$AUDITDIR/threshold.bin")

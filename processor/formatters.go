@@ -227,8 +227,14 @@ func toSum(input chan Result) string {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString(sumLine(res.SHA1, res.File))
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString(sumLine(res.SHA224, res.File))
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString(sumLine(res.SHA256, res.File))
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString(sumLine(res.SHA384, res.File))
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString(sumLine(res.SHA512, res.File))
@@ -302,8 +308,14 @@ func toHashOnly(input chan Result) (string, bool) {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString(res.SHA1 + "\n")
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString(res.SHA224 + "\n")
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString(res.SHA256 + "\n")
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString(res.SHA384 + "\n")
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString(res.SHA512 + "\n")
@@ -374,8 +386,14 @@ func toText(input chan Result) (string, bool) {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString("       SHA1 " + res.SHA1 + "\n")
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString("     SHA224 " + res.SHA224 + "\n")
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString("     SHA256 " + res.SHA256 + "\n")
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString("     SHA384 " + res.SHA384 + "\n")
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString("     SHA512 " + res.SHA512 + "\n")
@@ -541,7 +559,9 @@ func toSqlite(input chan Result) (string, bool) {
 			Md4:        toSqlNull(res.MD4),
 			Md5:        toSqlNull(res.MD5),
 			Sha1:       toSqlNull(res.SHA1),
+			Sha224:     toSqlNull(res.SHA224),
 			Sha256:     toSqlNull(res.SHA256),
+			Sha384:     toSqlNull(res.SHA384),
 			Sha512:     toSqlNull(res.SHA512),
 			Blake2b256: toSqlNull(res.Blake2b256),
 			Blake2b512: toSqlNull(res.Blake2b512),
@@ -600,7 +620,9 @@ func printHashes() {
 	fmt.Printf("        MD4 (%s)\n", HashNames.MD4)
 	fmt.Printf("        MD5 (%s)\n", HashNames.MD5)
 	fmt.Printf("       SHA1 (%s)\n", HashNames.SHA1)
+	fmt.Printf("     SHA224 (%s)\n", HashNames.SHA224)
 	fmt.Printf("     SHA256 (%s)\n", HashNames.SHA256)
+	fmt.Printf("     SHA384 (%s)\n", HashNames.SHA384)
 	fmt.Printf("     SHA512 (%s)\n", HashNames.SHA512)
 	fmt.Printf("Blake2b-256 (%s)\n", HashNames.Blake2b256)
 	fmt.Printf("Blake2b-512 (%s)\n", HashNames.Blake2b512)
