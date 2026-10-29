@@ -759,6 +759,14 @@ ln -s real_nm "$AUDITDIR/pnpm/node_modules"
 check "exclude-dir applies to symlinked directories test" \
     "! '$HASHIT' -c md5 -f sum --exclude-dir node_modules '$AUDITDIR/pnpm' 2>/dev/null | grep -q 'node_modules/'"
 
+# files named like SQLite sidecars of a non SQLite output are unrelated and must be kept
+mkdir -p "$AUDITDIR/sidecar"
+echo precious > "$AUDITDIR/sidecar/notes-journal"
+echo a > "$AUDITDIR/sidecar/a"
+(cd "$AUDITDIR/sidecar" && "$HASHIT" -o notes --format sum . > /dev/null)
+check "non sqlite output keeps files named like sidecars test" \
+    "[ -f '$AUDITDIR/sidecar/notes-journal' ] && grep -q 'notes-journal' '$AUDITDIR/sidecar/notes'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

@@ -86,13 +86,19 @@ var sqliteCompareHashes []string
 var skipFiles = map[string]bool{}
 
 // addSkipFile adds a file to skipFiles, along with the files SQLite creates alongside a database
-func addSkipFile(path string) {
+func addSkipFile(path string, sqlite bool) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return
 	}
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		skipFiles[abs+suffix] = true
+	skipFiles[abs] = true
+
+	// only a SQLite database has -wal, -shm and -journal files, otherwise files with those names
+	// are unrelated and must still be processed
+	if sqlite {
+		for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+			skipFiles[abs+suffix] = true
+		}
 	}
 }
 
@@ -254,7 +260,7 @@ func Process() {
 				Hash = auditor.HashNames()
 			}
 		}
-		addSkipFile(AuditFile)
+		addSkipFile(AuditFile, isSQLiteDB(AuditFile))
 	}
 
 	// The sqlite format writes to the database as we go, so default the name up front
@@ -273,12 +279,12 @@ func Process() {
 			printError(err.Error())
 			os.Exit(ExitError)
 		}
-		addSkipFile(outputTemp)
+		addSkipFile(outputTemp, sqliteOutput)
 	}
 
 	// The output file is being written while we process, so its hash is meaningless
 	if FileOutput != "" {
-		addSkipFile(FileOutput)
+		addSkipFile(FileOutput, sqliteOutput)
 	}
 
 	// If format is set to hashdeep
@@ -415,7 +421,7 @@ func Process() {
 				written = false
 			}
 		}
-		if written && finishOutput() {
+		if written && finishOutput(sqliteOutput) {
 			fmt.Fprintln(stdout, "results written to "+FileOutput)
 		}
 	}
@@ -532,7 +538,7 @@ func removeSqliteFiles(path string) {
 
 // finishOutput moves the temporary output into place. An existing file is only replaced when no
 // errors occurred, so a mistyped path or unreadable file never destroys an earlier result
-func finishOutput() bool {
+func finishOutput(sqliteOutput bool) bool {
 	if _, err := os.Lstat(FileOutput); err == nil && errorOccurred.Load() {
 		printError(fmt.Sprintf("not replacing existing output file %s as errors occurred, the new results were discarded", FileOutput))
 		removeSqliteFiles(outputTemp)
@@ -540,9 +546,12 @@ func finishOutput() bool {
 		return false
 	}
 
-	// sidecar files left by a previous database must not be applied to the new one
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		_ = os.Remove(FileOutput + suffix)
+	// sidecar files left by a previous database must not be applied to the new one, but only when
+	// replacing a SQLite database, as otherwise files with those names are unrelated
+	if sqliteOutput && isSQLiteDB(FileOutput) {
+		for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+			_ = os.Remove(FileOutput + suffix)
+		}
 	}
 	if err := os.Rename(outputTemp, FileOutput); err != nil {
 		printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
