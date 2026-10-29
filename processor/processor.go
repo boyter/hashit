@@ -4,13 +4,17 @@ package processor
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"math/rand"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/gosuri/uiprogress"
 )
@@ -94,6 +98,24 @@ func addSkipFile(path string) {
 	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
 		skipFiles[abs+suffix] = true
 	}
+
+	// also match by identity, so the file is skipped when reached through a symlinked path
+	if fi, err := os.Stat(path); err == nil {
+		skipFileInfos = append(skipFileInfos, fi)
+	}
+}
+
+// skipFileInfos holds the skipped files which exist, to compare against by identity
+var skipFileInfos []os.FileInfo
+
+// isSkippedFileInfo reports if fi is the same file as one which should never be processed
+func isSkippedFileInfo(fi os.FileInfo) bool {
+	for _, s := range skipFileInfos {
+		if os.SameFile(fi, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldSkipFile reports if the file is one we should never process
@@ -166,6 +188,10 @@ func Process() {
 	// Display the supported hashes then bail out
 	if Hashes {
 		printHashes()
+		if stdout.err != nil {
+			printError(fmt.Sprintf("unable to write output: %s", stdout.err.Error()))
+			os.Exit(ExitError)
+		}
 		return
 	}
 
@@ -273,7 +299,9 @@ func Process() {
 			printError(err.Error())
 			os.Exit(ExitError)
 		}
+		removeOutputTempOnSignal()
 		addSkipFile(outputTemp)
+		addSkipFile(outputTarget)
 	}
 
 	// The output file is being written while we process, so its hash is meaningless
@@ -303,7 +331,7 @@ func Process() {
 		go processStandardInput(fileSummaryQueue)
 	} else {
 		// Files ready to be read from disk
-		fileListQueue := make(chan string, FileListQueueSize)
+		fileListQueue := make(chan fileJob, FileListQueueSize)
 
 		if FileInput == "" {
 			// Spawn routine to start finding files on disk
@@ -332,7 +360,7 @@ func Process() {
 					}
 
 					if !fi.IsDir() {
-						fileListQueue <- prefix + fp
+						fileListQueue <- fileJob{path: prefix + fp, explicit: true}
 						continue
 					}
 
@@ -368,7 +396,7 @@ func Process() {
 							line = abs
 						}
 					}
-					fileListQueue <- line
+					fileListQueue <- fileJob{path: line, explicit: true}
 				}
 				close(fileListQueue)
 
@@ -438,6 +466,10 @@ func validateOptions() error {
 		return fmt.Errorf("unknown format %q, supported formats are %s", Format, strings.Join(validFormats, ", "))
 	}
 
+	if len(Hash) == 0 {
+		return errors.New("no hashes requested, use --hashes to list supported hashes")
+	}
+
 	for _, h := range Hash {
 		if h != "all" && !contains(hashPriority, h) {
 			return fmt.Errorf("unknown hash %q, use --hashes to list supported hashes", h)
@@ -505,15 +537,70 @@ func prepareOutput(path string, sqlite bool) error {
 // processing has finished, so an existing file is never lost to a run which fails part way
 var outputTemp = ""
 
-// createOutputTemp creates the temporary output file next to FileOutput, which also confirms
-// the directory can be written to before doing any work
+// outputTarget is the file actually replaced, being FileOutput or what it links to, so a symlinked
+// output path keeps the link and updates the file it points at
+var outputTarget = ""
+
+// resolveOutputTarget follows FileOutput through any symlinks, including one which points at a
+// file which does not exist yet
+func resolveOutputTarget(path string) string {
+	for i := 0; i < 40; i++ {
+		fi, err := os.Lstat(path)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return path
+		}
+		link, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+		if !filepath.IsAbs(link) {
+			link = filepath.Join(filepath.Dir(path), link)
+		}
+		path = link
+	}
+	return path
+}
+
+// createOutputTemp creates the temporary output file next to the output, which also confirms
+// the directory can be written to before doing any work. It is created with the permissions
+// of the file it will replace, or the default for a new file after the umask is applied
 func createOutputTemp() error {
-	f, err := os.CreateTemp(filepath.Dir(FileOutput), "."+filepath.Base(FileOutput)+".*.tmp")
+	outputTarget = resolveOutputTarget(FileOutput)
+	dir, base := filepath.Dir(outputTarget), filepath.Base(outputTarget)
+
+	var f *os.File
+	var err error
+	for i := 0; i < 100; i++ {
+		name := filepath.Join(dir, fmt.Sprintf(".%s.%d.hashit.tmp", base, rand.Uint32()))
+		f, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+		if !os.IsExist(err) {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
 	}
 	outputTemp = f.Name()
+
+	if fi, err := os.Stat(outputTarget); err == nil {
+		_ = f.Chmod(fi.Mode().Perm())
+	}
 	return f.Close()
+}
+
+// removeOutputTempOnSignal removes the temporary output when interrupted, as otherwise it would be
+// left behind and hashed by later runs
+func removeOutputTempOnSignal() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-signals
+		code := 130
+		if sig == syscall.SIGTERM {
+			code = 143
+		}
+		exit(code)
+	}()
 }
 
 // exit removes any temporary output before exiting
@@ -531,9 +618,10 @@ func removeSqliteFiles(path string) {
 }
 
 // finishOutput moves the temporary output into place. An existing file is only replaced when no
-// errors occurred, so a mistyped path or unreadable file never destroys an earlier result
+// errors occurred, so a mistyped path or unreadable file never destroys an earlier result. The
+// replacement is a new file, so any other hard links to the old file keep the old content
 func finishOutput() bool {
-	if _, err := os.Lstat(FileOutput); err == nil && errorOccurred.Load() {
+	if _, err := os.Lstat(outputTarget); err == nil && errorOccurred.Load() {
 		printError(fmt.Sprintf("not replacing existing output file %s as errors occurred, the new results were discarded", FileOutput))
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""
@@ -542,9 +630,9 @@ func finishOutput() bool {
 
 	// sidecar files left by a previous database must not be applied to the new one
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		_ = os.Remove(FileOutput + suffix)
+		_ = os.Remove(outputTarget + suffix)
 	}
-	if err := os.Rename(outputTemp, FileOutput); err != nil {
+	if err := os.Rename(outputTemp, outputTarget); err != nil {
 		printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""

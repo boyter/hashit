@@ -15,6 +15,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,14 @@ const (
 	UiBarMax = 1024 // 1024 should be dividable by most things
 )
 
-func fileProcessorWorker(input chan string, output chan Result) {
+// fileJob is a file to process, and whether it was supplied explicitly as an argument or in an
+// input file, rather than found while walking a directory
+type fileJob struct {
+	path     string
+	explicit bool
+}
+
+func fileProcessorWorker(input chan fileJob, output chan Result) {
 
 	var bar *uiprogress.Bar
 	filename := ""
@@ -44,7 +52,8 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		})
 	}
 
-	for res := range input {
+	for job := range input {
+		res := job.path
 		if Debug {
 			printDebug(fmt.Sprintf("processing %s", res))
 		}
@@ -56,12 +65,19 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		// Stat before opening, as opening a FIFO or device would block until something writes to it
 		fi, err := os.Stat(res)
 		if err != nil {
-			// a symlink which points nowhere has no content to hash, hashdeep ignores these
-			if lfi, lerr := os.Lstat(res); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && os.IsNotExist(err) {
+			// a symlink which points nowhere found while walking has no content to hash, and
+			// hashdeep ignores these, but one supplied explicitly is an error
+			if lfi, lerr := os.Lstat(res); !job.explicit && lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && os.IsNotExist(err) {
 				printWarn(fmt.Sprintf("Skipping %s as it is a symlink to something which does not exist", res))
 				continue
 			}
 			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
+			continue
+		}
+
+		// SQLite creates -wal and -shm files next to the temporary output while writing, which may
+		// be reached through a symlinked path, so match those by name
+		if isSkippedFileInfo(fi) || (outputTemp != "" && strings.HasPrefix(filepath.Base(res), filepath.Base(outputTemp))) {
 			continue
 		}
 
@@ -71,9 +87,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			continue
 		}
 
-		// FIFOs, sockets and devices have no fixed content to hash
+		// FIFOs, sockets and devices have no fixed content to hash, which is an error when one
+		// was supplied explicitly
 		if !fi.Mode().IsRegular() {
-			printWarn(fmt.Sprintf("Skipping %s as it is not a regular file", res))
+			if job.explicit {
+				fileFailed(res, fmt.Sprintf("Unable to process %s as it is not a regular file", res))
+			} else {
+				printWarn(fmt.Sprintf("Skipping %s as it is not a regular file", res))
+			}
 			continue
 		}
 
