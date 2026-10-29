@@ -1,0 +1,37 @@
+{
+  "go": "go1.27.2",
+  "undup": "modernc.org/undup@v0.0.5",
+  "sources": [
+    {
+      "module": "modernc.org/libsqlite3",
+      "into": "lib",
+      "commit": "6124339364eb60da198c6d046265cc490f07fffa",
+      "tags": [
+        "v1.15.2"
+      ],
+      "dirty": false,
+      "requires": {
+        "modernc.org/ccgo/v4": "v4.37.0",
+        "modernc.org/libc": "v1.79.0"
+      }
+    },
+    {
+      "module": "modernc.org/libsqlite_vec",
+      "into": "vec",
+      "commit": "14802c75c7e829646b4a074829bad269318f2008",
+      "tags": [
+        "v0.7.0"
+      ],
+      "dirty": false,
+      "requires": {
+        "modernc.org/ccgo/v4": "v4.37.0",
+        "modernc.org/libc": "v1.79.0",
+        "modernc.org/libsqlite3": "v1.15.2"
+      }
+    }
+  ],
+  "output": {
+    "files": 515,
+    "sha256": "51f1fd1c6e98f205a6a27e4c09630b8b81b807e0f53e5602dda160a143e0e523"
+  }
+}

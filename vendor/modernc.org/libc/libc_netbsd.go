@@ -43,7 +43,7 @@ var (
 type syscallErrno = unix.Errno
 
 // // Keep these outside of the var block otherwise go generate will miss them.
-var X__stderrp = Xstdout
+var X__stderrp = Xstderr
 var X__stdinp = Xstdin
 var X__stdoutp = Xstdout
 var X__sF [3]stdio.FILE
@@ -245,10 +245,16 @@ func Xlocaltime(_ *TLS, timep uintptr) uintptr {
 	localtime.Ftm_mon = int32(t.Month() - 1)
 	localtime.Ftm_year = int32(t.Year() - 1900)
 	localtime.Ftm_wday = int32(t.Weekday())
-	localtime.Ftm_yday = int32(t.YearDay())
+	localtime.Ftm_yday = int32(t.YearDay() - 1)
 	localtime.Ftm_isdst = Bool32(isTimeDST(t))
+	_, off := t.Zone()
+	setGmtoff(&localtime.Ftm_gmtoff, off)
+	localtime.Ftm_zone = 0
 	return uintptr(unsafe.Pointer(&localtime))
 }
+
+// setGmtoff sets tm_gmtoff, a long, which is 32 bits wide on some of the targets of this OS.
+func setGmtoff[T ~int32 | ~int64](p *T, off int) { *p = T(off) }
 
 // struct tm *localtime_r(const time_t *timep, struct tm *result);
 func Xlocaltime_r(_ *TLS, timep, result uintptr) uintptr {
@@ -262,8 +268,11 @@ func Xlocaltime_r(_ *TLS, timep, result uintptr) uintptr {
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_mon = int32(t.Month() - 1)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_year = int32(t.Year() - 1900)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_wday = int32(t.Weekday())
-	(*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay())
+	(*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay() - 1)
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_isdst = Bool32(isTimeDST(t))
+	_, off := t.Zone()
+	setGmtoff(&(*time.Tm)(unsafe.Pointer(result)).Ftm_gmtoff, off)
+	(*time.Tm)(unsafe.Pointer(result)).Ftm_zone = 0
 	return result
 }
 
@@ -332,6 +341,24 @@ func Xfsync(t *TLS, fd int32) int32 {
 	// if dmesgs {
 	// 	dmesg("%v: %d: ok", origin(1), fd)
 	// }
+	return 0
+}
+
+// int fdatasync(int fd);
+func Xfdatasync(t *TLS, fd int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	if noFsync {
+		// Simulate -DSQLITE_NO_SYNC for sqlite3 testfixture, see function full_sync in sqlite3.c
+		return Xfstat(t, fd, uintptr(unsafe.Pointer(&fsyncStatbuf)))
+	}
+
+	if _, _, err := unix.Syscall(unix.SYS_FDATASYNC, uintptr(fd), 0, 0); err != 0 {
+		t.setErrno(err)
+		return -1
+	}
+
 	return 0
 }
 
@@ -916,7 +943,23 @@ func Xfileno(t *TLS, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
-	panic(todo(""))
+	if stream == 0 {
+		if dmesgs {
+			dmesg("%v: FAIL", origin(1))
+		}
+		t.setErrno(errno.EBADF)
+		return -1
+	}
+
+	if fd := int32((*stdio.FILE)(unsafe.Pointer(stream)).F_file); fd >= 0 {
+		return fd
+	}
+
+	if dmesgs {
+		dmesg("%v: FAIL", origin(1))
+	}
+	t.setErrno(errno.EBADF)
+	return -1
 }
 
 func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) uintptr {
@@ -1162,11 +1205,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -1313,20 +1360,35 @@ func Xabort(t *TLS) {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo("")) //TODO
-	// if dmesgs {
-	// 	dmesg("%v:", origin(1))
-	// }
-	// p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(signal.Sigaction{})))
-	// if p == 0 {
-	// 	panic("OOM")
-	// }
-
-	// (*signal.Sigaction)(unsafe.Pointer(p)).F__sigaction_u.F__sa_handler = signal.SIG_DFL
-	// Xsigaction(t, signal.SIGABRT, p, 0)
-	// Xfree(t, p)
-	// unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
-	// panic(todo("unrechable"))
+	if dmesgs {
+		dmesg("%v:", origin(1))
+	}
+	// NetBSD's Xabort was a stub, so C abort(3) didn't terminate by signal — callers
+	// such as SQLite's crash tests (writecrash.test) require the process to be killed
+	// BY SIGABRT. Three things are needed on netbsd:
+	//  1. Reset SIGABRT to SIG_DFL — the Go runtime otherwise intercepts a delivered
+	//     SIGABRT and exit(2)s instead of dying by signal. Done via the raw
+	//     __sigaction_sigtramp(2) syscall (an all-zero struct sigaction = SIG_DFL; the
+	//     trampoline/version args are unused for SIG_DFL). x/sys/unix has no high-level
+	//     Sigaction on netbsd and Xsigaction is unimplemented here.
+	//  2. Unblock SIGABRT on the calling thread so a blocked mask can't defeat abort().
+	//     __sigprocmask14(SIG_UNBLOCK, {SIGABRT}, NULL) — syscall 293, not exported by
+	//     x/sys/unix for netbsd.
+	//  3. Deliver SIGABRT SYNCHRONOUSLY and thread-directed via _lwp_kill(_lwp_self())
+	//     (the primitive the Go runtime's raise() uses). A process-directed kill(2) is
+	//     async — the calling thread can race ahead and exit the wrong way before the
+	//     signal lands (observed as a rare writecrash failure). With SIG_DFL the kernel
+	//     terminates the process here; the kill(2) and panic below are unreachable
+	//     fallbacks.
+	var sa [5]uint64 // >= sizeof(struct sigaction); zero value == SIG_DFL
+	unix.Syscall6(unix.SYS___SIGACTION_SIGTRAMP, uintptr(unix.SIGABRT), uintptr(unsafe.Pointer(&sa)), 0, 0, 0, 0)
+	var set [4]uint32
+	set[0] = uint32(1) << (uint(unix.SIGABRT) - 1) // SIGABRT==6 -> bit 5
+	unix.Syscall(293 /* SYS___sigprocmask14 */, 2 /* SIG_UNBLOCK */, uintptr(unsafe.Pointer(&set)), 0)
+	lwp, _, _ := unix.Syscall(unix.SYS__LWP_SELF, 0, 0, 0)
+	unix.Syscall(unix.SYS__LWP_KILL, lwp, uintptr(unix.SIGABRT), 0)
+	unix.Kill(unix.Getpid(), unix.SIGABRT)
+	panic(todo("unreachable"))
 }
 
 // int fflush(FILE *stream);
@@ -1341,6 +1403,9 @@ func Xfflush(t *TLS, stream uintptr) int32 {
 func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	m, _, err := unix.Syscall(unix.SYS_READ, uintptr(file(stream).fd()), ptr, uintptr(size*nmemb))
 	if err != 0 {
@@ -1359,6 +1424,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	m, _, err := unix.Syscall(unix.SYS_WRITE, uintptr(file(stream).fd()), ptr, uintptr(size*nmemb))
 	if err != 0 {
@@ -1474,7 +1542,9 @@ func Xgetservbyname(t *TLS, name, proto uintptr) uintptr {
 	}
 	var protoent *gonetdb.Protoent
 	if proto != 0 {
-		protoent = gonetdb.GetProtoByName(GoString(proto))
+		if protoent = gonetdb.GetProtoByName(GoString(proto)); protoent == nil {
+			return 0
+		}
 	}
 	servent := gonetdb.GetServByName(GoString(name), protoent)
 	if servent == nil {
@@ -1484,68 +1554,47 @@ func Xgetservbyname(t *TLS, name, proto uintptr) uintptr {
 		return 0
 	}
 
-	Xfree(t, (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_name)
-	if v := (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_aliases; v != 0 {
-		for {
-			p := *(*uintptr)(unsafe.Pointer(v))
-			if p == 0 {
-				break
-			}
-
-			Xfree(t, p)
-			v += unsafe.Sizeof(uintptr(0))
+	// The result is static storage that owns its strings and the aliases
+	// array until the next call frees them, even after a failed call.
+	r := &getservbynameStaticResult
+	Xfree(t, r.Fs_name)
+	if v := r.Fs_aliases; v != 0 {
+		for p := v; *(*uintptr)(unsafe.Pointer(p)) != 0; p += unsafe.Sizeof(uintptr(0)) {
+			Xfree(t, *(*uintptr)(unsafe.Pointer(p)))
 		}
 		Xfree(t, v)
 	}
-	Xfree(t, (*netdb.Servent)(unsafe.Pointer(&getservbynameStaticResult)).Fs_proto)
-	cname, err := CString(servent.Name)
-	if err != nil {
-		getservbynameStaticResult = netdb.Servent{}
+	Xfree(t, r.Fs_proto)
+	*r = netdb.Servent{}
+	var err error
+	if r.Fs_name, err = CString(servent.Name); err != nil {
 		return 0
 	}
 
-	var protoname uintptr
-	if protoent != nil {
-		if protoname, err = CString(protoent.Name); err != nil {
-			Xfree(t, cname)
-			getservbynameStaticResult = netdb.Servent{}
-			return 0
-		}
+	if r.Fs_aliases = Xcalloc(t, types.Size_t(len(servent.Aliases)+1), types.Size_t(unsafe.Sizeof(uintptr(0)))); r.Fs_aliases == 0 {
+		return 0
 	}
-	var a []uintptr
-	for _, v := range servent.Aliases {
-		cs, err := CString(v)
+
+	for i, v := range servent.Aliases {
+		p, err := CString(v)
 		if err != nil {
-			for _, v := range a {
-				Xfree(t, v)
-			}
 			return 0
 		}
 
-		a = append(a, cs)
-	}
-	v := Xcalloc(t, types.Size_t(len(a)+1), types.Size_t(unsafe.Sizeof(uintptr(0))))
-	if v == 0 {
-		Xfree(t, cname)
-		Xfree(t, protoname)
-		for _, v := range a {
-			Xfree(t, v)
-		}
-		getservbynameStaticResult = netdb.Servent{}
-		return 0
-	}
-	for _, p := range a {
-		*(*uintptr)(unsafe.Pointer(v)) = p
-		v += unsafe.Sizeof(uintptr(0))
+		*(*uintptr)(unsafe.Pointer(r.Fs_aliases + uintptr(i)*unsafe.Sizeof(uintptr(0)))) = p
 	}
 
-	getservbynameStaticResult = netdb.Servent{
-		Fs_name:    cname,
-		Fs_aliases: v,
-		Fs_port:    int32(servent.Port),
-		Fs_proto:   protoname,
+	// servent.Protocol is nil only for a protocol missing from /etc/protocols.
+	var protoname string
+	if servent.Protocol != nil {
+		protoname = servent.Protocol.Name
 	}
-	return uintptr(unsafe.Pointer(&getservbynameStaticResult))
+	if r.Fs_proto, err = CString(protoname); err != nil {
+		return 0
+	}
+
+	r.Fs_port = int32(Xhtons(t, uint16(servent.Port)))
+	return uintptr(unsafe.Pointer(r))
 }
 
 func Xreaddir64(t *TLS, dir uintptr) uintptr {
@@ -1817,8 +1866,20 @@ func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, off
 	if __ccgo_strace {
 		trc("t=%v addr=%v length=%v fd=%v offset=%v, (%v:)", t, addr, length, fd, offset, origin(2))
 	}
-	// Cannot avoid the unix here, addr sometimes matter.
-	data, _, err := unix.Syscall6(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), uintptr(offset))
+	// NetBSD mmap(2) is
+	//
+	//	mmap(void *addr, size_t len, int prot, int flags, int fd, long PAD, off_t pos)
+	//
+	// i.e. there is a `long PAD` argument before `off_t pos`. The offset must
+	// therefore be passed as the 7th syscall argument (Syscall9), not the 6th
+	// (Syscall6): with Syscall6 the offset lands in the PAD slot and `pos` is
+	// left as stack garbage, so the kernel maps at a garbage file offset and
+	// returns an unaligned/unbacked pointer that faults on first access (e.g.
+	// the SQLite WAL-index shm). On 32-bit (netbsd/arm) off_t additionally spans
+	// two argument words, so pass offset>>32 as the high word; it is read on
+	// 32-bit and ignored on 64-bit. Matches golang.org/x/sys/unix's own per-arch
+	// netbsd mmap.
+	data, _, err := unix.Syscall9(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), 0, uintptr(offset), uintptr(offset>>32), 0)
 	if err != 0 {
 		if dmesgs {
 			dmesg("%v: %v FAIL", origin(1), err)
@@ -1949,4 +2010,51 @@ func Xbswap64(t *TLS, x uint64) uint64 {
 		trc("t=%v x=%v, (%v:)", t, x, origin(2))
 	}
 	return X__builtin_bswap64(t, x)
+}
+
+// int nanosleep(const struct timespec *req, struct timespec *rem);
+func Xnanosleep(t *TLS, req, rem uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v rem=%v, (%v:)", t, rem, origin(2))
+	}
+	v := *(*time.Timespec)(unsafe.Pointer(req))
+	gotime.Sleep(gotime.Second*gotime.Duration(v.Ftv_sec) + gotime.Duration(v.Ftv_nsec))
+	return 0
+}
+
+// ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
+func Xpwrite(t *TLS, fd int32, buf uintptr, count types.Size_t, offset types.Off_t) types.Ssize_t {
+	if __ccgo_strace {
+		trc("t=%v fd=%v buf=%v count=%v offset=%v, (%v:)", t, fd, buf, count, offset, origin(2))
+	}
+	var n int
+	var err error
+	switch {
+	case count == 0:
+		n, err = unix.Pwrite(int(fd), nil, int64(offset))
+	default:
+		n, err = unix.Pwrite(int(fd), (*RawMem)(unsafe.Pointer(buf))[:count:count], int64(offset))
+		// 		if dmesgs {
+		// 			dmesg("%v: fd %v, off %#x, count %#x\n%s", origin(1), fd, offset, count, hex.Dump((*RawMem)(unsafe.Pointer(buf))[:count:count]))
+		// 		}
+	}
+	if err != nil {
+		// 		if dmesgs {
+		// 			dmesg("%v: %v FAIL", origin(1), err)
+		// 		}
+		t.setErrno(err)
+		return -1
+	}
+
+	// 	if dmesgs {
+	// 		dmesg("%v: ok", origin(1))
+	// 	}
+	return types.Ssize_t(n)
+}
+
+func Xrewinddir(tls *TLS, f uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v f=%v, (%v:)", tls, f, origin(2))
+	}
+	Xfseek(tls, f, 0, stdio.SEEK_SET)
 }
