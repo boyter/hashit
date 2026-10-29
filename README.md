@@ -21,7 +21,7 @@ Using `hashit` commercially? If you want priority support for `hashit` you can p
  
 ### Install
 
-If you are comfortable using Go and have >= 1.25 installed `go install github.com/boyter/hashit@latest` will install the latest tagged release for you. Features described here which are newer than that release need `@master`.
+If you are comfortable using Go and have >= 1.26 installed `go install github.com/boyter/hashit@latest` will install the latest tagged release for you. Features described here which are newer than that release need `@master`.
 
 Binaries are available on [Releases](https://github.com/boyter/hashit/releases) for Windows, GNU/Linux and macOS.
 
@@ -29,7 +29,7 @@ If you would like to assist with getting `hashit` added into apt/homebrew/chocol
 
 ### Development
 
-You need to have Go installed. Minimum version is Go 1.25 https://go.dev/
+You need to have Go installed. Minimum version is Go 1.26 https://go.dev/
 
 Install the following tools, either via the indicated command or what is suggested on site
 
