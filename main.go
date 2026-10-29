@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var verboseCount int
+
 func main() {
 	//f, _ := os.Create("hashit.pprof")
 	//_ = pprof.StartCPUProfile(f)
@@ -24,6 +26,13 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			var filePaths []string
 			for _, arg := range args {
+				// an existing path is used as is, so files with [ ] * or ? in their name can be
+				// supplied, otherwise expand it ourselves as shells such as cmd.exe do not
+				if _, err := os.Lstat(arg); err == nil {
+					filePaths = append(filePaths, arg)
+					continue
+				}
+
 				matches, err := filepath.Glob(arg)
 				if err != nil || len(matches) == 0 {
 					// If there's an error or no matches, treat the argument as a literal path
@@ -31,6 +40,12 @@ func main() {
 				} else {
 					filePaths = append(filePaths, matches...)
 				}
+			}
+
+			// -vv is counted as -v twice, which hashdeep users will expect to mean --vv
+			processor.Verbose = verboseCount >= 1
+			if verboseCount >= 2 {
+				processor.VeryVerbose = true
 			}
 
 			processor.DirFilePaths = filePaths
@@ -111,12 +126,11 @@ func main() {
 		1_000_000,
 		"files larger than this size in bytes are read in chunks rather than all at once",
 	)
-	flags.BoolVarP(
-		&processor.Verbose,
+	flags.CountVarP(
+		&verboseCount,
 		"verbose",
 		"v",
-		false,
-		"verbose audit output, listing every modified, moved, new and missing file",
+		"verbose audit output, listing every modified, moved, new and missing file; -vv is the same as --vv",
 	)
 	flags.BoolVar(
 		&processor.VeryVerbose,

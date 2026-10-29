@@ -37,7 +37,7 @@ func printDebug(msg string) {
 	}
 }
 
-// Used when explicitly for os.exit output when crashing out
+// Used for failures, whether processing stops or continues and later exits non zero
 func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
 }
@@ -117,6 +117,10 @@ const (
 // auditFailed determines if an audit failed. Same as hashdeep, the audit only passes when everything
 // is exactly where it was, unless moved files have been allowed
 func auditFailed(modified, moved, newFiles, missing int) bool {
+	// a file which could not be read or a path which does not exist means the audit is incomplete
+	if fileErrors.Load() {
+		return true
+	}
 	if moved > 0 && !AllowMoved {
 		return true
 	}

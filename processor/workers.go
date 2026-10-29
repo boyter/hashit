@@ -57,6 +57,11 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		// Stat before opening, as opening a FIFO or device would block until something writes to it
 		fi, err := os.Stat(res)
 		if err != nil {
+			// a symlink which points nowhere has no content to hash, hashdeep ignores these
+			if lfi, lerr := os.Lstat(res); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+				printWarn(fmt.Sprintf("Skipping %s as it is a symlink to something which does not exist", res))
+				continue
+			}
 			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}

@@ -227,7 +227,7 @@ func Process() {
 					sqliteCompareHashes = append(sqliteCompareHashes, h)
 				}
 			}
-			if len(sqliteCompareHashes) == 0 {
+			if len(stored) != 0 && len(sqliteCompareHashes) == 0 {
 				printWarn(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
 			}
 		} else {
@@ -244,7 +244,9 @@ func Process() {
 			}
 			// the audit file cannot contain its own hash, so never process or expect it
 			auditor.Exclude(AuditFile)
-			Hash = auditor.HashNames()
+			if len(auditor.HashNames()) != 0 {
+				Hash = auditor.HashNames()
+			}
 		}
 		addSkipFile(AuditFile)
 	}
@@ -459,6 +461,11 @@ func prepareOutput(path string, sqlite bool) error {
 
 	if !Overwrite {
 		return fmt.Errorf("output file %s already exists, use --overwrite to replace it", path)
+	}
+
+	// never replace a directory or anything else which is not a regular file
+	if fi, err := os.Stat(path); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("output file %s is not a regular file, refusing to replace it", path)
 	}
 
 	if !sqlite {

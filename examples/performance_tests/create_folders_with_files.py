@@ -1,8 +1,20 @@
 # Create folders with files in them to check out the performance of parallel file walk algorithms
 # in really unusual edge cases to determine the best all round algorithm for walking
 
+# Usage: python3 create_folders_with_files.py <target directory>
+# Creates around 72,000 files under the target directory
+
 import os
 import errno
+import sys
+
+if len(sys.argv) != 2:
+    print("Usage: python3 create_folders_with_files.py <target directory>")
+    print("Creates around 72,000 files under the target directory")
+    sys.exit(1)
+
+os.makedirs(sys.argv[1], exist_ok=True)
+os.chdir(sys.argv[1])
 
 def make_sure_path_exists(path):
     try:

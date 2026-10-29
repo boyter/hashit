@@ -7,8 +7,11 @@ set -e
 GREEN='\033[1;32m'
 RED='\033[0;31m'
 NC='\033[0m'
-TEST_DIR="/tmp/hashit-test"
-AUDIT_FILE="audit.txt"
+# unique temporary locations so concurrent runs do not clash and nothing in the working
+# directory is overwritten or removed
+TEST_DIR=$(mktemp -d)
+AUDIT_DIR=$(mktemp -d)
+AUDIT_FILE="$AUDIT_DIR/audit.txt"
 
 # --- Helper Functions ---
 print_pass() {
@@ -24,6 +27,7 @@ print_fail() {
 setup() {
     echo "Setting up test environment in $TEST_DIR..."
     rm -rf "$TEST_DIR"
+    mkdir -p "$AUDIT_DIR"
     mkdir -p "$TEST_DIR/dir1"
     mkdir -p "$TEST_DIR/dir2"
     echo "file1" > "$TEST_DIR/dir1/file1.txt"
@@ -36,8 +40,7 @@ setup() {
 
 cleanup() {
     echo "Cleaning up..."
-    rm -rf "$TEST_DIR"
-    rm -f "$AUDIT_FILE"
+    rm -rf "$TEST_DIR" "$AUDIT_DIR"
     rm -f ./hashit
 }
 
@@ -157,9 +160,6 @@ setup
 test_missing_file
 cleanup
 
-# This test is expected to fail for now.
-# I'm including it as per the plan.
-# If you want me to remove it until the logic is implemented, let me know.
 setup
 test_moved_file
 cleanup
