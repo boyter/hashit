@@ -82,6 +82,12 @@ func main() {
 		"output filename (default stdout)",
 	)
 	flags.BoolVar(
+		&processor.AllowMoved,
+		"allow-moved",
+		false,
+		"allow an audit to pass when known files have moved or been renamed but are unmodified",
+	)
+	flags.BoolVar(
 		&processor.Absolute,
 		"absolute",
 		false,

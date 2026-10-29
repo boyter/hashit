@@ -87,6 +87,15 @@ const (
 	Failed = "failed"
 )
 
+// auditFailed determines if an audit failed. Same as hashdeep, the audit only passes when everything
+// is exactly where it was, unless moved files have been allowed
+func auditFailed(modified, moved, newFiles, missing int) bool {
+	if moved > 0 && !AllowMoved {
+		return true
+	}
+	return modified > 0 || newFiles > 0 || missing > 0
+}
+
 func doAudit(input chan Result) (string, bool) {
 	examinedCount := 0
 	matched := 0
@@ -165,9 +174,8 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
-	// Same as hashdeep, the audit only passes when everything is exactly where it was
 	status := Passed
-	if filesMissing > 0 || len(newFiles) > 0 || filesModified > 0 || moved > 0 {
+	if auditFailed(filesModified, moved, len(newFiles), filesMissing) {
 		status = Failed
 	}
 

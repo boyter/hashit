@@ -78,6 +78,7 @@ Flags:
       --mtime                   enable mtime output
       --no-stream               do not stream out results as processed
       --absolute                output absolute paths, which is what hashdeep does without -l
+      --allow-moved             allow an audit to pass when known files have moved or been renamed but are unmodified
       --overwrite               allow output to replace an existing file
   -M, --not-match stringArray   ignore files and directories matching regular expression
   -o, --output string           output filename (default stdout)
@@ -256,7 +257,21 @@ Known files expecting: 1
 $ rm -rf /tmp/hashit-audit-test audit.txt
 ```
 
-`hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. Use `-v` to list every file which is modified, moved, new or missing. Results are reported in the order of the audit file, followed by any new files.
+`hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. To check that every known file is still present and unmodified, while allowing files to have been moved or renamed, use `--allow-moved`. New, missing or modified files still fail the audit.
+
+```shell
+$ mv a.txt archive/a.txt
+$ hashit --allow-moved -a audit.txt .
+hashit: Audit passed
+       Files examined: 8
+Known files expecting: 8
+        Files matched: 7
+       Files modified: 0
+          Files moved: 1
+      New files found: 0
+        Files missing: 0
+```
+ Use `-v` to list every file which is modified, moved, new or missing. Results are reported in the order of the audit file, followed by any new files.
 
 #### Modification Times
 

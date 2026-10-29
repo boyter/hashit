@@ -47,6 +47,9 @@ var Overwrite = false
 // Absolute outputs absolute paths, which is the default for hashdeep
 var Absolute = false
 
+// AllowMoved allows an audit to pass when known files have moved, so long as they are unmodified
+var AllowMoved = false
+
 // If data is being piped in using stdin
 var StandardInput = false
 
@@ -182,6 +185,10 @@ func Process() {
 
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
+
+	if AllowMoved && AuditFile == "" {
+		printError("--allow-moved only applies when auditing with --audit, ignoring flag")
+	}
 
 	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
