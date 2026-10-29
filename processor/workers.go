@@ -770,15 +770,13 @@ func processStandardInput(output chan Result) {
 // NB there is little point in multi-processing at this level, it would be
 // better done on the input channel if required
 func processReadFileParallel(filename string, content *[]byte) (Result, error) {
-	startTime := makeTimestampNano()
-
 	var wg sync.WaitGroup
 	result := Result{}
 
 	if hasHash(HashNames.CRC32) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := crc32.NewIEEE()
 			_, _ = d.Write(*content)
 			result.CRC32 = hex.EncodeToString(d.Sum(nil))
@@ -793,7 +791,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.XxHash64) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := xxhash.New()
 			_, _ = d.Write(*content)
 			result.XxHash64 = hex.EncodeToString(d.Sum(nil))
@@ -808,7 +806,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.MD4) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := md4.New()
 			d.Write(*content)
 			result.MD4 = hex.EncodeToString(d.Sum(nil))
@@ -823,7 +821,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.MD5) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := md5.New()
 			d.Write(*content)
 			result.MD5 = hex.EncodeToString(d.Sum(nil))
@@ -838,7 +836,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.SHA1) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha1.New()
 			d.Write(*content)
 			result.SHA1 = hex.EncodeToString(d.Sum(nil))
@@ -853,7 +851,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.SHA256) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha256.New()
 			d.Write(*content)
 			result.SHA256 = hex.EncodeToString(d.Sum(nil))
@@ -868,7 +866,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.SHA512) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha512.New()
 			d.Write(*content)
 			result.SHA512 = hex.EncodeToString(d.Sum(nil))
@@ -883,7 +881,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Blake2b256) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := blake2b.New256()
 			d.Write(*content)
 			result.Blake2b256 = hex.EncodeToString(d.Sum(nil))
@@ -898,7 +896,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Blake2b512) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := blake2b.New512()
 			d.Write(*content)
 			result.Blake2b512 = hex.EncodeToString(d.Sum(nil))
@@ -910,10 +908,25 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 		}()
 	}
 
+	if hasHash(HashNames.Blake3) {
+		wg.Add(1)
+		go func() {
+			startTime := makeTimestampNano()
+			d := blake3.New()
+			_, _ = d.Write(*content)
+			result.Blake3 = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing blake3: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
 	if hasHash(HashNames.Sha3224) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha3.New224()
 			d.Write(*content)
 			result.Sha3224 = hex.EncodeToString(d.Sum(nil))
@@ -928,7 +941,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Sha3256) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha3.New256()
 			d.Write(*content)
 			result.Sha3256 = hex.EncodeToString(d.Sum(nil))
@@ -943,7 +956,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Sha3384) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha3.New384()
 			d.Write(*content)
 			result.Sha3384 = hex.EncodeToString(d.Sum(nil))
@@ -958,7 +971,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Sha3512) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := sha3.New512()
 			d.Write(*content)
 			result.Sha3512 = hex.EncodeToString(d.Sum(nil))
@@ -973,7 +986,7 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 	if hasHash(HashNames.Ed2k) {
 		wg.Add(1)
 		go func() {
-			startTime = makeTimestampNano()
+			startTime := makeTimestampNano()
 			d := ed2k.New()
 			_, _ = d.Write(*content)
 			result.Ed2k = hex.EncodeToString(d.Sum(nil))

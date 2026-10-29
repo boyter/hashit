@@ -634,6 +634,21 @@ for AUDITFILE in moved.txt moved.db; do
     fi
 done
 
+# files are hashed differently depending on size, every hash must agree across the thresholds
+head -c 300000 /dev/urandom > "$AUDITDIR/threshold.bin"
+for HASHNAME in $("$HASHIT" --hashes | sed -n 's/.*(\(.*\))/\1/p'); do
+    A=$("$HASHIT" -c "$HASHNAME" -f hashonly "$AUDITDIR/threshold.bin")
+    B=$("$HASHIT" -c "$HASHNAME" -f hashonly --stream-size 0 "$AUDITDIR/threshold.bin")
+    if [ -n "$A" ] && [ "$A" == "$B" ]; then
+        echo -e "${GREEN}PASSED $HASHNAME parallel and stream agree test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $HASHNAME parallel and stream agree test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
 # https://github.com/boyter/hashit/issues/20
 audit_test "hashdeep can audit hashit --mtime output test" \
     "cd '$AUDITDIR/media' && '$HASHIT' --mtime -f hashdeep . > ../mtime-hashdeep.txt && grep -q '^## mtime ' ../mtime-hashdeep.txt && hashdeep -l -r -a -k ../mtime-hashdeep.txt . < /dev/null"
