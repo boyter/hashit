@@ -821,6 +821,51 @@ ln -s ../../tgt "$AUDITDIR/vendored/w/vendor/cache"
 check "exclude-dir path end applies to symlinked directories test" \
     "! '$HASHIT' -c md5 -f sum --exclude-dir vendor/cache '$AUDITDIR/vendored/w' | grep -q 't.me'"
 
+# round 6 regressions
+mkdir -p "$AUDITDIR/r6/t/sub"
+echo 1 > "$AUDITDIR/r6/t/x.txt"
+echo 2 > "$AUDITDIR/r6/t/sub/x.txt"
+(cd "$AUDITDIR/r6/t" && "$HASHIT" -f hashdeep . > sub/audit.txt)
+check "record resolved through audit file directory does not take another record test" \
+    "cd '$AUDITDIR/r6/t/sub' && '$HASHIT' -a audit.txt '$AUDITDIR/r6/t' | grep -q 'Audit passed'"
+echo old > "$AUDITDIR/r6/ro.txt" && chmod 444 "$AUDITDIR/r6/ro.txt"
+check "read only output file can be overwritten test" \
+    "'$HASHIT' --overwrite -o '$AUDITDIR/r6/ro.txt' '$AUDITDIR/r6/t' > /dev/null && [ \"\$(stat -c '%a' '$AUDITDIR/r6/ro.txt')\" == '444' ]"
+mkdir -p "$AUDITDIR/r6/hl"
+echo important > "$AUDITDIR/r6/hl/f"
+ln "$AUDITDIR/r6/hl/f" "$AUDITDIR/r6/hardlink.txt"
+"$HASHIT" -c md5 -f sum --overwrite -o "$AUDITDIR/r6/hardlink.txt" "$AUDITDIR/r6/hl" > /dev/null
+check "hard link of the output file is still hashed test" "grep -q 'hl/f' '$AUDITDIR/r6/hardlink.txt'"
+(sleep 3; echo x) | "$HASHIT" -o "$AUDITDIR/r6/hup.txt" &
+HUPPID=$!
+sleep 1
+kill -HUP $HUPPID
+wait $HUPPID 2>/dev/null
+check "hangup leaves no temporary file test" "! ls -a '$AUDITDIR/r6' | grep -q 'hashit.tmp'"
+ln -s loopb "$AUDITDIR/r6/loopa"
+ln -s loopa "$AUDITDIR/r6/loopb"
+check "symlink loop output is refused test" "! '$HASHIT' --overwrite -o '$AUDITDIR/r6/loopa' '$AUDITDIR/r6/t' > /dev/null 2>&1 && [ -L '$AUDITDIR/r6/loopa' ]"
+mkdir -p "$AUDITDIR/r6/dots/..cfg"
+echo n > "$AUDITDIR/r6/dots/..notes"
+echo x > "$AUDITDIR/r6/dots/..cfg/x"
+(cd "$AUDITDIR/r6/dots" && "$HASHIT" -f sqlite -o ../dots.db . > /dev/null)
+check "names starting with two dots audit from another directory test" "cd '$AUDITDIR/r6' && '$HASHIT' -a dots.db dots | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r6/empty"
+: > "$AUDITDIR/r6/empty.txt"
+check "empty audit file passes against an empty directory test" "'$HASHIT' -a '$AUDITDIR/r6/empty.txt' '$AUDITDIR/r6/empty' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r6/orig" "$AUDITDIR/r6/copy"
+echo a > "$AUDITDIR/r6/orig/a"
+cp "$AUDITDIR/r6/orig/a" "$AUDITDIR/r6/copy/a"
+(cd "$AUDITDIR/r6/orig" && "$HASHIT" -f hashdeep -o ../copy/m.txt . > /dev/null)
+echo changed >> "$AUDITDIR/r6/orig/a"
+check "two files matching one record are not both counted test" \
+    "cd '$AUDITDIR/r6/orig' && '$HASHIT' -v -a ../copy/m.txt . ../copy | grep -q '^./a: File modified' && '$HASHIT' -a ../copy/m.txt . ../copy | grep -q 'Files modified: 1'"
+mkdir -p "$AUDITDIR/r6/dupsum"
+echo a > "$AUDITDIR/r6/dupsum/a"
+(cd "$AUDITDIR/r6/dupsum" && md5sum a > ../dupsum.md5 && echo "00000000000000000000000000000000  a" >> ../dupsum.md5)
+check "sum file listing a path twice uses the first test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Audit passed'"
+check "format with audit warns test" "'$HASHIT' -f json -a '$AUDITDIR/r6/empty.txt' '$AUDITDIR/r6/empty' 2>&1 >/dev/null | grep -q 'format is ignored'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
