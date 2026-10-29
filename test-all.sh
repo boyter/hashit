@@ -911,6 +911,13 @@ echo same > "$AUDITDIR/r7/mv/a"
 rm "$AUDITDIR/r7/mv/a"
 for n in 1 2 3 4; do mkdir -p "$AUDITDIR/r7/mv/d$n" && echo same > "$AUDITDIR/r7/mv/d$n/copy"; done
 check "moved target is the first in path order test" "cd '$AUDITDIR/r7/mv' && '$HASHIT' -v --allow-moved -a ../mv.txt . | grep -q 'd1/copy: File moved'"
+# files named like SQLite sidecars of a non SQLite output are unrelated and must be kept
+mkdir -p "$AUDITDIR/sidecar"
+echo precious > "$AUDITDIR/sidecar/notes-journal"
+echo a > "$AUDITDIR/sidecar/a"
+(cd "$AUDITDIR/sidecar" && "$HASHIT" -o notes --format sum . > /dev/null)
+check "non sqlite output keeps files named like sidecars test" \
+    "[ -f '$AUDITDIR/sidecar/notes-journal' ] && grep -q 'notes-journal' '$AUDITDIR/sidecar/notes'"
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
