@@ -149,11 +149,7 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 		pathLookup: map[string]*AuditRecord{},
 		hashLookup: map[string][]*AuditRecord{},
 	}
-	cwd, cwdErr := os.Getwd()
-	if cwdErr != nil {
-		return nil, fmt.Errorf("unable to determine the working directory: %w", cwdErr)
-	}
-	hdl.cwd = cwd
+	hdl.cwd = workingDir()
 
 	var err error
 	if isHashdeepFormat(input) {
@@ -308,11 +304,31 @@ func absFrom(base string, p string) string {
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p)
 	}
+	// a Windows path such as D:x is relative to the working directory of that drive
+	if vol := filepath.VolumeName(p); vol != "" {
+		if strings.EqualFold(vol, filepath.VolumeName(base)) {
+			return filepath.Join(base, p[len(vol):])
+		}
+		if abs, err := filepath.Abs(p); err == nil {
+			return abs
+		}
+		return filepath.Clean(p)
+	}
 	// a Windows path such as \x is relative to the root of the current drive
 	if filepath.VolumeName(p) == "" && len(p) != 0 && os.IsPathSeparator(p[0]) {
 		return filepath.Join(filepath.VolumeName(base), p)
 	}
 	return filepath.Join(base, p)
+}
+
+// workingDir returns the working directory, or an empty string when it cannot be found such as
+// when it has been deleted, in which case relative paths are compared as written
+func workingDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
 }
 
 // auditBases returns the absolute directories relative paths in an audit file may be relative to,

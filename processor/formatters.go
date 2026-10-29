@@ -670,6 +670,9 @@ func toHashDeep(input chan Result) string {
 	return str.String()
 }
 
+// sqliteWriteFailed is set when the database could not be written, so it is never used as output
+var sqliteWriteFailed bool
+
 func toSqlite(input chan Result) (string, bool) {
 	// if not file output specified we need to do it ourselves
 	if FileOutput == "" {
@@ -692,11 +695,15 @@ func toSqlite(input chan Result) (string, bool) {
 	db, err := connectSqliteDb(outputTemp)
 	if err != nil {
 		printError(fmt.Sprintf("problem creating database %s: %s", FileOutput, err.Error()))
+		sqliteWriteFailed = true
 		return "", false
 	}
-	defer func(db *sql.DB) {
-		_ = db.Close()
-	}(db)
+	closed := false
+	defer func() {
+		if !closed {
+			_ = db.Close()
+		}
+	}()
 	db.SetMaxOpenConns(1) // we are writing, so set the number of writes to 1
 
 	queries := database.New(db)
@@ -704,6 +711,7 @@ func toSqlite(input chan Result) (string, bool) {
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		printError(fmt.Sprintf("problem with tx %s", FileOutput))
+		sqliteWriteFailed = true
 		return "", false
 	}
 	withTx := queries.WithTx(tx)
@@ -712,6 +720,7 @@ func toSqlite(input chan Result) (string, bool) {
 	if pwd, err := os.Getwd(); err == nil {
 		if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataInvokedFrom, Value: pwd}); err != nil {
 			printError(err.Error())
+			sqliteWriteFailed = true
 			return "", false
 		}
 	}
@@ -725,6 +734,7 @@ func toSqlite(input chan Result) (string, bool) {
 	}
 	if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataHashes, Value: strings.Join(calculated, ",")}); err != nil {
 		printError(err.Error())
+		sqliteWriteFailed = true
 		return "", false
 	}
 
@@ -760,6 +770,7 @@ func toSqlite(input chan Result) (string, bool) {
 		})
 		if err != nil {
 			printError(err.Error())
+			sqliteWriteFailed = true
 			return "", false
 		}
 
@@ -769,12 +780,14 @@ func toSqlite(input chan Result) (string, bool) {
 			err := tx.Commit()
 			if err != nil {
 				printError(err.Error())
+				sqliteWriteFailed = true
 				return "", false
 			}
 
 			tx, err = db.BeginTx(context.Background(), nil)
 			if err != nil {
 				printError(err.Error())
+				sqliteWriteFailed = true
 				return "", false
 			}
 			withTx = queries.WithTx(tx)
@@ -782,10 +795,11 @@ func toSqlite(input chan Result) (string, bool) {
 		count++
 	}
 
-	// its possible this was already commited so ignore
 	err = tx.Commit()
 	if err != nil {
 		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
 	}
 
 	// ensure we merge the WAL into a single file, and leave the database out of WAL mode so that
@@ -793,6 +807,15 @@ func toSqlite(input chan Result) (string, bool) {
 	_, err = db.Exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
 	if err != nil {
 		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
+	}
+
+	closed = true
+	if err := db.Close(); err != nil {
+		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
 	}
 
 	return "", true

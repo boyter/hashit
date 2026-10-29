@@ -175,13 +175,16 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 // buildSqlitePathIndex fills temp.paths with the absolute path every record may refer to, in the
 // same priority order as other audit files: the directory hashit was invoked from, then the
 // database's directory, then the working directory. A path takes the record from the most
-// preferred directory, then the first record. It is held in a temporary table rather than memory
-// so databases larger than memory can be audited
+// preferred directory, then the first record. Records written as hashit writes them, such as
+// sub/a or ./sub/a, are looked up directly by sqliteLookup, so only other spellings such as
+// sub//a are indexed. It is held in a temporary table rather than memory so databases larger
+// than memory can be audited
 func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error {
 	if _, err := db.ExecContext(ctx, `create temp table paths (
     abs text primary key,
     filepath text not null,
-    level integer not null
+    level integer not null,
+    rid integer not null
 )`); err != nil {
 		return err
 	}
@@ -192,23 +195,27 @@ func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	insert, err := tx.PrepareContext(ctx, `insert into temp.paths (abs, filepath, level) values (?, ?, ?)
-on conflict (abs) do update set filepath = excluded.filepath, level = excluded.level where excluded.level < paths.level`)
+	insert, err := tx.PrepareContext(ctx, `insert into temp.paths (abs, filepath, level, rid) values (?, ?, ?, ?)
+on conflict (abs) do update set filepath = excluded.filepath, level = excluded.level, rid = excluded.rid where excluded.level < paths.level`)
 	if err != nil {
 		return err
 	}
 	defer insert.Close()
 
-	rows, err := tx.QueryContext(ctx, "select filepath from file_hashes order by rowid")
+	rows, err := tx.QueryContext(ctx, "select rowid, filepath from file_hashes order by rowid")
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
+		var rid int64
 		var filePath string
-		if err := rows.Scan(&filePath); err != nil {
+		if err := rows.Scan(&rid, &filePath); err != nil {
 			return err
+		}
+		if isDirectSpelling(filePath) {
+			continue
 		}
 		var keys []string
 		for level, base := range bases {
@@ -217,7 +224,7 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 				continue
 			}
 			keys = append(keys, k)
-			if _, err := insert.ExecContext(ctx, k, filePath, level); err != nil {
+			if _, err := insert.ExecContext(ctx, k, filePath, level, rid); err != nil {
 				return err
 			}
 		}
@@ -227,6 +234,54 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 	}
 	_ = rows.Close()
 	return tx.Commit()
+}
+
+// isDirectSpelling reports whether sqliteLookup finds a record by its path without the index,
+// being a clean absolute path, or a clean relative path optionally starting with ./
+func isDirectSpelling(p string) bool {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p) == p
+	}
+	// Windows paths such as \a and D:a are relative to a drive, so are left to the index
+	if p == "" || filepath.VolumeName(p) != "" || os.IsPathSeparator(p[0]) {
+		return false
+	}
+	p = strings.TrimPrefix(p, "."+string(filepath.Separator))
+	return p != "" && filepath.Clean(p) == p
+}
+
+// sqliteLookup finds the record for the absolute path of a file on disk, returning its path in
+// the database and the priority of the directory it matched through, or false if none matches
+func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (string, int, bool, error) {
+	for level, base := range bases {
+		var candidates []any
+		if level == 0 {
+			candidates = append(candidates, abs)
+		}
+		// the path relative to base is only used when it leads back to the same file, as
+		// relative paths are compared exactly as absFrom resolves them
+		if rel, err := filepath.Rel(base, abs); err == nil && rel != "." && absFrom(base, rel) == abs {
+			candidates = append(candidates, rel, "."+string(filepath.Separator)+rel)
+		}
+		for len(candidates) < 3 {
+			candidates = append(candidates, nil)
+		}
+
+		var filePath string
+		err := tx.QueryRowContext(ctx, `select filepath from (
+    select rowid as rid, filepath from file_hashes where filepath in (?, ?, ?)
+    union all
+    select rid, filepath from temp.paths where abs = ? and level = ?
+) order by rid limit 1`, append(candidates, abs, level)...).Scan(&filePath)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return "", 0, false, err
+		}
+		return filePath, level, true, nil
+	}
+	return "", 0, false, nil
 }
 
 // doSqliteAudit performs an audit against a SQLite database, comparing all available hashes.
@@ -243,11 +298,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	ctx := context.Background()
 	queries := database.New(db)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		printError(fmt.Sprintf("unable to determine the working directory: %s", err.Error()))
-		return "", false
-	}
+	cwd := workingDir()
 
 	// databases created before metadata was added do not have this, in which case paths are
 	// relative to the working directory
@@ -297,13 +348,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// lookupRecord finds the record for a file on disk by its absolute path, and whether it matched
 	// through the directory hashit was invoked from
 	lookupRecord := func(file string) (*AuditRecord, bool, error) {
-		var filePath string
-		var level int
-		err := tx.QueryRowContext(ctx, "select filepath, level from temp.paths where abs = ?", absFrom(cwd, file)).Scan(&filePath, &level)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, nil
-		}
-		if err != nil {
+		filePath, level, ok, err := sqliteLookup(ctx, tx, bases, absFrom(cwd, file))
+		if err != nil || !ok {
 			return nil, false, err
 		}
 		row, err := txQueries.FileHashByFilePath(ctx, filePath)
@@ -373,6 +419,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 				if err := json.Unmarshal([]byte(oldResult.String), &old); err != nil {
 					wins = false
 				}
+				// JSON replaces bytes which are not UTF-8, so the name is taken from disk_file
+				old.File = oldFile
 			}
 			if !wins {
 				newFileCandidates = append(newFileCandidates, res)
@@ -410,9 +458,13 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	})
 	sort.Strings(failedList)
 	for _, f := range failedList {
-		var filePath string
-		err := tx.QueryRowContext(ctx, "select p.filepath from temp.paths p left join temp.seen s on s.filepath = p.filepath where p.abs = ? and s.filepath is null", absFrom(cwd, f)).Scan(&filePath)
-		if err == nil {
+		filePath, _, ok, err := sqliteLookup(ctx, tx, bases, absFrom(cwd, f))
+		if err == nil && ok {
+			var claimed int
+			err = tx.QueryRowContext(ctx, "select count(*) from temp.seen where filepath = ?", filePath).Scan(&claimed)
+			ok = err == nil && claimed == 0
+		}
+		if ok {
 			unreadable[filePath] = true
 		} else {
 			unreadableNew = append(unreadableNew, f)

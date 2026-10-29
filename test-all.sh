@@ -12,6 +12,10 @@ go test -shuffle on ./... || exit
 echo "Building application..."
 go build -ldflags="-s -w" || exit
 
+# illumos has no SQLite driver or progress bar support, so is built without them
+echo "Building for illumos..."
+GOOS=illumos GOARCH=amd64 go build -o /dev/null . || exit
+
 GREEN='\033[1;32m'
 RED='\033[0;31m'
 NC='\033[0m'
@@ -961,6 +965,28 @@ check "output through a symlinked directory is not hashed test" "! grep -q 'dl/o
 check "audit file read from a pipe test" "cd '$AUDITDIR/r8/glob' && cat sums.md5 | '$HASHIT' -a /dev/stdin a b | grep -q 'Audit passed'"
 check "sqlite audit database from a pipe is an error test" "cat '$AUDITDIR/r8/t.db' | '$HASHIT' -a /dev/stdin '$AUDITDIR/r8/t' > /dev/null 2>&1; [ \$? -eq 2 ]"
 check "broken pipe exits 141 test" "'$HASHIT' -o '$AUDITDIR/r8/piped.txt' --overwrite '$AUDITDIR/r7/big' 2>/dev/null | (exec 0<&-; sleep 0.2); [ \${PIPESTATUS[0]} -eq 141 ]"
+
+# round 9
+mkdir -p "$AUDITDIR/r9/slow"
+truncate -s 400M "$AUDITDIR/r9/slow/f"
+check "signal ignored when started stays ignored test" "sh -c \"trap '' INT HUP; '$HASHIT' -c all -o '$AUDITDIR/r9/ign.txt' '$AUDITDIR/r9/slow' > /dev/null & p=\\\$!; sleep 0.3; kill -INT \\\$p; kill -HUP \\\$p; wait \\\$p\" && [ -s '$AUDITDIR/r9/ign.txt' ]"
+check "output created while running is not replaced test" "('$HASHIT' -c all -o '$AUDITDIR/r9/race.txt' '$AUDITDIR/r9/slow' > /dev/null 2>&1; echo \$? > '$AUDITDIR/r9/race.rc') & sleep 0.3; echo precious > '$AUDITDIR/r9/race.txt'; wait; [ \"\$(cat '$AUDITDIR/r9/race.txt')\" == precious ] && [ \"\$(cat '$AUDITDIR/r9/race.rc')\" == 2 ] && ! ls -a '$AUDITDIR/r9' | grep -q hashit.tmp"
+mkdir -p "$AUDITDIR/r9/tree" "$AUDITDIR/r9/gone"
+echo 1 > "$AUDITDIR/r9/tree/a"
+"$HASHIT" -f hashdeep -o "$AUDITDIR/r9/m.hd" "$AUDITDIR/r9/tree" > /dev/null
+"$HASHIT" -f sqlite -o "$AUDITDIR/r9/m.db" "$AUDITDIR/r9/tree" > /dev/null
+check "audit from a deleted working directory test" "cd '$AUDITDIR/r9/gone' && rmdir '$AUDITDIR/r9/gone' && '$HASHIT' -a '$AUDITDIR/r9/m.hd' '$AUDITDIR/r9/tree' | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r9/m.db' '$AUDITDIR/r9/tree' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r9/sp/t/a"
+echo 1 > "$AUDITDIR/r9/sp/t/a/x"
+echo 2 > "$AUDITDIR/r9/sp/t/y"
+(cd "$AUDITDIR/r9/sp/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r9/sp/m.db" "update file_hashes set filepath = 'a//x' where filepath = './a/x'; update file_hashes set filepath = '$AUDITDIR/r9/sp/t/y' where filepath = './y'"
+check "sqlite database with unusual path spellings audits test" "cd '$AUDITDIR/r9/sp/t' && '$HASHIT' -a ../m.db . | grep -q 'Audit passed' && cd .. && '$HASHIT' -a m.db t | grep -q 'Audit passed'"
+if unshare -r -m true 2> /dev/null; then
+    mkdir -p "$AUDITDIR/r9/full/mnt" "$AUDITDIR/r9/full/src"
+    for i in $(seq 1 3000); do echo $i > "$AUDITDIR/r9/full/src/$i"; done
+    check "sqlite database which cannot be written in full is discarded test" "cd '$AUDITDIR/r9/full' && unshare -r -m sh -c \"mount -t tmpfs -o size=300k tmpfs mnt && ! '$HASHIT' -f sqlite -o mnt/n.db src > out.txt 2>&1 && [ -z \\\"\\\$(ls -A mnt)\\\" ]\" && ! grep -q 'results written' out.txt"
+fi
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"

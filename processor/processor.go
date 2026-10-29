@@ -496,7 +496,12 @@ func Process() {
 		fmt.Fprint(stdout, result)
 	} else {
 		// sqlite has already been written to the temporary file as it went
-		written := true
+		written := !sqliteWriteFailed
+		if sqliteWriteFailed {
+			printError(fmt.Sprintf("unable to write output file %s, the new results were discarded", FileOutput))
+			removeSqliteFiles(outputTemp)
+			setOutputTemp("")
+		}
 		if !sqliteOutput {
 			if err := os.WriteFile(outputTemp, []byte(result), 0600); err != nil {
 				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
@@ -612,6 +617,10 @@ var outputTemp = ""
 var outputMode os.FileMode
 var outputModeSet bool
 
+// outputExisted is set when the output already existed before processing, which only happens when
+// overwrite was allowed
+var outputExisted bool
+
 // outputTempMu guards outputTemp, which the signal handler reads
 var outputTempMu sync.Mutex
 
@@ -659,7 +668,8 @@ func outputDir(path string) string {
 		i--
 	}
 	if i < len(filepath.VolumeName(path)) {
-		return "."
+		// a Windows path such as C:new is in the working directory of that drive
+		return filepath.VolumeName(path) + "."
 	}
 	if i == len(filepath.VolumeName(path)) {
 		// the root, such as / or C:\
@@ -722,6 +732,9 @@ func createOutputTemp() error {
 	}
 	setOutputTemp(f.Name())
 
+	_, err = os.Lstat(outputTarget)
+	outputExisted = err == nil
+
 	// the permissions of an existing file are applied just before it is replaced, as applying a
 	// read only mode now would stop the results being written
 	outputModeSet = false
@@ -733,10 +746,20 @@ func createOutputTemp() error {
 }
 
 // removeOutputTempOnSignal removes the temporary output when interrupted, as otherwise it would be
-// left behind and hashed by later runs
+// left behind and hashed by later runs. Signals ignored when started, such as SIGHUP under nohup,
+// stay ignored
 func removeOutputTempOnSignal() {
+	var handled []os.Signal
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGPIPE} {
+		if !signal.Ignored(sig) {
+			handled = append(handled, sig)
+		}
+	}
+	if len(handled) == 0 {
+		return
+	}
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGPIPE)
+	signal.Notify(signals, handled...)
 	go func() {
 		sig := <-signals
 		// the conventional 128 plus the signal number
@@ -808,14 +831,47 @@ func finishOutput(sqliteOutput bool) bool {
 			_ = os.Remove(outputTarget + suffix)
 		}
 	}
-	if err := os.Rename(outputTemp, outputTarget); err != nil {
-		printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
+	if err := installOutput(); err != nil {
+		printError(err.Error())
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""
 		return false
 	}
+	if sqliteOutput {
+		removeSqliteFiles(outputTemp)
+	}
 	outputTemp = ""
 	return true
+}
+
+// installOutput moves the temporary output into place. An output which did not exist before
+// processing is hard linked into place, which fails rather than replacing a file created there
+// while processing, such as by another run writing the same output
+func installOutput() error {
+	if outputExisted || Overwrite {
+		if err := os.Rename(outputTemp, outputTarget); err != nil {
+			return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
+		}
+		return nil
+	}
+
+	err := os.Link(outputTemp, outputTarget)
+	if err == nil {
+		_ = os.Remove(outputTemp)
+		return nil
+	}
+	if os.IsExist(err) {
+		return fmt.Errorf("output file %s was created while processing, use --overwrite to replace it, the new results were discarded", FileOutput)
+	}
+
+	// file systems without hard links can only check before renaming
+	if _, err := os.Lstat(outputTarget); err == nil {
+		return fmt.Errorf("output file %s was created while processing, use --overwrite to replace it, the new results were discarded", FileOutput)
+	}
+	if err := os.Rename(outputTemp, outputTarget); err != nil {
+		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
+	}
+	return nil
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

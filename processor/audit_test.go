@@ -5,6 +5,7 @@ package processor
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -18,6 +19,44 @@ func TestAbsFrom(t *testing.T) {
 	for _, c := range cases {
 		if got := absFrom(c.base, c.p); got != filepath.FromSlash(c.want) {
 			t.Errorf("%q %q: expected %q got %q", c.base, c.p, c.want, got)
+		}
+	}
+}
+
+func TestAbsFromWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows paths")
+	}
+	cases := []struct{ base, p, want string }{
+		{`D:\srv`, `D:a.txt`, `D:\srv\a.txt`},
+		{`D:\srv`, `d:a.txt`, `D:\srv\a.txt`},
+		{`D:\srv`, `\a.txt`, `D:\a.txt`},
+		{`D:\srv`, `E:\a.txt`, `E:\a.txt`},
+	}
+	for _, c := range cases {
+		if got := absFrom(c.base, c.p); got != c.want {
+			t.Errorf("%q %q: expected %q got %q", c.base, c.p, c.want, got)
+		}
+	}
+	// another drive is relative to that drive's working directory, so is absolute on it
+	if got := absFrom(`D:\srv`, `E:a.txt`); !filepath.IsAbs(got) || filepath.VolumeName(got) != "E:" {
+		t.Errorf("expected an absolute path on E: got %q", got)
+	}
+}
+
+func TestOutputDirWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows paths")
+	}
+	cases := map[string]string{
+		`C:new.txt`:    `C:.`,
+		`C:\new.txt`:   `C:\`,
+		`C:\a\new.txt`: `C:\a`,
+		`C:a\new.txt`:  `C:a`,
+	}
+	for p, want := range cases {
+		if got := outputDir(p); got != want {
+			t.Errorf("%q: expected %q got %q", p, want, got)
 		}
 	}
 }
@@ -89,7 +128,7 @@ func TestDotPrefix(t *testing.T) {
 		".hidden": "",
 	}
 	for supplied, want := range cases {
-		if got := dotPrefix(supplied, filepath.Clean(supplied)); got != want {
+		if got := dotPrefix(supplied, filepath.Clean(supplied)); got != filepath.FromSlash(want) {
 			t.Errorf("%q: expected %q got %q", supplied, want, got)
 		}
 	}
@@ -135,8 +174,31 @@ func TestSqliteFileURI(t *testing.T) {
 
 func TestEscapesDir(t *testing.T) {
 	for rel, want := range map[string]bool{"..": true, "../a": true, "..notes": false, "..cfg/x": false, "a/..b": false} {
-		if got := escapesDir(rel); got != want {
+		if got := escapesDir(filepath.FromSlash(rel)); got != want {
 			t.Errorf("%q: expected %v got %v", rel, want, got)
+		}
+	}
+}
+
+func TestIsDirectSpelling(t *testing.T) {
+	cases := map[string]bool{
+		"a":       true,
+		"sub/a":   true,
+		"./sub/a": true,
+		"../a":    true,
+		"/abs/a":  runtime.GOOS != "windows", // \abs\a has no drive on windows
+		"sub//a":  false,
+		"sub/./a": false,
+		"x/../a":  false,
+		"/abs//a": false,
+		"./":      false,
+		"":        false,
+		"sub/a/":  false,
+		"././sub": false,
+	}
+	for p, want := range cases {
+		if got := isDirectSpelling(filepath.FromSlash(p)); got != want {
+			t.Errorf("%q: expected %v got %v", p, want, got)
 		}
 	}
 }
