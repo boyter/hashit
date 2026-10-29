@@ -58,7 +58,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		// based on how large it is reported as being
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
 		if err != nil {
-			printError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
+			printFileError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}
 
@@ -76,7 +76,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 
 		fi, err := file.Stat()
 		if err != nil {
-			printError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
+			printFileError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
+			_ = file.Close()
+			continue
+		}
+
+		// directories can be supplied using --input, and would otherwise hash as an empty file
+		if fi.IsDir() {
+			printFileError(fmt.Sprintf("Unable to process %s as it is a directory", res))
 			_ = file.Close()
 			continue
 		}
@@ -120,7 +127,12 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			if size := fsize + bytes.MinRead; size > n {
 				n = size
 			}
-			content, _ := readAll(file, n)
+			content, err := readAll(file, n)
+			if err != nil {
+				printFileError(fmt.Sprintf("reading file %s: %s", res, err.Error()))
+				_ = file.Close()
+				continue
+			}
 
 			var r Result
 
@@ -154,7 +166,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		printError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
+		printFileError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
 		return Result{}, err
 	}
 	defer func(file *os.File) {
@@ -352,7 +364,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
-			printError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+			printFileError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
 			return Result{}, err
 		}
 

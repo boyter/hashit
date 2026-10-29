@@ -182,7 +182,7 @@ func TestNewAuditorSumRelativeToAuditFile(t *testing.T) {
 
 func TestSumLineRoundTrip(t *testing.T) {
 	for _, f := range []string{"a.txt", "back\\slash.txt", "new\nline.txt", "c \"quoted\", comma.txt"} {
-		name, value, filename, ok := parseSumLine(sumLine(testMD5, f)[:len(sumLine(testMD5, f))-1], "")
+		name, value, filename, ok := parseSumLine(sumLine(testMD5, f)[:len(sumLine(testMD5, f))-1], nil)
 		if !ok || name != "md5" || value != testMD5 || filename != f {
 			t.Errorf("%q: round trip failed got %v %q %q %q", f, ok, name, value, filename)
 		}
@@ -229,5 +229,20 @@ func TestAuditorExclude(t *testing.T) {
 	hdl.Exclude(filepath.Join(dir, "hashes.txt"))
 	if hdl.Count() != 1 || hdl.Lookup(filepath.Join(dir, "hashes.txt")) != nil {
 		t.Errorf("expected audit file to be excluded got %d records", hdl.Count())
+	}
+}
+
+func TestNewAuditorSumExtensionLengths(t *testing.T) {
+	// b2sum writes blake2b-512 by default but blake2b-256 with -l 256, both into .b2 files
+	b256 := "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
+	b512 := "786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce"
+	for value, want := range map[string]string{b256: "blake2b256", b512: "blake2b512"} {
+		hdl, err := NewAuditor(value+"  a.txt\n", "hashes.b2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdl.HashNames()[0] != want {
+			t.Errorf("expected %s got %v", want, hdl.HashNames())
+		}
 	}
 }

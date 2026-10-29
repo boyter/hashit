@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/boyter/hashit/assets"
@@ -21,17 +22,17 @@ func getFormattedTime() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// Prints a message to stdout if flag to enable warning output is set
+// Prints a message to stderr if flag to enable warning output is set
 func printVerbose(msg string) {
 	if Verbose {
-		fmt.Printf("VERBOSE %s: %s\n", getFormattedTime(), msg)
+		_, _ = fmt.Fprintf(os.Stderr, "VERBOSE %s: %s\n", getFormattedTime(), msg)
 	}
 }
 
-// Prints a message to stdout if flag to enable debug output is set
+// Prints a message to stderr if flag to enable debug output is set, so it does not mix with output
 func printDebug(msg string) {
 	if Debug {
-		fmt.Printf("DEBUG %s: %s\n", getFormattedTime(), msg)
+		_, _ = fmt.Fprintf(os.Stderr, "DEBUG %s: %s\n", getFormattedTime(), msg)
 	}
 }
 
@@ -40,10 +41,20 @@ func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
 }
 
-// Prints a message to stdout if flag to enable trace output is set
+// fileErrors is set when any file could not be processed, so that we exit non zero at the end
+// in the same way md5sum and similar tools do, rather than stopping at the first error
+var fileErrors atomic.Bool
+
+// printFileError reports a file which could not be processed and records it for the exit code
+func printFileError(msg string) {
+	fileErrors.Store(true)
+	printError(msg)
+}
+
+// Prints a message to stderr if flag to enable trace output is set, so it does not mix with output
 func printTrace(msg string) {
 	if Trace {
-		fmt.Println(fmt.Sprintf("TRACE %s: %s", getFormattedTime(), msg))
+		_, _ = fmt.Fprintf(os.Stderr, "TRACE %s: %s\n", getFormattedTime(), msg)
 	}
 }
 

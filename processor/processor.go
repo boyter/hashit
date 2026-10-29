@@ -186,6 +186,16 @@ func Process() {
 	// Clean up hashes by setting all input to lowercase
 	Hash = formatHashInput()
 
+	// --vv is a more verbose -v, so it should include everything -v outputs
+	if VeryVerbose {
+		Verbose = true
+	}
+
+	if err := validateOptions(); err != nil {
+		printError(err.Error())
+		os.Exit(1)
+	}
+
 	if AllowMoved && AuditFile == "" {
 		printError("--allow-moved only applies when auditing with --audit, ignoring flag")
 	}
@@ -355,6 +365,11 @@ func Process() {
 
 	result, valid := fileSummarize(fileSummaryQueue)
 
+	// any file which could not be processed means the output is incomplete
+	if fileErrors.Load() {
+		valid = false
+	}
+
 	if FileOutput == "" {
 		fmt.Print(result)
 		if !valid {
@@ -373,6 +388,23 @@ func Process() {
 			os.Exit(1)
 		}
 	}
+}
+
+var validFormats = []string{"text", "json", "sum", "hashdeep", "hashonly", "sqlite"}
+
+// validateOptions checks the requested format and hashes are ones we support, rather than
+// silently falling back to text output or skipping hashes we do not know
+func validateOptions() error {
+	if !contains(validFormats, strings.ToLower(Format)) {
+		return fmt.Errorf("unknown format %q, supported formats are %s", Format, strings.Join(validFormats, ", "))
+	}
+
+	for _, h := range Hash {
+		if h != "all" && !contains(hashPriority, h) {
+			return fmt.Errorf("unknown hash %q, use --hashes to list supported hashes", h)
+		}
+	}
+	return nil
 }
 
 // prepareOutput refuses to write over an existing file unless overwrite has been allowed. An
