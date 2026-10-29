@@ -3,8 +3,10 @@
 package processor
 
 import (
-	"github.com/boyter/gocodewalker"
+	"fmt"
 	"regexp"
+
+	"github.com/boyter/gocodewalker"
 )
 
 // walkDirectoryWithIgnore walks the directory sending every file found to output, with
@@ -32,7 +34,7 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 
 	// handle the errors by printing them out and then ignore
 	errorHandler := func(err error) bool {
-		printError(err.Error())
+		printFileError(fmt.Sprintf("unable to walk %s: %s", toWalk, err.Error()))
 		return true
 	}
 	fileWalker.SetErrorHandler(errorHandler)

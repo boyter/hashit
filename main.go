@@ -66,7 +66,7 @@ func main() {
 		"recursive",
 		"r",
 		false,
-		"recursive subdirectories are traversed",
+		"traverse directories when multiple paths are supplied; a single directory or no path is always traversed",
 	)
 	flags.BoolVar(
 		&processor.Hashes,
@@ -103,26 +103,26 @@ func main() {
 		&processor.NoStream,
 		"no-stream",
 		false,
-		"do not stream out results as processed",
+		"do not print results as files are processed for text, sum and hashonly formats; other formats and --output never stream",
 	)
 	flags.Int64Var(
 		&processor.StreamSize,
 		"stream-size",
 		1_000_000,
-		"min size of file in bytes where stream processing starts",
+		"files larger than this size in bytes are read in chunks rather than all at once",
 	)
 	flags.BoolVarP(
 		&processor.Verbose,
 		"verbose",
 		"v",
 		false,
-		"verbose output",
+		"verbose audit output, listing every modified, moved, new and missing file",
 	)
 	flags.BoolVar(
 		&processor.VeryVerbose,
 		"vv",
 		false,
-		"very verbose output",
+		"very verbose audit output, as --verbose and also listing every matched file",
 	)
 	flags.BoolVarP(
 		&processor.Progress,
@@ -160,7 +160,7 @@ func main() {
 		"input",
 		"i",
 		"",
-		"input file of newline seperated file locations to process",
+		"input file of newline separated file locations to process",
 	)
 
 	flags.BoolVar(
@@ -205,7 +205,7 @@ func main() {
 		"not-match",
 		`M`,
 		[]string{},
-		"ignore files and directories matching regular expression",
+		"ignore files and directories whose name matches regular expression",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

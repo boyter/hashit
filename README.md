@@ -22,9 +22,9 @@ Using `hashit` commercially? If you want priority support for `hashit` you can p
  
 ### Install
 
-If you are comfortable using Go and have >= 1.25 installed the usual `go get -u github.com/boyter/hashit/` will install for you.
+If you are comfortable using Go and have >= 1.25 installed `go install github.com/boyter/hashit@latest` will install for you.
 
-Binaries will be on [Releases](https://github.com/boyter/hashit/releases) for Windows, GNU/Linux and macOS for both i386 and x86_64 bit machines once it hits version 1.0.0.
+Binaries are available on [Releases](https://github.com/boyter/hashit/releases) for Windows, GNU/Linux and macOS.
 
 If you would like to assist with getting `hashit` added into apt/homebrew/chocolatey/etc... please submit a PR or at least raise an issue with instructions.
 
@@ -37,7 +37,7 @@ Install the following tools, either via the indicated command or what is suggest
 - sqlc brew install sqlc https://sqlc.dev/
 
 sqlc is used for the audit functionality as well as the SQLite output format. If you never change this functionality
-it may not be required, however _never_ edit the `./processor/db/` files directly.
+it may not be required, however _never_ edit the `./processor/database/` files directly. Edit `./assets/db/` and run `sqlc generate` instead.
 
 ### Pitch
 
@@ -63,7 +63,9 @@ Usage:
   hashit [flags]
 
 Flags:
-  -a, --audit string            audit against supplied file; accepts hashdeep or sum (md5sum, sha256sum etc...) format
+      --absolute                output absolute paths, which is what hashdeep does without -l
+      --allow-moved             allow an audit to pass when known files have moved or been renamed but are unmodified
+  -a, --audit string            audit against supplied file; accepts hashdeep, sum (md5sum, sha256sum etc...) or hashit sqlite format
       --debug                   enable debug output
       --exclude-dir strings     directories to exclude
   -f, --format string           set output format [text, json, sum, hashdeep, hashonly, sqlite] (default "text")
@@ -74,60 +76,65 @@ Flags:
       --hashignore              enable .hashignore file logic
   -h, --help                    help for hashit
       --ignore                  enable .ignore file logic
-  -i, --input string            input file of newline seperated file locations to process
+  -i, --input string            input file of newline separated file locations to process
       --mtime                   enable mtime output
-      --no-stream               do not stream out results as processed
-      --absolute                output absolute paths, which is what hashdeep does without -l
-      --allow-moved             allow an audit to pass when known files have moved or been renamed but are unmodified
-      --overwrite               allow output to replace an existing file
-  -M, --not-match stringArray   ignore files and directories matching regular expression
+      --no-stream               do not print results as files are processed for text, sum and hashonly formats; other formats and --output never stream
+  -M, --not-match stringArray   ignore files and directories whose name matches regular expression
   -o, --output string           output filename (default stdout)
+      --overwrite               allow output to replace an existing file
   -p, --progress                display progress of files as they are processed
-  -r, --recursive               recursive subdirectories are traversed
+  -r, --recursive               traverse directories when multiple paths are supplied; a single directory or no path is always traversed
       --skip-hidden             skip hidden files and directories
-      --stream-size int         min size of file in bytes where stream processing starts (default 1000000)
+      --stream-size int         files larger than this size in bytes are read in chunks rather than all at once (default 1000000)
       --threads int             number of threads processing files, by default the number of CPU cores (default 8)
       --trace                   enable trace output
-  -v, --verbose                 verbose output
+  -v, --verbose                 verbose audit output, listing every modified, moved, new and missing file
       --version                 version for hashit
-      --vv                      very verbose output
+      --vv                      very verbose audit output, as --verbose and also listing every matched file
 ```
 
 Output should look something like the below for operations on this repository
 
 ```
-$ hashit README.md
-README.md (6616 bytes)
-        MD5 17cad37b7b873eed74e15cafd7855f6d
-       SHA1 8e4256ef60302acf72e9c25bea5a41e195cf14ec
-     SHA256 5ff9cd136f827570acc98be42d5a76a9409c83e3b9300ff2466de48c71760ca0
-     SHA512 e4d108219def5c36089f7cd45d4531548d52a41cc5992004c78e816fbe64d63a21bc7ea1303d7a31bd693bf4f5435c916fbbe4e9d3e1fd0b1982a9734b4ec739
+$ hashit LICENSE
+LICENSE (1067 bytes)
+        MD5 227f999ca03b135a1b4d69bde84afb16
+       SHA1 2c7beb1563981414f31481016816a88dc0cdba16
+     SHA256 fb3f44f5e74b957107f89b027896250ecff74718b1fa8bf0566874e142e54351
+     SHA512 882eb7ee56cda80778dbd44f514e68a14126a61a11a825f9c030a3425b941d6a3636561a466347178d8bf204dbedc806471d248637091b311ca37ec18a1c084b
 
-$ hashit --hash all README.md
-README.md (9460 bytes)
-      CRC32 8f023940
-   xxHash64 8bc915722510645e
-        MD4 179e0501d57b741e822964a85a4f1923
-        MD5 2a8517703f0ddf7be45d0d51b84f1e49
-       SHA1 886521f2d1f8e4b461a364d3cad826636831eff5
-     SHA256 cb664826dd6982d3d0350f4453b36bd0168a996a20b8e0e719f0e224cf761808
-     SHA512 4894b771b8b7412a12ecb8bd6e9b2a5d1f7c540d0c293fddd6231fec18c13af7f1333f9cf621c1ce7677a363947f28a3ab706868e3ca2e93f2597b798e7a25d1
-Blake2b-256 5c8dd15df397217d742ca94ebd3f4d6b7c4bf74fc94b61e1ad14bd0b41882960
-Blake2b-512 c4e22434524549d882a475076092586e7543bbba5ff401761cecab8b016c9b877035e4b6a3c59ba8d7e95147a1f13bd54aa0ec300f833ddf4a87e7bd09982efc
-     Blake3 2b3e1660f329f570182e8f448e516d1ce545984e5a2d00046cd52689847e2894
-   SHA3-224 9bceeaeed4d1ead3af3098429cbe3f1a729b40feebf3b9d576ca1210
-   SHA3-256 ee226be159cbaee0a49d94e3a2a2bb9fa75d59a039e9149ae16f419a2d41e84d
-   SHA3-384 f9a1c8860b40fa58bb2f113bbae3ab7bfe25c8f5bfa4312dc4e09c75f678faf8005f7cbeac8f01f5adbd00ea480e694d
-   SHA3-512 d7e5d8b4abd2bdf2c9628e1698e08577c30a4626f303d3e3e0a8d3385068418adace23460c6303d2537ee35dd6963cb5c9a04fdee5bf6e307e2240835872775f
-       ed2k 179e0501d57b741e822964a85a4f1923
+$ hashit --hash all LICENSE
+LICENSE (1067 bytes)
+      CRC32 14ec1e20
+   xxHash64 07fb115a53dea4ca
+        MD4 a4961e3d704e28a40debbf1f1e4a62cd
+        MD5 227f999ca03b135a1b4d69bde84afb16
+       SHA1 2c7beb1563981414f31481016816a88dc0cdba16
+     SHA256 fb3f44f5e74b957107f89b027896250ecff74718b1fa8bf0566874e142e54351
+     SHA512 882eb7ee56cda80778dbd44f514e68a14126a61a11a825f9c030a3425b941d6a3636561a466347178d8bf204dbedc806471d248637091b311ca37ec18a1c084b
+Blake2b-256 824c7551cee5a6996c422988f658d2622890fa52e2fcf63d0aa6c01abc69e77d
+Blake2b-512 ad692390b5e680f24490d5f4676f279f84e802c79b98ef36369404b88d8ced237dbde429098f6e7bb221b6ae8fff4ab1920b03fd187c3025c4f81be2a3def672
+     Blake3 339416b7c6155ddd00a7da8c6fbb40b472fbc113c7ca532f1929cffffa81f892
+   SHA3-224 845411d717203ef1896ab41ff4b2d468958b2e067807713bd49867ed
+   SHA3-256 e334df710e2791c6df492edd61d1d17022be91044937e29d8613ddfb43f4aec6
+   SHA3-384 8301eb66f20215a14a77aa6e977a9d08524caf31fa09a9fd97e7b3c4c3e9266159d9c35c661960024654ff36f5131302
+   SHA3-512 1024928532bccfe9feb0b3f9fe54eda6fb05685fb3236eb09cb3765f0d1face3ea5f5dc681aaeec44134cd89691348a03cc6a2abfe1eae55d8eb274a51f97e3d
+       ed2k a4961e3d704e28a40debbf1f1e4a62cd
 
-$ hashit scripts
-scripts/include.go (1835 bytes)
-        MD5 73d7180f48af0b44e4ca7ae650335ac1
-       SHA1 dcd8b23288c1604c7b541c7626ae569bec9001b6
-     SHA256 929750fcace21c4a261d19824f691eae8691958989e8c1870b0934cfa9493462
-     SHA512 b37ac5a309f9006b740fb0933fe5c4569923cab0fe822c1e2fbf0fbd2a15e9787681ec509ca9f7ea13d921a82257ecc3a32e2dfa18cc6892ea82978befe2629c
+$ hashit --hash md5 processor/database
+processor/database/db.go (601 bytes)
+        MD5 f43f14400d5c84a60151efa94680442d
+
+processor/database/models.go (663 bytes)
+        MD5 d984b3ca676ceca67546d20ba8395559
+
+processor/database/queries.sql.go (4162 bytes)
+        MD5 5e44a725583f351d381d7c70e3aa21e7
 ```
+
+Files are processed in parallel, so the order of the output may vary between runs.
+
+If any file cannot be read, such as one which is missing or lacks permissions, an error is printed, the remaining files are still processed, and `hashit` exits with a non zero code.
 
 ### Ignoring Files (`.hashignore`)
 
@@ -194,10 +201,10 @@ You can then use `hashdeep` to audit a directory against the file generated by `
 # Then, generate the audit file with hashit
 $ hashit --format hashdeep processor > audit.txt
 
-# Now, audit with hashdeep
-$ hashdeep -r -a -k audit.txt processor
+# Now, audit with hashdeep, using -l as hashit writes relative paths
+$ hashdeep -l -r -a -v -k audit.txt processor
 hashdeep: Audit passed
-          Files matched: 8
+          Files matched: 14
 Files partially matched: 0
             Files moved: 0
         New files found: 0
@@ -216,9 +223,9 @@ $ hashdeep -r processor > audit.txt
 # Now, audit with hashit
 $ hashit -a audit.txt processor
 hashit: Audit passed
-       Files examined: 8
-Known files expecting: 8
-        Files matched: 8
+       Files examined: 14
+Known files expecting: 14
+        Files matched: 14
        Files modified: 0
           Files moved: 0
       New files found: 0
@@ -282,8 +289,8 @@ With `--mtime` the modification time of each file is written as a comment line a
 `hashdeep` outputs absolute paths unless run with `-l`, whereas `hashit` outputs paths as supplied, which is the same as `hashdeep -l`. Relative paths make a manifest which can be shipped with the files and verified elsewhere. To match `hashdeep`'s default use `--absolute`.
 
 ```shell
-$ hashit --absolute --format hashdeep . > audit.txt
-$ hashdeep -r -a -k audit.txt .
+$ hashit --absolute --format hashdeep . > ../audit.txt
+$ hashdeep -r -a -k ../audit.txt .
 hashdeep: Audit passed
 ```
 
@@ -291,7 +298,7 @@ hashdeep: Audit passed
 
 Relative paths in a `hashdeep` file are resolved against the directory recorded in its `## Invoked from:` line, so an audit file created with `hashit --format hashdeep .` can be audited from anywhere using either a relative or absolute path. Paths are also matched against the current directory, and `./file` and `file` are treated as the same file.
 
-If the audit file is inside the directory being audited it is skipped, as it can never contain its own hash.
+If the audit file is inside the directory being audited it is skipped, as it can never contain its own hash. `hashdeep` and `md5sum` do not do this, so when generating a file for them to verify, write it outside the directory being hashed, otherwise they will report the partially written file as changed.
 
 #### Auditing with `sum` Files
 
@@ -302,13 +309,15 @@ $ md5sum * > checksums.md5
 $ hashit -a checksums.md5 .
 ```
 
-The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha256`, `.sha512`, `.b2`, `.b3` or `.crc32`, and otherwise by the length of the hash. Where lengths are shared, such as `md4` and `md5`, the more common hash is assumed. Relative paths are resolved against both the current directory and the directory containing the sum file.
+Note that `md5sum *` does not include files in subdirectories, while `hashit` audits the whole directory, so for a directory with subdirectories generate the file with something like `find . -type f -exec md5sum {} +`.
+
+The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha256`, `.sha512`, `.b2` or `.blake2b` (Blake2b-512 or Blake2b-256), `.b3` or `.blake3`, or `.crc32`, and otherwise by the length of the hash. Where lengths are shared, such as `md4` and `md5`, the more common hash is assumed. Relative paths are resolved against both the current directory and the directory containing the sum file.
 
 Likewise the output of `hashit --format sum` can be verified by `md5sum -c` and friends, so long as only a single hash is selected:
 
 ```shell
-$ hashit --hash md5 --format sum . > checksums.md5
-$ md5sum -c checksums.md5
+$ hashit --hash md5 --format sum . > ../checksums.md5
+$ md5sum -c ../checksums.md5
 ```
 
 With `--mtime` the modification time of each file is written as a comment line such as `# mtime 2026-01-01 10:00:00  ./file`, which `md5sum -c` ignores.
@@ -321,7 +330,7 @@ This method is recommended for any large-scale or repeated auditing tasks.
 
 #### Generating a SQLite Audit Database
 
-To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. It is recommended to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks.
+To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. It is recommended to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks when the audit is also run with `--hash all`.
 
 ```shell
 # Generate a database with all hashes for the current directory
@@ -331,7 +340,7 @@ results written to audit.db
 
 This creates a file named `audit.db` containing a `file_hashes` table with all the file paths and their corresponding hashes.
 
-`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database. The same applies to every other format, `--output` never replaces an existing file without `--overwrite`.
+`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database or empty. The same applies to every other format, `--output` never replaces an existing file without `--overwrite`.
 
 ```shell
 $ hashit --format sqlite --output audit.db --hash all .
@@ -364,7 +373,7 @@ If a file is modified, the audit will fail and report the change. The audit calc
 $ hashit --hash all -a audit.db .
 ```
 
-The database is opened read-only and is never modified by an audit. Which files have been seen is tracked in a temporary table on disk rather than in memory, so memory use stays flat regardless of how many files are in the database. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
+The database is opened read-only and is never modified by an audit. Which files have been seen is tracked in a temporary table on disk rather than in memory, so memory use does not grow with the size of the database. Files on disk which are not in the database, being new or moved files, are held in memory until the end of the audit, so auditing a directory with many new files will use more memory. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
 
 ```shell
 # Example of a failed audit after modifying a file
@@ -382,64 +391,71 @@ Known files expecting: 25
 
 #### Verifying with your own tools (Python Example)
 
-The SQLite database is a standard, open format, which means you can easily write your own scripts and tools to query it. Here is a simple Python example demonstrating how to connect to the database and verify the SHA256 hash of a single file.
+The SQLite database is a standard, open format, which means you can easily write your own scripts and tools to query it. Here is a simple Python example demonstrating how to connect to the database and verify the SHA256 hash of a single file. Paths are stored as `hashit` was given them, so a database generated from `.` stores `./README.md`, and the example tries both forms.
 
 ```python
-import sqlite3
 import hashlib
+import os
+import sqlite3
 import sys
 
+
+def sha256_of_file(path):
+    """Calculates the SHA256 of a file without reading it all into memory."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def verify_file_hash(db_path, file_to_check):
-    """
-    Connects to the hashit SQLite DB and verifies the SHA256 hash of a file.
-    """
-    # Calculate the SHA256 hash of the file on disk
+    """Verifies the SHA256 of a file against a hashit SQLite audit database."""
     try:
-        with open(file_to_check, "rb") as f:
-            bytes = f.read()  # read entire file as bytes
-            readable_hash = hashlib.sha256(bytes).hexdigest()
-    except FileNotFoundError:
-        print(f"Error: File not found at {file_to_check}")
-        return
-    except Exception as e:
+        on_disk = sha256_of_file(file_to_check)
+    except OSError as e:
         print(f"Error reading file {file_to_check}: {e}")
-        return
+        return False
 
-    # Connect to the SQLite database
+    # Paths are stored as hashit was given them, so "README.md" may be stored as "./README.md"
+    candidates = [file_to_check, os.path.join(".", file_to_check)]
+
+    conn = None
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Query for the file's record
-        cursor.execute("SELECT sha256 FROM file_hashes WHERE filepath = ?", (file_to_check,))
-        record = cursor.fetchone()
-
-        if record:
-            stored_hash = record[0]
-            print(f"File: {file_to_check}")
-            print(f"  - On-disk SHA256: {readable_hash}")
-            print(f"  - Stored SHA256:  {stored_hash}")
-            if readable_hash == stored_hash:
-                print("  - Verdict: OK")
-            else:
-                print("  - Verdict: MISMATCH")
-        else:
-            print(f"File not found in audit database: {file_to_check}")
-
+        # open read-only so a mistyped path does not create an empty database
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        placeholders = ",".join("?" * len(candidates))
+        record = conn.execute(
+            f"SELECT filepath, sha256 FROM file_hashes WHERE filepath IN ({placeholders})",
+            candidates,
+        ).fetchone()
     except sqlite3.Error as e:
         print(f"Database error: {e}")
+        return False
     finally:
         if conn:
             conn.close()
 
+    if record is None:
+        print(f"File not found in audit database: {file_to_check}")
+        return False
+
+    stored_path, stored = record
+    if stored is None:
+        print(f"{stored_path}: no SHA256 stored, generate the database with --hash sha256 or --hash all")
+        return False
+
+    ok = on_disk == stored
+    print(f"{stored_path}: {'OK' if ok else 'MISMATCH'}")
+    return ok
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python verify.py <path_to_audit.db> <path_to_file>")
-        sys.exit(1)
-    
-    db_path = sys.argv[1]
-    file_to_check = sys.argv[2]
-    verify_file_hash(db_path, file_to_check)
+        sys.exit(2)
+
+    sys.exit(0 if verify_file_hash(sys.argv[1], sys.argv[2]) else 1)
 ```
 
 #### Key Differences from `hashdeep`
@@ -450,31 +466,25 @@ While `hashit` aims for compatibility, there are some minor differences in the c
 *   **Displaying Failed Hashes:** `hashdeep` has an `-X` flag to display the new hashes of modified files. `hashit` does not currently have an equivalent for this feature.
 *   **Modified Files:** `hashdeep` matches on hashes alone, so a modified file is reported as both a new file and a known file not found. `hashit` matches on path first and reports it as modified.
 
-Note that you don't have to specify the directory you want to run against. Running `hashit` will assume you want to run against the current directory.
+Note that you don't have to specify the directory you want to run against. Running `hashit` will assume you want to run against the current directory, unless data is piped into it in which case it hashes standard input.
 
 If you supply a single argument to `hashit` and its a file it will process it. If you supply a single argument and it is a directory it will recurse that directory.
 
-If you supply multiple arguments which consist of files and directories then directories will be skipped. This allows wild card's to be used and just process the files in a directory.
+If you supply multiple arguments which consist of files and directories then directories will be skipped without a warning, unless `-r` is supplied in which case they are recursed. This allows wild card's to be used and just process the files in a directory.
 
 ```
 $ hashit *
-Gopkg.toml (736 bytes)
-        MD5 3e88135ebf43e8199ce0c19c8bebd925
-       SHA1 c3324f86a84c7a3ee941fcf94d221877aa25e799
-     SHA256 712667bfe27e245e0f34b2d64ad6b0d21580c058a01ce8374e5b6fa408a97f66
-     SHA512 d897a428487e31143b1b1ba9b3fa237bc9ed3aac7ad15ecd9507b7f58eaf5f1059385ebfcbeed4505e2cbf63113f70a0252acbf9f738f25fc79e563e7c8b32b6
+LICENSE (1067 bytes)
+        MD5 227f999ca03b135a1b4d69bde84afb16
+       SHA1 2c7beb1563981414f31481016816a88dc0cdba16
+     SHA256 fb3f44f5e74b957107f89b027896250ecff74718b1fa8bf0566874e142e54351
+     SHA512 882eb7ee56cda80778dbd44f514e68a14126a61a11a825f9c030a3425b941d6a3636561a466347178d8bf204dbedc806471d248637091b311ca37ec18a1c084b
 
-Gopkg.lock (1514 bytes)
-        MD5 d19eb48da41406376a361a1c4a97e496
-       SHA1 977b14e5ed765137c0e146789ed37c52a8cd51ee
-     SHA256 5b76da627bd28a7bc7459b3281e3582616b21c4694302ae00b8888689effe35c
-     SHA512 95b9450cf19a3ef5c287841b3606ac7a1ad3066308a638fb8be908d649360a656ae41291e657e6f4250c87b0e18e05d73fca111fede9ed496eb600afdb245a0d
-
-README.md (7094 bytes)
-        MD5 df97688a1cb29d4b06d630df034b6e16
-       SHA1 d1c94c30c97f8fac75fe485e8352da813c4d4bb7
-     SHA256 78ce6718977135593fbd9867d6c2a68f91aa6d2846fe7bf08cbe9924790517b9
-     SHA512 759a3ef175466639fdc5bfbd1a8a47087410148405b15a3ac4bc0c88e677207f7c50f62cee947dabbbcf739c1031f3ff1ecdfd1688d83f566c75068b11a1f680
+go.mod (1247 bytes)
+        MD5 da13de2c3aef119dacf5919201da1be2
+       SHA1 c55eab504d96eeea9fd98b602cb632b74c769b44
+     SHA256 3ca5dc09cbbed95b31fd30d32b15f773f68b44570841d0751f942f5d44032edb
+     SHA512 305603841baea29bd5ca87f2d1ecf80c669247898095b512dde07634311d4ee3f4a91e1201261cb8450aae1c0d01596b4796ef98fb16a069c12f3a0a6fd30cfd
 
 ... OUTPUT SNIPPED ...
 ```

@@ -71,19 +71,20 @@ var bsdTagNames = map[string]string{
 	"SHA3-512":    HashNames.Sha3512,
 }
 
-// sumExtensions maps checksum file extensions to the hash they usually contain, which
-// lets us tell apart hashes of the same length such as md4 and md5
-var sumExtensions = map[string]string{
-	".crc32":   HashNames.CRC32,
-	".md4":     HashNames.MD4,
-	".md5":     HashNames.MD5,
-	".sha1":    HashNames.SHA1,
-	".sha256":  HashNames.SHA256,
-	".sha512":  HashNames.SHA512,
-	".blake2b": HashNames.Blake2b512,
-	".b2":      HashNames.Blake2b512,
-	".blake3":  HashNames.Blake3,
-	".b3":      HashNames.Blake3,
+// sumExtensions maps checksum file extensions to the hashes they usually contain, which lets us
+// tell apart hashes of the same length such as md4 and md5. Where tools can write more than one
+// length, such as b2sum -l 256, the hash matching the length of the value is used
+var sumExtensions = map[string][]string{
+	".crc32":   {HashNames.CRC32},
+	".md4":     {HashNames.MD4},
+	".md5":     {HashNames.MD5},
+	".sha1":    {HashNames.SHA1},
+	".sha256":  {HashNames.SHA256},
+	".sha512":  {HashNames.SHA512},
+	".blake2b": {HashNames.Blake2b512, HashNames.Blake2b256},
+	".b2":      {HashNames.Blake2b512, HashNames.Blake2b256},
+	".blake3":  {HashNames.Blake3},
+	".b3":      {HashNames.Blake3},
 }
 
 // sumLengths is the hash assumed for a given hex length when the file extension does not tell us
@@ -454,7 +455,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	extHash := sumExtensions[strings.ToLower(filepath.Ext(auditFilename))]
+	extHashes := sumExtensions[strings.ToLower(filepath.Ext(auditFilename))]
 	byFile := map[string]*AuditRecord{}
 	improper := 0
 
@@ -470,7 +471,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 			continue
 		}
 
-		name, value, filename, ok := parseSumLine(line, extHash)
+		name, value, filename, ok := parseSumLine(line, extHashes)
 		if !ok {
 			improper++
 			continue
@@ -491,7 +492,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	}
 
 	if improper != 0 {
-		printError(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
+		printWarn(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
 	}
 
 	return nil
@@ -500,7 +501,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 var sumMtimeLine = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  `)
 
 // parseSumLine parses a single line from a sum file, returning the hash name, value and filename
-func parseSumLine(line string, extHash string) (string, string, string, bool) {
+func parseSumLine(line string, extHashes []string) (string, string, string, bool) {
 	// md5sum escapes filenames containing a backslash or newline and marks the line with a leading \
 	escaped := strings.HasPrefix(line, "\\")
 	if escaped {
@@ -518,12 +519,18 @@ func parseSumLine(line string, extHash string) (string, string, string, bool) {
 		}
 		filename = line[idx+2:]
 
-		if extHash != "" && hashLengths[extHash] == len(value) {
-			name = extHash
-		} else if n, ok := sumLengths[len(value)]; ok {
+		for _, h := range extHashes {
+			if hashLengths[h] == len(value) {
+				name = h
+				break
+			}
+		}
+		if name == "" {
+			n, ok := sumLengths[len(value)]
+			if !ok {
+				return "", "", "", false
+			}
 			name = n
-		} else {
-			return "", "", "", false
 		}
 	} else {
 		// BSD style "MD5 (filename) = hash"

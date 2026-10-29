@@ -102,16 +102,11 @@ test_new_file() {
 
 test_missing_file() {
     echo "Running Test: Missing File Detection"
-    hashdeep -l -r "$TEST_DIR" > "$AUDIT_FILE" # This creates audit.txt
-    rm "$TEST_DIR/dir1/file1.txt"              # This deletes a file from the test directory
-    
-    ls -l "$AUDIT_FILE" # Debugging line
-    
-    # This is where hashit is called, and it reports audit.txt missing
-    output=$(./hashit -a "$AUDIT_FILE" "$TEST_DIR" --debug 2>&1 || true)
-    
-    # The current implementation will show 1 missing file, which is what we want to test against.
-    # When the logic is improved, this test should still pass but for a different reason.
+    hashdeep -l -r "$TEST_DIR" > "$AUDIT_FILE"
+    rm "$TEST_DIR/dir1/file1.txt"
+
+    output=$(./hashit -a "$AUDIT_FILE" "$TEST_DIR" 2>&1 || true)
+
     if echo "$output" | grep -q 'Audit failed' && echo "$output" | grep -q 'Files missing: 1'; then
         print_pass "Correctly detected 1 missing file"
     else
@@ -126,13 +121,11 @@ test_moved_file() {
     
     output=$(./hashit -a "$AUDIT_FILE" "$TEST_DIR" || true)
     
-    # This test WILL FAIL until the TODOs are implemented.
-    # The desired output is 'Files moved: 1'.
-    # The current (broken) output will be 'New files found: 1' and 'Files missing: 1'.
+    # moved files fail the audit, the same as hashdeep, but are reported as moved rather than
+    # as a new and a missing file
     if echo "$output" | grep -q 'Audit failed' && echo "$output" | grep -q 'Files moved: 1'; then
         print_pass "Correctly detected 1 moved file"
     else
-        echo "NOTE: This test is expected to fail until the audit logic is implemented."
         print_fail "Failed to detect 1 moved file. Output:\n$output"
     fi
 }
@@ -173,5 +166,5 @@ cleanup
 
 
 echo -e "${GREEN}================================================="
-echo -e "ALL HASHDEEP TESTS PASSED (or failed as expected)"
+echo -e "ALL HASHDEEP TESTS PASSED"
 echo -e "================================================="

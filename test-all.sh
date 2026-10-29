@@ -208,7 +208,7 @@ else
     exit
 fi
 
-if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
+if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'WARN'; then
     echo -e "${GREEN}PASSED stdin mtime test"
 else
     echo -e "${RED}======================================================="
@@ -328,6 +328,7 @@ fi
 echo "Running SQLite audit tests..."
 
 # Test 1: Creation and passing audit
+rm -rf /tmp/hashit_sqlite
 mkdir -p /tmp/hashit_sqlite
 echo "test file 1" > /tmp/hashit_sqlite/file1.txt
 rm -f /tmp/audit_sqlite.db
@@ -388,6 +389,7 @@ else
 fi
 
 # Test 4: Missing file
+rm -rf /tmp/hashit_sqlite_missing
 mkdir -p /tmp/hashit_sqlite_missing
 echo "file1" > /tmp/hashit_sqlite_missing/file1.txt
 echo "file2" > /tmp/hashit_sqlite_missing/file2.txt
@@ -411,6 +413,7 @@ echo ""
 echo "Running SQLite mismatched hash audit tests..."
 
 # Setup for mismatched hash tests
+rm -rf /tmp/hashit_mismatch
 mkdir -p /tmp/hashit_mismatch
 echo "test file 1" > /tmp/hashit_mismatch/file1.txt
 
@@ -629,6 +632,44 @@ for AUDITFILE in moved.txt moved.db; do
     else
         echo -e "${RED}======================================================="
         echo -e "FAILED allow moved still fails new file $AUDITFILE test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
+check() {
+    # $1 description, $2 command which must succeed
+    if (eval "$2"); then
+        echo -e "${GREEN}PASSED $1"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $1"
+        echo -e "======================================================="
+        exit
+    fi
+}
+
+printf '%s\n' "$AUDITDIR/media" "$AUDITDIR/does-not-exist" "$AUDITDIR/media/a.txt" > "$AUDITDIR/bad-input.txt"
+check "input file with directory and missing file exits non zero test" \
+    "! '$HASHIT' -c md5 -f sum -i '$AUDITDIR/bad-input.txt' > '$AUDITDIR/bad-input.out' 2>/dev/null && grep -q 'a.txt' '$AUDITDIR/bad-input.out' && ! grep -q 'd41d8cd98f00b204e9800998ecf8427e' '$AUDITDIR/bad-input.out'"
+check "unknown hash exits non zero test" "! '$HASHIT' -c notahash '$AUDITDIR/media' > /dev/null 2>&1"
+check "unknown format exits non zero test" "! '$HASHIT' -f notaformat '$AUDITDIR/media' > /dev/null 2>&1"
+check "debug output goes to stderr test" "[ \"\$('$HASHIT' --debug --trace -c md5 -f sum '$AUDITDIR/media/a.txt' 2>/dev/null | wc -l)\" -eq 1 ]"
+check "very verbose audit includes modified files test" \
+    "cd '$AUDITDIR/media' && '$HASHIT' -f hashdeep . > ../vv.txt && echo vv >> a.txt && '$HASHIT' --vv -a ../vv.txt . | grep -q 'File modified'"
+check "b2sum 256 bit audit test" \
+    "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 b2sum -l 256 > ../sums.b2 && '$HASHIT' -a ../sums.b2 . | grep -q 'Audit passed'"
+
+# files are hashed differently depending on size, every hash must agree across the thresholds
+head -c 300000 /dev/urandom > "$AUDITDIR/threshold.bin"
+for HASHNAME in $("$HASHIT" --hashes | sed -n 's/.*(\(.*\))/\1/p'); do
+    A=$("$HASHIT" -c "$HASHNAME" -f hashonly "$AUDITDIR/threshold.bin")
+    B=$("$HASHIT" -c "$HASHNAME" -f hashonly --stream-size 0 "$AUDITDIR/threshold.bin")
+    if [ -n "$A" ] && [ "$A" == "$B" ]; then
+        echo -e "${GREEN}PASSED $HASHNAME parallel and stream agree test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED $HASHNAME parallel and stream agree test"
         echo -e "======================================================="
         exit
     fi
