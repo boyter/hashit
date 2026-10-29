@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/boyter/gocodewalker"
 )
@@ -64,11 +65,34 @@ func realPath(path string) string {
 	if err != nil {
 		return ""
 	}
-	abs, err := filepath.Abs(real)
+	return physicalAbs(real)
+}
+
+// physicalAbs returns the absolute path of a path with its symlinks already resolved, such as
+// ../../x. filepath.Abs joins it to the working directory as the shell named it, which when that
+// was reached through a symlink is not where the operating system resolves .. to, so the working
+// directory as the operating system has it is used instead
+func physicalAbs(resolved string) string {
+	if filepath.IsAbs(resolved) {
+		return filepath.Clean(resolved)
+	}
+	if cwd, err := syscall.Getwd(); err == nil {
+		return filepath.Join(cwd, resolved)
+	}
+	abs, err := filepath.Abs(resolved)
 	if err != nil {
 		return ""
 	}
 	return abs
+}
+
+// osAbs returns the absolute path the operating system resolves path to, for opening a file by
+// an absolute path, such as a SQLite database
+func osAbs(path string) (string, error) {
+	if real := realPath(path); real != "" {
+		return real, nil
+	}
+	return filepath.Abs(path)
 }
 
 // walkDirectoryWithIgnore walks the directory sending every file found to output, with

@@ -49,7 +49,7 @@ func isSQLiteDB(filePath string) bool {
 // mode, as an audit should never modify the thing it is auditing. A single connection is used
 // as the temporary tables used during the audit only exist for the connection that created them
 func connectSqliteDbReadOnly(pathName string) (*sql.DB, error) {
-	abs, err := filepath.Abs(pathName)
+	abs, err := osAbs(pathName)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 }
 
 // isDirectSpelling reports whether sqliteLookup finds a record by its path without the index,
-// being a clean absolute path, or a clean relative path optionally starting with ./
+// being a clean absolute path, or a clean relative path without .. optionally starting with ./
 func isDirectSpelling(p string) bool {
 	if filepath.IsAbs(p) {
 		return filepath.Clean(p) == p
@@ -246,8 +246,13 @@ func isDirectSpelling(p string) bool {
 	if p == "" || filepath.VolumeName(p) != "" || os.IsPathSeparator(p[0]) {
 		return false
 	}
+	// sqliteLookup only tries the path relative to each directory, which never goes up and back
+	// down again such as ../sub/a, so any path with .. is left to the index
 	p = strings.TrimPrefix(p, "."+string(filepath.Separator))
-	return p != "" && filepath.Clean(p) == p
+	if p == "" || os.IsPathSeparator(p[0]) || p == ".." || strings.HasPrefix(p, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return filepath.Clean(p) == p
 }
 
 // sqliteLookup finds the record for the absolute path of a file on disk, returning its path in

@@ -988,6 +988,29 @@ if unshare -r -m true 2> /dev/null; then
     check "sqlite database which cannot be written in full is discarded test" "cd '$AUDITDIR/r9/full' && unshare -r -m sh -c \"mount -t tmpfs -o size=300k tmpfs mnt && ! '$HASHIT' -f sqlite -o mnt/n.db src > out.txt 2>&1 && [ -z \\\"\\\$(ls -A mnt)\\\" ]\" && ! grep -q 'results written' out.txt"
 fi
 
+# round 10
+mkdir -p "$AUDITDIR/r10/q/t/sub/deep"
+echo a > "$AUDITDIR/r10/q/t/a"
+ln -s t/sub/deep "$AUDITDIR/r10/q/j"
+(cd "$AUDITDIR/r10/q/j" && "$HASHIT" -f sqlite -o ../../m.db ../.. > /dev/null)
+check "sqlite output through a symlinked working directory and .. test" "[ \"\$(sqlite3 '$AUDITDIR/r10/q/t/m.db' 'select count(*) from file_hashes')\" == 1 ] && ! ls -a '$AUDITDIR/r10' | grep -q hashit.tmp"
+echo changed > "$AUDITDIR/r10/q/t/a"
+"$HASHIT" -f sqlite -o "$AUDITDIR/r10/m.db" "$AUDITDIR/r10/q/t/a" > /dev/null
+check "sqlite audit through a symlinked working directory and .. opens the right database test" "cd '$AUDITDIR/r10/q/j' && '$HASHIT' -a ../../m.db '$AUDITDIR/r10/q/t' > /dev/null; [ \$? -eq 1 ]"
+mkdir -p "$AUDITDIR/r10/u/sub/deep"
+echo a > "$AUDITDIR/r10/u/a"
+echo b > "$AUDITDIR/r10/u/sub/b"
+(cd "$AUDITDIR/r10/u/sub" && "$HASHIT" -f sqlite -o "$AUDITDIR/r10/u.db" .. > /dev/null)
+check "sqlite database generated with .. audits test" "cd '$AUDITDIR/r10/u/sub' && '$HASHIT' -a '$AUDITDIR/r10/u.db' .. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r10/trail /x"
+echo q > "$AUDITDIR/r10/trail /x/f"
+(cd "$AUDITDIR/r10/trail " && "$HASHIT" -f hashdeep x > ../trail.hd)
+check "hashdeep invoked from a directory ending in a space test" "cd / && '$HASHIT' -a '$AUDITDIR/r10/trail.hd' '$AUDITDIR/r10/trail /x' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r10/cr"
+echo 1 > "$AUDITDIR/r10/cr/$(printf 'cr\r')"
+(cd "$AUDITDIR/r10" && "$HASHIT" -f hashdeep cr > cr.hd)
+check "hashdeep filename ending in a carriage return test" "cd '$AUDITDIR/r10' && '$HASHIT' -a cr.hd cr | grep -q 'Audit passed' && sed 's/\$/\r/' cr.hd > crlf.hd && '$HASHIT' -a crlf.hd cr | grep -q 'Audit passed'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

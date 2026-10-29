@@ -4,6 +4,7 @@ package processor
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -512,15 +513,26 @@ func (hdl *Auditor) buildLookups() {
 func (hdl *Auditor) parseHashdeepFile(input string) error {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Split(scanLinesKeepCR)
 
 	var header []string
 	filenameIdx := -1
 	lineNo := 0
 
+	// a filename can end with \r, so one is only removed when the file has windows line endings,
+	// which the HASHDEEP line starting each section shows
+	crlf := false
+
 	for scanner.Scan() {
 		lineNo++
+		line := scanner.Text()
+		if strings.HasPrefix(line, "%%%% HASHDEEP") {
+			crlf = strings.HasSuffix(line, "\r")
+		}
 		// filenames can start or end with spaces so only remove line endings
-		line := strings.TrimRight(scanner.Text(), "\r")
+		if crlf {
+			line = strings.TrimSuffix(line, "\r")
+		}
 
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -550,7 +562,8 @@ func (hdl *Auditor) parseHashdeepFile(input string) error {
 		// as relative paths in the file are relative to it
 		if strings.HasPrefix(line, "#") {
 			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && hdl.primaryBase == "" {
-				hdl.primaryBase = strings.TrimSpace(dir)
+				// a directory name can start or end with spaces
+				hdl.primaryBase = dir
 			}
 			continue
 		}
@@ -618,6 +631,20 @@ func splitHashdeepLine(line string, columns int, filenameIdx int) ([]string, err
 	}
 	fields[filenameIdx] = rest
 	return fields, nil
+}
+
+// scanLinesKeepCR splits lines like bufio.ScanLines, but leaves any \r before the newline in place
+func scanLinesKeepCR(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // parseSumFile parses the output of md5sum, sha256sum and similar tools, including hashit's

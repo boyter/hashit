@@ -185,7 +185,6 @@ func TestIsDirectSpelling(t *testing.T) {
 		"a":       true,
 		"sub/a":   true,
 		"./sub/a": true,
-		"../a":    true,
 		"/abs/a":  runtime.GOOS != "windows", // \abs\a has no drive on windows
 		"sub//a":  false,
 		"sub/./a": false,
@@ -195,6 +194,11 @@ func TestIsDirectSpelling(t *testing.T) {
 		"":        false,
 		"sub/a/":  false,
 		"././sub": false,
+		"../a":    false,
+		"./../a":  false,
+		"..":      false,
+		".//a":    false,
+		"..a":     true,
 	}
 	for p, want := range cases {
 		if got := isDirectSpelling(filepath.FromSlash(p)); got != want {

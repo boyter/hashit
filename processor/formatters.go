@@ -853,7 +853,7 @@ func contains(list []string, v string) bool {
 
 func connectSqliteDb(pathName string) (*sql.DB, error) {
 	// build a file URI so a path containing ? or # is not taken as the start of parameters
-	abs, err := filepath.Abs(pathName)
+	abs, err := osAbs(pathName)
 	if err != nil {
 		return nil, err
 	}
