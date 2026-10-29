@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +38,29 @@ func printDebug(msg string) {
 		_, _ = fmt.Fprintf(os.Stderr, "DEBUG %s: %s\n", getFormattedTime(), msg)
 	}
 }
+
+// checkedWriter records the first error writing to it, so output which could not be written,
+// such as to a full disk, is reported rather than silently lost
+type checkedWriter struct {
+	w   io.Writer
+	mu  sync.Mutex
+	err error
+}
+
+func (c *checkedWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	if err != nil {
+		c.mu.Lock()
+		if c.err == nil {
+			c.err = err
+		}
+		c.mu.Unlock()
+	}
+	return n, err
+}
+
+// stdout is used for all results written to standard output
+var stdout = &checkedWriter{w: os.Stdout}
 
 // Exit codes, so scripts can tell a failed audit apart from hashit being unable to do its job
 const (
@@ -137,6 +162,19 @@ const (
 	Failed = "failed"
 )
 
+// isDuplicateFile reports if the file has already been seen, recording it if not
+func isDuplicateFile(seen map[string]bool, file string) bool {
+	key, err := filepath.Abs(file)
+	if err != nil {
+		key = filepath.Clean(file)
+	}
+	if seen[key] {
+		return true
+	}
+	seen[key] = true
+	return false
+}
+
 // auditFailed determines if an audit failed. Same as hashdeep, the audit only passes when everything
 // is exactly where it was, unless moved files have been allowed
 func auditFailed(modified, moved, newFiles, missing int) bool {
@@ -165,7 +203,12 @@ func doAudit(input chan Result) (string, bool) {
 	outcomes := map[*AuditRecord]outcome{}
 	var newFileCandidates []Result
 
+	seen := map[string]bool{}
 	for res := range input {
+		// overlapping paths such as . and ./sub supply the same file twice
+		if isDuplicateFile(seen, res.File) {
+			continue
+		}
 		examinedCount++
 		r, status := auditor.Find(res)
 
@@ -211,9 +254,9 @@ func doAudit(input chan Result) (string, bool) {
 			filesMissing++
 			if Verbose {
 				if unreadable[r] {
-					fmt.Printf("%v: File could not be read\n", r.Filename)
+					fmt.Fprintf(stdout, "%v: File could not be read\n", r.Filename)
 				} else {
-					fmt.Printf("%v: File expected but not found\n", r.Filename)
+					fmt.Fprintf(stdout, "%v: File expected but not found\n", r.Filename)
 				}
 			}
 			continue
@@ -222,22 +265,22 @@ func doAudit(input chan Result) (string, bool) {
 		switch o.status {
 		case FileMatched:
 			if VeryVerbose {
-				fmt.Printf("%v: Ok\n", o.file)
+				fmt.Fprintf(stdout, "%v: Ok\n", o.file)
 			}
 		case FileModified:
 			if Verbose {
-				fmt.Printf("%v: File modified\n", o.file)
+				fmt.Fprintf(stdout, "%v: File modified\n", o.file)
 			}
 		case FileMoved:
 			if Verbose {
-				fmt.Printf("%v -> %v: File moved\n", r.Filename, o.file)
+				fmt.Fprintf(stdout, "%v -> %v: File moved\n", r.Filename, o.file)
 			}
 		}
 	}
 
 	if Verbose {
 		for _, res := range sortedPaths(newFiles) {
-			fmt.Printf("%v: File new\n", res.File)
+			fmt.Fprintf(stdout, "%v: File new\n", res.File)
 		}
 	}
 
@@ -321,7 +364,7 @@ func toSum(input chan Result) string {
 		}
 
 		if !NoStream && FileOutput == "" {
-			fmt.Print(str.String())
+			fmt.Fprint(stdout, str.String())
 			str.Reset()
 		}
 	}
@@ -401,7 +444,7 @@ func toHashOnly(input chan Result) (string, bool) {
 		}
 
 		if !NoStream && FileOutput == "" {
-			fmt.Print(str.String())
+			fmt.Fprint(stdout, str.String())
 			str.Reset()
 		}
 	}
@@ -479,7 +522,7 @@ func toText(input chan Result) (string, bool) {
 		}
 
 		if !NoStream && FileOutput == "" {
-			fmt.Print(str.String())
+			fmt.Fprint(stdout, str.String())
 			str.Reset()
 		}
 	}
@@ -568,9 +611,9 @@ func toSqlite(input chan Result) (string, bool) {
 		}
 	}
 
-	db, err := connectSqliteDb(FileOutput)
+	db, err := connectSqliteDb(outputTemp)
 	if err != nil {
-		printError(fmt.Sprintf("problem connecting to db %s", FileOutput))
+		printError(fmt.Sprintf("problem creating database %s: %s", FileOutput, err.Error()))
 		return "", false
 	}
 	defer func(db *sql.DB) {
@@ -666,23 +709,23 @@ func toSqlite(input chan Result) (string, bool) {
 }
 
 func printHashes() {
-	fmt.Printf("      CRC32 (%s)\n", HashNames.CRC32)
-	fmt.Printf("   xxHash64 (%s)\n", HashNames.XxHash64)
-	fmt.Printf("        MD4 (%s)\n", HashNames.MD4)
-	fmt.Printf("        MD5 (%s)\n", HashNames.MD5)
-	fmt.Printf("       SHA1 (%s)\n", HashNames.SHA1)
-	fmt.Printf("     SHA224 (%s)\n", HashNames.SHA224)
-	fmt.Printf("     SHA256 (%s)\n", HashNames.SHA256)
-	fmt.Printf("     SHA384 (%s)\n", HashNames.SHA384)
-	fmt.Printf("     SHA512 (%s)\n", HashNames.SHA512)
-	fmt.Printf("Blake2b-256 (%s)\n", HashNames.Blake2b256)
-	fmt.Printf("Blake2b-512 (%s)\n", HashNames.Blake2b512)
-	fmt.Printf("     Blake3 (%s)\n", HashNames.Blake3)
-	fmt.Printf("   SHA3-224 (%s)\n", HashNames.Sha3224)
-	fmt.Printf("   SHA3-256 (%s)\n", HashNames.Sha3256)
-	fmt.Printf("   SHA3-384 (%s)\n", HashNames.Sha3384)
-	fmt.Printf("   SHA3-512 (%s)\n", HashNames.Sha3512)
-	fmt.Printf("       ed2k (%s)\n", HashNames.Ed2k)
+	fmt.Fprintf(stdout, "      CRC32 (%s)\n", HashNames.CRC32)
+	fmt.Fprintf(stdout, "   xxHash64 (%s)\n", HashNames.XxHash64)
+	fmt.Fprintf(stdout, "        MD4 (%s)\n", HashNames.MD4)
+	fmt.Fprintf(stdout, "        MD5 (%s)\n", HashNames.MD5)
+	fmt.Fprintf(stdout, "       SHA1 (%s)\n", HashNames.SHA1)
+	fmt.Fprintf(stdout, "     SHA224 (%s)\n", HashNames.SHA224)
+	fmt.Fprintf(stdout, "     SHA256 (%s)\n", HashNames.SHA256)
+	fmt.Fprintf(stdout, "     SHA384 (%s)\n", HashNames.SHA384)
+	fmt.Fprintf(stdout, "     SHA512 (%s)\n", HashNames.SHA512)
+	fmt.Fprintf(stdout, "Blake2b-256 (%s)\n", HashNames.Blake2b256)
+	fmt.Fprintf(stdout, "Blake2b-512 (%s)\n", HashNames.Blake2b512)
+	fmt.Fprintf(stdout, "     Blake3 (%s)\n", HashNames.Blake3)
+	fmt.Fprintf(stdout, "   SHA3-224 (%s)\n", HashNames.Sha3224)
+	fmt.Fprintf(stdout, "   SHA3-256 (%s)\n", HashNames.Sha3256)
+	fmt.Fprintf(stdout, "   SHA3-384 (%s)\n", HashNames.Sha3384)
+	fmt.Fprintf(stdout, "   SHA3-512 (%s)\n", HashNames.Sha3512)
+	fmt.Fprintf(stdout, "       ed2k (%s)\n", HashNames.Ed2k)
 }
 
 func contains(list []string, v string) bool {
@@ -708,14 +751,14 @@ pragma mmap_size = 268435456;
 pragma foreign_keys = on;`)
 	if err != nil {
 		_ = db.Close()
-		printError("pragma issue " + err.Error())
+		return nil, err
 	}
 
 	_, err = db.Exec(assets.Migrations)
 	if err != nil {
 		_ = db.Close()
-		printError("migrations issue " + err.Error())
+		return nil, err
 	}
 
-	return db, err
+	return db, nil
 }

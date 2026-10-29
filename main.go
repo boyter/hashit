@@ -48,6 +48,7 @@ func main() {
 				processor.VeryVerbose = true
 			}
 
+			processor.HashSupplied = cmd.Flags().Changed("hash")
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
