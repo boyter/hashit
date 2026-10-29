@@ -30,7 +30,7 @@ type Auditor struct {
 	pathLookup map[string]*AuditRecord   // every path key a record can be found by
 	hashLookup map[string][]*AuditRecord // "hashname:value" to records, used to find moved files
 	hashNames  []string                  // hashes present in the audit file which we are able to calculate
-	baseDir    string                    // directory relative paths in the audit file are relative to
+	baseDirs   []string                  // directories relative paths in the audit file may be relative to
 }
 
 type FileStatus int
@@ -59,7 +59,9 @@ var bsdTagNames = map[string]string{
 	"MD4":         HashNames.MD4,
 	"MD5":         HashNames.MD5,
 	"SHA1":        HashNames.SHA1,
+	"SHA224":      HashNames.SHA224,
 	"SHA256":      HashNames.SHA256,
+	"SHA384":      HashNames.SHA384,
 	"SHA512":      HashNames.SHA512,
 	"BLAKE2b-256": HashNames.Blake2b256,
 	"BLAKE2b":     HashNames.Blake2b512,
@@ -75,16 +77,22 @@ var bsdTagNames = map[string]string{
 // tell apart hashes of the same length such as md4 and md5. Where tools can write more than one
 // length, such as b2sum -l 256, the hash matching the length of the value is used
 var sumExtensions = map[string][]string{
-	".crc32":   {HashNames.CRC32},
-	".md4":     {HashNames.MD4},
-	".md5":     {HashNames.MD5},
-	".sha1":    {HashNames.SHA1},
-	".sha256":  {HashNames.SHA256},
-	".sha512":  {HashNames.SHA512},
-	".blake2b": {HashNames.Blake2b512, HashNames.Blake2b256},
-	".b2":      {HashNames.Blake2b512, HashNames.Blake2b256},
-	".blake3":  {HashNames.Blake3},
-	".b3":      {HashNames.Blake3},
+	".crc32":    {HashNames.CRC32},
+	".md4":      {HashNames.MD4},
+	".md5":      {HashNames.MD5},
+	".sha1":     {HashNames.SHA1},
+	".sha224":   {HashNames.SHA224},
+	".sha256":   {HashNames.SHA256},
+	".sha384":   {HashNames.SHA384},
+	".sha512":   {HashNames.SHA512},
+	".blake2b":  {HashNames.Blake2b512, HashNames.Blake2b256},
+	".b2":       {HashNames.Blake2b512, HashNames.Blake2b256},
+	".blake3":   {HashNames.Blake3},
+	".sha3-224": {HashNames.Sha3224},
+	".sha3-256": {HashNames.Sha3256},
+	".sha3-384": {HashNames.Sha3384},
+	".sha3-512": {HashNames.Sha3512},
+	".b3":       {HashNames.Blake3},
 }
 
 // sumLengths is the hash assumed for a given hex length when the file extension does not tell us
@@ -93,9 +101,9 @@ var sumLengths = map[int]string{
 	16:  HashNames.XxHash64,
 	32:  HashNames.MD5,
 	40:  HashNames.SHA1,
-	56:  HashNames.Sha3224,
+	56:  HashNames.SHA224,
 	64:  HashNames.SHA256,
-	96:  HashNames.Sha3384,
+	96:  HashNames.SHA384,
 	128: HashNames.SHA512,
 }
 
@@ -106,7 +114,9 @@ var hashLengths = map[string]int{
 	HashNames.MD4:        32,
 	HashNames.MD5:        32,
 	HashNames.SHA1:       40,
+	HashNames.SHA224:     56,
 	HashNames.SHA256:     64,
+	HashNames.SHA384:     96,
 	HashNames.SHA512:     128,
 	HashNames.Blake2b256: 64,
 	HashNames.Blake2b512: 128,
@@ -120,9 +130,9 @@ var hashLengths = map[string]int{
 
 // hashPriority is the order hashes are compared and indexed in, strongest first
 var hashPriority = []string{
-	HashNames.SHA512, HashNames.Sha3512, HashNames.Blake2b512, HashNames.Sha3384,
+	HashNames.SHA512, HashNames.Sha3512, HashNames.Blake2b512, HashNames.SHA384, HashNames.Sha3384,
 	HashNames.SHA256, HashNames.Sha3256, HashNames.Blake2b256, HashNames.Blake3,
-	HashNames.Sha3224, HashNames.SHA1, HashNames.MD5, HashNames.MD4, HashNames.Ed2k,
+	HashNames.SHA224, HashNames.Sha3224, HashNames.SHA1, HashNames.MD5, HashNames.MD4, HashNames.Ed2k,
 	HashNames.XxHash64, HashNames.CRC32,
 }
 
@@ -138,10 +148,15 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if isHashdeepFormat(input) {
 		err = hdl.parseHashdeepFile(input)
 	} else {
-		// md5sum -c resolves relative paths against the working directory, while tools such
-		// as RapidCRC resolve them against the checksum file, so we index both
-		hdl.baseDir = filepath.Dir(auditFilename)
 		err = hdl.parseSumFile(input, auditFilename)
+	}
+
+	// Relative paths are matched against the working directory, and also against the directory
+	// containing the audit file, as tools such as RapidCRC do for sum files. For hashdeep files
+	// this lets a manifest stored at the root of a set of files be audited after they have been
+	// copied elsewhere, where the invoked from directory no longer applies
+	if abs, err := filepath.Abs(filepath.Dir(auditFilename)); err == nil {
+		hdl.baseDirs = append(hdl.baseDirs, abs)
 	}
 	if err != nil {
 		return nil, err
@@ -291,7 +306,7 @@ func (hdl *Auditor) Exclude(path string) {
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !contains(pathKeys(r.Filename, hdl.baseDir), abs) {
+		if !contains(hdl.recordKeys(r), abs) {
 			records = append(records, r)
 		}
 	}
@@ -309,6 +324,23 @@ func (hdl *Auditor) Exclude(path string) {
 	hdl.buildLookups()
 }
 
+// recordKeys returns every path key a record can be found by, resolving it against each base directory
+func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
+	if len(hdl.baseDirs) == 0 {
+		return pathKeys(r.Filename, "")
+	}
+
+	var keys []string
+	for _, base := range hdl.baseDirs {
+		for _, k := range pathKeys(r.Filename, base) {
+			if !contains(keys, k) {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
+}
+
 func (hdl *Auditor) addRecord(r *AuditRecord) {
 	r.Order = len(hdl.records)
 	hdl.records = append(hdl.records, r)
@@ -317,7 +349,7 @@ func (hdl *Auditor) addRecord(r *AuditRecord) {
 func (hdl *Auditor) buildLookups() {
 	seen := map[string]bool{}
 	for _, r := range hdl.records {
-		for _, k := range pathKeys(r.Filename, hdl.baseDir) {
+		for _, k := range hdl.recordKeys(r) {
 			// first record wins where the same file appears more than once
 			if _, ok := hdl.pathLookup[k]; !ok {
 				hdl.pathLookup[k] = r
@@ -378,8 +410,8 @@ func (hdl *Auditor) parseHashdeepFile(input string) error {
 		// Skip comment lines starting with #, but record where hashdeep was invoked from
 		// as relative paths in the file are relative to it
 		if strings.HasPrefix(line, "#") {
-			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && hdl.baseDir == "" {
-				hdl.baseDir = strings.TrimSpace(dir)
+			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && len(hdl.baseDirs) == 0 {
+				hdl.baseDirs = append(hdl.baseDirs, strings.TrimSpace(dir))
 			}
 			continue
 		}
@@ -492,7 +524,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	}
 
 	if improper != 0 {
-		printWarn(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
+		printWarn(fmt.Sprintf("audit file has %d improperly formatted lines which were ignored", improper))
 	}
 
 	return nil

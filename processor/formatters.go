@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,16 @@ func printWarn(msg string) {
 // fileErrors is set when any file could not be processed, so that we exit non zero at the end
 // in the same way md5sum and similar tools do, rather than stopping at the first error
 var fileErrors atomic.Bool
+
+// failedFiles holds the paths of files which could not be read, so an audit can report them as
+// unreadable rather than missing
+var failedFiles sync.Map
+
+// fileFailed reports a file which could not be read and records it for the audit and exit code
+func fileFailed(path string, msg string) {
+	failedFiles.Store(path, true)
+	printFileError(msg)
+}
 
 // printFileError reports a file which could not be processed and records it for the exit code
 func printFileError(msg string) {
@@ -157,13 +168,26 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
+	// files which exist but could not be read are reported as such rather than as not found
+	unreadable := map[*AuditRecord]bool{}
+	failedFiles.Range(func(key, _ any) bool {
+		if r := auditor.Lookup(key.(string)); r != nil {
+			unreadable[r] = true
+		}
+		return true
+	})
+
 	filesMissing := 0
 	for _, r := range auditor.Records() {
 		o, ok := outcomes[r]
 		if !ok {
 			filesMissing++
 			if Verbose {
-				fmt.Printf("%v: File expected but not found\n", r.Filename)
+				if unreadable[r] {
+					fmt.Printf("%v: File could not be read\n", r.Filename)
+				} else {
+					fmt.Printf("%v: File expected but not found\n", r.Filename)
+				}
 			}
 			continue
 		}
@@ -227,8 +251,14 @@ func toSum(input chan Result) string {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString(sumLine(res.SHA1, res.File))
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString(sumLine(res.SHA224, res.File))
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString(sumLine(res.SHA256, res.File))
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString(sumLine(res.SHA384, res.File))
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString(sumLine(res.SHA512, res.File))
@@ -302,8 +332,14 @@ func toHashOnly(input chan Result) (string, bool) {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString(res.SHA1 + "\n")
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString(res.SHA224 + "\n")
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString(res.SHA256 + "\n")
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString(res.SHA384 + "\n")
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString(res.SHA512 + "\n")
@@ -374,8 +410,14 @@ func toText(input chan Result) (string, bool) {
 		if hasHash(HashNames.SHA1) {
 			str.WriteString("       SHA1 " + res.SHA1 + "\n")
 		}
+		if hasHash(HashNames.SHA224) {
+			str.WriteString("     SHA224 " + res.SHA224 + "\n")
+		}
 		if hasHash(HashNames.SHA256) {
 			str.WriteString("     SHA256 " + res.SHA256 + "\n")
+		}
+		if hasHash(HashNames.SHA384) {
+			str.WriteString("     SHA384 " + res.SHA384 + "\n")
 		}
 		if hasHash(HashNames.SHA512) {
 			str.WriteString("     SHA512 " + res.SHA512 + "\n")
@@ -425,7 +467,7 @@ func toJSON(input chan Result) string {
 	}
 
 	jsonString, _ := json.Marshal(results)
-	return string(jsonString)
+	return string(jsonString) + "\n"
 }
 
 func toHashDeep(input chan Result) string {
@@ -433,7 +475,7 @@ func toHashDeep(input chan Result) string {
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		printError(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
+		printWarn(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
 		pwd = ""
 	}
 
@@ -541,7 +583,9 @@ func toSqlite(input chan Result) (string, bool) {
 			Md4:        toSqlNull(res.MD4),
 			Md5:        toSqlNull(res.MD5),
 			Sha1:       toSqlNull(res.SHA1),
+			Sha224:     toSqlNull(res.SHA224),
 			Sha256:     toSqlNull(res.SHA256),
+			Sha384:     toSqlNull(res.SHA384),
 			Sha512:     toSqlNull(res.SHA512),
 			Blake2b256: toSqlNull(res.Blake2b256),
 			Blake2b512: toSqlNull(res.Blake2b512),
@@ -600,7 +644,9 @@ func printHashes() {
 	fmt.Printf("        MD4 (%s)\n", HashNames.MD4)
 	fmt.Printf("        MD5 (%s)\n", HashNames.MD5)
 	fmt.Printf("       SHA1 (%s)\n", HashNames.SHA1)
+	fmt.Printf("     SHA224 (%s)\n", HashNames.SHA224)
 	fmt.Printf("     SHA256 (%s)\n", HashNames.SHA256)
+	fmt.Printf("     SHA384 (%s)\n", HashNames.SHA384)
 	fmt.Printf("     SHA512 (%s)\n", HashNames.SHA512)
 	fmt.Printf("Blake2b-256 (%s)\n", HashNames.Blake2b256)
 	fmt.Printf("Blake2b-512 (%s)\n", HashNames.Blake2b512)

@@ -75,7 +75,9 @@ func fileHashToRecord(f database.FileHash) *AuditRecord {
 	add(HashNames.MD4, f.Md4)
 	add(HashNames.MD5, f.Md5)
 	add(HashNames.SHA1, f.Sha1)
+	add(HashNames.SHA224, f.Sha224)
 	add(HashNames.SHA256, f.Sha256)
+	add(HashNames.SHA384, f.Sha384)
 	add(HashNames.SHA512, f.Sha512)
 	add(HashNames.Blake2b256, f.Blake2b256)
 	add(HashNames.Blake2b512, f.Blake2b512)
@@ -96,6 +98,15 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		return nil, err
 	}
 	defer db.Close()
+
+	// databases from development builds before sha224 and sha384 were added lack those columns
+	var hasColumn int
+	if err := db.QueryRow("select count(*) from pragma_table_info('file_hashes') where name = 'sha224'").Scan(&hasColumn); err != nil {
+		return nil, err
+	}
+	if hasColumn == 0 {
+		return nil, errors.New("audit database was created by an older development version of hashit, regenerate it with --format sqlite --overwrite")
+	}
 
 	first, err := database.New(db).FileHashFirst(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
@@ -258,7 +269,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	movedTo := make([]bool, len(newFileCandidates))
 
 	// stream every record in path order joined against what we saw, reporting as we go
-	rows, err := db.QueryContext(ctx, `select f.filepath, f.crc32, f.xxhash64, f.md4, f.md5, f.sha1, f.sha256, f.sha512,
+	rows, err := db.QueryContext(ctx, `select f.filepath, f.crc32, f.xxhash64, f.md4, f.md5, f.sha1, f.sha224, f.sha256, f.sha384, f.sha512,
     f.blake2b_256, f.blake2b_512, f.blake3, f.sha3_224, f.sha3_256, f.sha3_384, f.sha3_512, f.ed2k, f.size, f.mtime,
     s.status, s.disk_file
 from file_hashes f left join temp.seen s on s.filepath = f.filepath
@@ -269,6 +280,15 @@ order by f.filepath`)
 	}
 	defer rows.Close()
 
+	// files which exist but could not be read are reported as such rather than as not found
+	unreadable := map[string]bool{}
+	failedFiles.Range(func(key, _ any) bool {
+		for _, p := range sqlitePathCandidates(key.(string), invokedFrom) {
+			unreadable[p] = true
+		}
+		return true
+	})
+
 	knownFileCount := 0
 	moved := 0
 	filesMissing := 0
@@ -277,7 +297,7 @@ order by f.filepath`)
 		var f database.FileHash
 		var status sql.NullInt64
 		var diskFile sql.NullString
-		err := rows.Scan(&f.Filepath, &f.Crc32, &f.Xxhash64, &f.Md4, &f.Md5, &f.Sha1, &f.Sha256, &f.Sha512,
+		err := rows.Scan(&f.Filepath, &f.Crc32, &f.Xxhash64, &f.Md4, &f.Md5, &f.Sha1, &f.Sha224, &f.Sha256, &f.Sha384, &f.Sha512,
 			&f.Blake2b256, &f.Blake2b512, &f.Blake3, &f.Sha3224, &f.Sha3256, &f.Sha3384, &f.Sha3512, &f.Ed2k,
 			&f.Size, &f.Mtime, &status, &diskFile)
 		if err != nil {
@@ -320,7 +340,11 @@ order by f.filepath`)
 		if !foundMove {
 			filesMissing++
 			if Verbose {
-				fmt.Printf("%v: File expected but not found\n", record.Filename)
+				if unreadable[record.Filename] {
+					fmt.Printf("%v: File could not be read\n", record.Filename)
+				} else {
+					fmt.Printf("%v: File expected but not found\n", record.Filename)
+				}
 			}
 		}
 	}

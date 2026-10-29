@@ -660,8 +660,46 @@ check "very verbose audit includes modified files test" \
 check "b2sum 256 bit audit test" \
     "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 b2sum -l 256 > ../sums.b2 && '$HASHIT' -a ../sums.b2 . | grep -q 'Audit passed'"
 
-# files are hashed differently depending on size, every hash must agree across the thresholds
+# symlinks, special files and multiple paths
+mkdir -p "$AUDITDIR/links/sub"
+echo 1 > "$AUDITDIR/links/a"
+echo 2 > "$AUDITDIR/links/sub/b"
+ln -s sub "$AUDITDIR/links/lnk"
+check "symlinked directory followed as hashdeep does test" \
+    "cd '$AUDITDIR/links' && [ \"\$(timeout 20 '$HASHIT' -c md5 -f sum . 2>/dev/null | cut -d' ' -f3 | sort | tr '\n' ' ')\" == \"\$(timeout 20 hashdeep -l -r -c md5 . < /dev/null 2>/dev/null | tail -n +6 | cut -d, -f3 | sort | tr '\n' ' ')\" ]"
+ln -s .. "$AUDITDIR/links/sub/loop"
+mkfifo "$AUDITDIR/links/fifo"
+check "symlink loop and fifo do not hang test" "timeout 20 '$HASHIT' -c md5 -f sum '$AUDITDIR/links' > /dev/null 2>&1"
+rm "$AUDITDIR/links/fifo" "$AUDITDIR/links/sub/loop"
+check "missing path argument still processes other paths test" \
+    "! '$HASHIT' -c md5 -f sum '$AUDITDIR/links/a' '$AUDITDIR/nope' > '$AUDITDIR/missing.out' 2>/dev/null && grep -q 'links/a' '$AUDITDIR/missing.out'"
+check "skipped directory warns test" "'$HASHIT' -c md5 -f sum '$AUDITDIR/links/a' '$AUDITDIR/links/sub' 2>&1 >/dev/null | grep -q 'Skipping directory'"
+check "audit with multiple paths processes directories test" \
+    "cd '$AUDITDIR/links' && '$HASHIT' -f hashdeep . > ../links.txt && '$HASHIT' -a ../links.txt ./a ./sub ./lnk | grep -q 'Audit passed'"
+check "progress bars go to stderr test" "[ \"\$('$HASHIT' -p -c md5 -f sum '$AUDITDIR/links/a' 2>/dev/null | wc -l)\" -eq 1 ]"
+check "zero threads is an error test" "! '$HASHIT' --threads 0 '$AUDITDIR/links' > /dev/null 2>&1"
+printf '%s\n\n' "$AUDITDIR/links/a" > "$AUDITDIR/blank-lines.txt"
+check "blank lines in input file are ignored test" "'$HASHIT' -c md5 -f sum -i '$AUDITDIR/blank-lines.txt' > /dev/null 2>&1"
+
+# a manifest kept with the files can be audited after they are copied elsewhere
+mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
+echo 1 > "$AUDITDIR/ship/orig/tree/one"
+echo 2 > "$AUDITDIR/ship/orig/tree/sub/two"
+(cd "$AUDITDIR/ship/orig/tree" && "$HASHIT" -f hashdeep . > ../manifest.txt && mv ../manifest.txt .)
+cp -r "$AUDITDIR/ship/orig/tree" "$AUDITDIR/ship/copy/"
+check "copied manifest audits from inside the tree test" "cd '$AUDITDIR/ship/copy/tree' && '$HASHIT' -a manifest.txt . | grep -q 'Audit passed'"
+check "copied manifest audits from outside the tree test" "cd / && '$HASHIT' -a '$AUDITDIR/ship/copy/tree/manifest.txt' '$AUDITDIR/ship/copy/tree' | grep -q 'Audit passed'"
+
 head -c 300000 /dev/urandom > "$AUDITDIR/threshold.bin"
+for SUMTOOL in sha224sum sha384sum; do
+    HASHNAME=${SUMTOOL%sum}
+    check "$HASHNAME matches $SUMTOOL test" \
+        "[ \"\$('$HASHIT' -c $HASHNAME -f hashonly '$AUDITDIR/threshold.bin')\" == \"\$($SUMTOOL '$AUDITDIR/threshold.bin' | cut -d' ' -f1)\" ]"
+    check "audit $SUMTOOL file test" \
+        "cd '$AUDITDIR/media' && find . -type f -print0 | xargs -0 $SUMTOOL > ../sums.$HASHNAME && '$HASHIT' -a ../sums.$HASHNAME . | grep -q 'Audit passed'"
+done
+
+# files are hashed differently depending on size, every hash must agree across the thresholds
 for HASHNAME in $("$HASHIT" --hashes | sed -n 's/.*(\(.*\))/\1/p'); do
     A=$("$HASHIT" -c "$HASHNAME" -f hashonly "$AUDITDIR/threshold.bin")
     B=$("$HASHIT" -c "$HASHNAME" -f hashonly --stream-size 0 "$AUDITDIR/threshold.bin")
