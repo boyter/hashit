@@ -20,6 +20,9 @@ import (
 // creating the database, which relative paths in it are relative to
 const metadataInvokedFrom = "invoked_from"
 
+// metadataHashes is the metadata key holding the comma separated hashes stored in the database
+const metadataHashes = "hashes"
+
 // isSQLiteDB checks if a file is a SQLite database by checking the header.
 func isSQLiteDB(filePath string) bool {
 	file, err := os.Open(filePath)
@@ -129,6 +132,20 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 	}
 
 	// a database of an empty directory has no records, and passes when audited against one
+	// databases record which hashes they hold, but those from earlier development builds do not,
+	// in which case the first row is used
+	if stored, err := database.New(db).MetadataGet(context.Background(), metadataHashes); err == nil && stored != "" {
+		var hashes []string
+		for _, name := range hashPriority {
+			if contains(strings.Split(stored, ","), name) {
+				hashes = append(hashes, name)
+			}
+		}
+		if len(hashes) != 0 {
+			return hashes, nil
+		}
+	}
+
 	first, err := database.New(db).FileHashFirst(context.Background())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -150,43 +167,34 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 	return hashes, nil
 }
 
-// sqlitePathCandidates returns the paths a file on disk may be stored under in the database,
-// in order of preference. Relative paths are stored relative to where hashit was invoked from
+// sqlitePathCandidates returns the paths a file on disk may be stored under in the database, in
+// order of preference. Relative paths are stored relative to where hashit was invoked from, or for
+// databases without that recorded the working directory, so only that resolution is tried, as a
+// bare relative path only means the same file when run from the same directory. Each file on disk
+// therefore has its own candidates, and two files can never match the same record
 func sqlitePathCandidates(file string, invokedFrom string) []string {
-	var candidates []string
-	seen := map[string]bool{}
-	add := func(p string) {
-		if !seen[p] {
-			seen[p] = true
-			candidates = append(candidates, p)
-		}
-	}
-
-	// relative paths may have been stored with or without a leading ./ depending on how
-	// hashit was run, so try both
-	addRelative := func(p string) {
-		add(p)
-		if !filepath.IsAbs(p) && !escapesDir(p) {
-			add("." + string(filepath.Separator) + p)
-		}
-	}
-
-	clean := filepath.Clean(file)
-	add(file)
-	addRelative(clean)
-
-	abs, err := filepath.Abs(clean)
+	abs, err := filepath.Abs(file)
 	if err != nil {
-		return candidates
+		return []string{file}
 	}
 
-	if invokedFrom != "" {
-		if rel, err := filepath.Rel(invokedFrom, abs); err == nil && !escapesDir(rel) {
-			addRelative(rel)
+	base := invokedFrom
+	if base == "" {
+		if wd, err := os.Getwd(); err == nil {
+			base = wd
 		}
 	}
-	add(abs)
-	return candidates
+
+	var candidates []string
+	if rel, err := filepath.Rel(base, abs); err == nil {
+		// relative paths may have been stored with or without a leading ./ depending on how
+		// hashit was run, so try both
+		candidates = append(candidates, rel)
+		if !escapesDir(rel) {
+			candidates = append(candidates, "."+string(filepath.Separator)+rel)
+		}
+	}
+	return append(candidates, abs)
 }
 
 // doSqliteAudit performs an audit against a SQLite database, comparing all available hashes.
@@ -295,6 +303,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// index new files by the strongest hash we calculated which every record also has
 	hashes := sqliteCompareHashes
 	moveIndex := map[string][]int{}
+	// in path order, so which of several identical files is reported as moved is always the same
+	sort.Slice(newFileCandidates, func(i, j int) bool { return newFileCandidates[i].File < newFileCandidates[j].File })
 	if len(hashes) != 0 {
 		for i, res := range newFileCandidates {
 			if v := res.hashValue(hashes[0]); v != "" {

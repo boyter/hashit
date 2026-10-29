@@ -276,6 +276,8 @@ func doAudit(input chan Result) (string, bool) {
 	// With every file on disk accounted for, anything new may be a known file which was
 	// moved or renamed, which we identify by matching size and hashes against unmatched records
 	var newFiles []Result
+	// in path order, so which of several identical files is reported as moved is always the same
+	sort.Slice(newFileCandidates, func(i, j int) bool { return newFileCandidates[i].File < newFileCandidates[j].File })
 	for _, res := range newFileCandidates {
 		if r := auditor.FindMoved(res); r != nil {
 			moved++
@@ -289,11 +291,15 @@ func doAudit(input chan Result) (string, bool) {
 	unreadable := map[*AuditRecord]bool{}
 	var unreadableNew []string
 	failedFiles.Range(func(key, _ any) bool {
+		// a record claimed by another file is reported for that file, so the unreadable file is
+		// listed on its own, as it is when it has no record
 		if r := auditor.Lookup(key.(string)); r != nil {
-			unreadable[r] = true
-		} else {
-			unreadableNew = append(unreadableNew, key.(string))
+			if _, claimed := outcomes[r]; !claimed {
+				unreadable[r] = true
+				return true
+			}
 		}
+		unreadableNew = append(unreadableNew, key.(string))
 		return true
 	})
 	isUnreadable := func(r *AuditRecord) bool {
@@ -702,6 +708,18 @@ func toSqlite(input chan Result) (string, bool) {
 			printError(err.Error())
 			return "", false
 		}
+	}
+
+	// record which hashes were calculated, so an audit does not have to guess from the rows
+	var calculated []string
+	for _, name := range hashPriority {
+		if hasHash(name) {
+			calculated = append(calculated, name)
+		}
+	}
+	if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataHashes, Value: strings.Join(calculated, ",")}); err != nil {
+		printError(err.Error())
+		return "", false
 	}
 
 	count := 0

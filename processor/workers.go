@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -41,6 +43,14 @@ type fileJob struct {
 	explicit bool
 }
 
+// skippedOwnFile reports skipping the audit or output file. Supplying it explicitly is an error,
+// as otherwise the output would be replaced by results which do not include it
+func skippedOwnFile(job fileJob) {
+	if job.explicit {
+		printFileError(fmt.Sprintf("Unable to process %s as it is the audit or output file", job.path))
+	}
+}
+
 func fileProcessorWorker(input chan fileJob, output chan Result) {
 
 	var bar *uiprogress.Bar
@@ -59,9 +69,7 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 		}
 
 		if shouldSkipFile(res) {
-			if job.explicit {
-				printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", res))
-			}
+			skippedOwnFile(job)
 			continue
 		}
 
@@ -70,8 +78,8 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 		if err != nil {
 			// a symlink which points nowhere found while walking has no content to hash, and
 			// hashdeep ignores these, but one supplied explicitly is an error
-			if lfi, lerr := os.Lstat(res); !job.explicit && lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && os.IsNotExist(err) {
-				printWarn(fmt.Sprintf("Skipping %s as it is a symlink to something which does not exist", res))
+			if lfi, lerr := os.Lstat(res); !job.explicit && lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && (os.IsNotExist(err) || errors.Is(err, syscall.ELOOP)) {
+				printWarn(fmt.Sprintf("Skipping %s as it is a symlink which cannot be followed", res))
 				continue
 			}
 			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
@@ -81,10 +89,17 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 		// SQLite creates -wal and -shm files next to the temporary output while writing, which may
 		// be reached through a symlinked path, so match those by name
 		if temp := outputTempName(); isSkippedFileInfo(fi) || (temp != "" && strings.HasPrefix(filepath.Base(res), filepath.Base(temp))) {
-			if job.explicit {
-				printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", res))
-			}
+			skippedOwnFile(job)
 			continue
+		}
+
+		// a symlink to the existing output file would hash its old content, while a hard link to
+		// it is ordinary data which keeps the old content after the output is replaced
+		if isOldOutput(fi) {
+			if lfi, err := os.Lstat(res); err == nil && lfi.Mode()&os.ModeSymlink != 0 {
+				skippedOwnFile(job)
+				continue
+			}
 		}
 
 		// directories can be supplied using --input, and would otherwise hash as an empty file

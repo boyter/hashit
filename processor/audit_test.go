@@ -23,15 +23,15 @@ func TestSqlitePathCandidates(t *testing.T) {
 		}
 	}
 
-	// databases may store relative paths with or without ./
-	expect(sqlitePathCandidates("./a.txt", ""), "./a.txt", "a.txt", filepath.Join(wd, "a.txt"))
+	// relative to the working directory when no invoked from is recorded, with and without ./
+	expect(sqlitePathCandidates("./a.txt", ""), "a.txt", "./a.txt", filepath.Join(wd, "a.txt"))
 	expect(sqlitePathCandidates("a.txt", ""), "a.txt", "./a.txt", filepath.Join(wd, "a.txt"))
 
-	// an absolute path under the invoked from directory should also be tried relative to it
-	expect(sqlitePathCandidates("/srv/media/sub/a.txt", "/srv/media"), "/srv/media/sub/a.txt", "sub/a.txt", "./sub/a.txt")
+	// relative to invoked from, whether supplied as absolute or relative
+	expect(sqlitePathCandidates("/srv/media/sub/a.txt", "/srv/media"), "sub/a.txt", "./sub/a.txt", "/srv/media/sub/a.txt")
 
-	// but never one outside of it
-	expect(sqlitePathCandidates("/srv/other/a.txt", "/srv/media"), "/srv/other/a.txt")
+	// a path outside invoked from may have been stored relative with a leading ..
+	expect(sqlitePathCandidates("/srv/other/a.txt", "/srv/media"), "../other/a.txt", "/srv/other/a.txt")
 }
 
 func TestDotPrefix(t *testing.T) {

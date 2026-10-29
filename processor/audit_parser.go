@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -33,6 +32,7 @@ type Auditor struct {
 	hashNames   []string                  // hashes present in the audit file which we are able to calculate
 	baseDirs    []string                  // directories relative paths in the audit file may be relative to
 	primaryBase string                    // directory relative paths were created relative to, empty for the working directory
+	duplicates  int                       // paths listed more than once, reported once parsing is done
 }
 
 type FileStatus int
@@ -163,6 +163,9 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 		hdl.baseDirs = append(hdl.baseDirs, abs)
 	}
 	hdl.removeDuplicates()
+	if hdl.duplicates != 0 {
+		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", hdl.duplicates))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -227,19 +230,9 @@ func (hdl *Auditor) LookupPrimary(file string) (*AuditRecord, bool) {
 	return r, false
 }
 
-// lookupKeys returns the keys a file on disk is looked up by. An absolute path inside the working
-// directory is also tried relative to it, so auditing by absolute path matches as auditing by
-// relative path does, without resolving records against the working directory
+// lookupKeys returns the key a file on disk is looked up by, being its absolute path
 func lookupKeys(file string) []string {
-	keys := pathKeys(file, "")
-	if filepath.IsAbs(file) {
-		if wd, err := os.Getwd(); err == nil {
-			if rel, err := filepath.Rel(wd, file); err == nil && !escapesDir(rel) {
-				keys = append(keys, filepath.Clean(rel))
-			}
-		}
-	}
-	return keys
+	return pathKeys(file, "")
 }
 
 // escapesDir reports if a relative path leads outside the directory it is relative to
@@ -312,28 +305,28 @@ func recordMatches(r *AuditRecord, res Result) bool {
 	return compared
 }
 
-// pathKeys returns the keys a path can be looked up by, being the cleaned path and the absolute
-// path. Relative paths are made absolute against base, or the working directory when base is empty
+// pathKeys returns the absolute path a path refers to, relative paths being resolved against base,
+// or the working directory when base is empty. Paths are only ever compared absolute, as a bare
+// relative path such as x only means the same file when run from the same directory
 func pathKeys(p string, base string) []string {
 	clean := filepath.Clean(p)
-	keys := []string{clean}
-
-	var abs string
 	if filepath.IsAbs(clean) {
-		return keys
+		return []string{clean}
 	}
-	if base != "" {
-		abs = filepath.Join(base, clean)
-		if !filepath.IsAbs(abs) {
-			abs, _ = filepath.Abs(abs)
+	if base == "" {
+		abs, err := filepath.Abs(clean)
+		if err != nil {
+			return []string{clean}
 		}
-	} else {
-		abs, _ = filepath.Abs(clean)
+		return []string{abs}
 	}
-	if abs != "" && abs != clean {
-		keys = append(keys, abs)
+	abs := filepath.Join(base, clean)
+	if !filepath.IsAbs(abs) {
+		if a, err := filepath.Abs(abs); err == nil {
+			abs = a
+		}
 	}
-	return keys
+	return []string{abs}
 }
 
 // Exclude removes any record which refers to the supplied path, which is used to remove the
@@ -365,14 +358,15 @@ func (hdl *Auditor) Exclude(path string) {
 	hdl.buildLookups()
 }
 
-// recordKeys returns every path key a record can be found by, resolving it against each base directory
+// recordKeys returns every absolute path a record may refer to, in priority order: the directory
+// paths were created relative to, then the audit file's directory, then the working directory
 func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
-	if len(hdl.baseDirs) == 0 {
-		return pathKeys(r.Filename, "")
-	}
+	bases := []string{hdl.primaryBase}
+	bases = append(bases, hdl.baseDirs...)
+	bases = append(bases, "")
 
 	var keys []string
-	for _, base := range hdl.baseDirs {
+	for _, base := range bases {
 		for _, k := range pathKeys(r.Filename, base) {
 			if !contains(keys, k) {
 				keys = append(keys, k)
@@ -434,7 +428,7 @@ func (hdl *Auditor) removeDuplicates() {
 		records = append(records, r)
 	}
 	if dupes := len(hdl.records) - len(records); dupes != 0 {
-		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", dupes))
+		hdl.duplicates += dupes
 		hdl.records = nil
 		for _, r := range records {
 			hdl.addRecord(r)
@@ -469,24 +463,27 @@ func (hdl *Auditor) addRecord(r *AuditRecord) {
 }
 
 func (hdl *Auditor) buildLookups() {
-	// Each record's own resolution, against the directory paths were created relative to, takes
-	// priority over any other resolution, as otherwise a record resolved through the audit file's
-	// directory can claim the path of a different record. Within each pass the first record wins
-	for _, r := range hdl.records {
-		for _, k := range pathKeys(r.Filename, hdl.primaryBase) {
-			if _, ok := hdl.pathLookup[k]; !ok {
-				hdl.pathLookup[k] = r
+	// Each record's resolution against the directory paths were created relative to takes priority
+	// over any other resolution, then the next, so a record resolved through the audit file's
+	// directory never takes the path of a different record. Within each level the first record wins
+	allKeys := make([][]string, len(hdl.records))
+	levels := 0
+	for i, r := range hdl.records {
+		allKeys[i] = hdl.recordKeys(r)
+		levels = max(levels, len(allKeys[i]))
+	}
+	for level := 0; level < levels; level++ {
+		for i, r := range hdl.records {
+			if level < len(allKeys[i]) {
+				if _, ok := hdl.pathLookup[allKeys[i][level]]; !ok {
+					hdl.pathLookup[allKeys[i][level]] = r
+				}
 			}
 		}
 	}
 
 	seen := map[string]bool{}
 	for _, r := range hdl.records {
-		for _, k := range hdl.recordKeys(r) {
-			if _, ok := hdl.pathLookup[k]; !ok {
-				hdl.pathLookup[k] = r
-			}
-		}
 		for name, v := range r.Hashes {
 			seen[name] = true
 			hdl.hashLookup[name+":"+v] = append(hdl.hashLookup[name+":"+v], r)
@@ -663,9 +660,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 		return err
 	}
 
-	if duplicateSumLines != 0 {
-		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", duplicateSumLines))
-	}
+	hdl.duplicates += duplicateSumLines
 
 	if improper != 0 {
 		// a file such as text or json output has no valid lines, and is not an audit file at all
