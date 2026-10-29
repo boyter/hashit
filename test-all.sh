@@ -703,6 +703,14 @@ check "filename with glob characters is used literally test" "'$HASHIT' -c md5 -
 check "-vv is the same as --vv test" "cd '$AUDITDIR/cross' && '$HASHIT' -f hashdeep . > ../cross.txt && '$HASHIT' -vv -a ../cross.txt . | grep -q ': Ok'"
 check "audit with a missing path fails test" "cd '$AUDITDIR/cross' && ! '$HASHIT' -a ../cross.txt . nope 2>/dev/null | grep -q 'Audit passed'"
 
+# an audit file outside the tree which shares its name with a file in the tree is not confused with it
+mkdir -p "$AUDITDIR/samename/d"
+echo 1 > "$AUDITDIR/samename/d/a.txt"
+(cd "$AUDITDIR/samename/d" && "$HASHIT" -f hashdeep . > ../a.txt && md5sum ./a.txt > ../b.txt && cp ../b.txt ../a.md5)
+echo changed >> "$AUDITDIR/samename/d/a.txt"
+check "audit file sharing a name with an audited file test" \
+    "cd '$AUDITDIR/samename/d' && '$HASHIT' -a ../a.txt . | grep -q 'Files modified: 1' && '$HASHIT' -a ../a.md5 . | grep -q 'Files modified: 1'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

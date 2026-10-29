@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -303,7 +304,7 @@ func (hdl *Auditor) Exclude(path string) {
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !contains(hdl.recordKeys(r), abs) {
+		if !hdl.refersOnlyTo(r, abs) {
 			records = append(records, r)
 		}
 	}
@@ -336,6 +337,24 @@ func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
 		}
 	}
 	return keys
+}
+
+// refersOnlyTo reports if the record resolves to the file at abs and to no other existing file.
+// A relative path can resolve against several directories, so a record may resolve to the audit
+// file while actually being a different file which happens to share its name
+func (hdl *Auditor) refersOnlyTo(r *AuditRecord, abs string) bool {
+	keys := append(hdl.recordKeys(r), pathKeys(r.Filename, "")...)
+	if !contains(keys, abs) {
+		return false
+	}
+	for _, k := range keys {
+		if k != abs && filepath.IsAbs(k) {
+			if _, err := os.Stat(k); err == nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (hdl *Auditor) addRecord(r *AuditRecord) {
