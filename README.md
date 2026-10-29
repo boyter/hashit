@@ -375,6 +375,15 @@ $ hashit --hash md5 --format sum . > ../checksums.md5
 $ md5sum -c ../checksums.md5
 ```
 
+This also works for the files in the current directory, as `md5sum *` would be used:
+
+```shell
+$ hashit -f sum -c md5 * > test.md5
+$ md5sum -c test.md5
+```
+
+As with `md5sum`, when `test.md5` already exists `*` includes it while the shell is emptying it, so `md5sum -c` reports it as `FAILED`. Remove it first, or write it with `-o test.md5 --overwrite`, which skips it.
+
 With `--mtime` the modification time of each file is written as a comment line such as `# mtime 2026-01-01 10:00:00  ./file`, which `md5sum -c` ignores.
 
 ### SQLite Auditing (Recommended for Large Datasets)
