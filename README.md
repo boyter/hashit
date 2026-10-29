@@ -160,7 +160,11 @@ Files larger than `--stream-size` bytes are read in chunks rather than all at on
 
 If any file cannot be read, such as a path which does not exist or a file which lacks permissions, an error is printed, the remaining files are still processed, and `hashit` exits with a non zero code. Messages where processing continues normally, such as a skipped directory, are labelled `WARN`.
 
-`hashit` exits with `0` on success and `1` when anything could not be processed or an audit failed. A failed audit and an error both exit with `1`, so check the output to tell them apart.
+`hashit` exits with one of the following codes, so scripts can tell a failed audit apart from `hashit` being unable to do its job:
+
+- `0` everything was processed, and any audit passed.
+- `1` everything was processed, but the audit failed.
+- `2` an error was printed, such as an invalid option, a path which does not exist or a file which could not be read. This includes an audit which could not check every file.
 
 ### Ignoring Files (`.hashignore`)
 

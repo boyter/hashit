@@ -205,7 +205,7 @@ func Process() {
 
 	if err := validateOptions(); err != nil {
 		printError(err.Error())
-		os.Exit(1)
+		os.Exit(ExitError)
 	}
 
 	if AllowMoved && AuditFile == "" {
@@ -219,7 +219,7 @@ func Process() {
 			stored, err := sqliteAuditHashes(AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to read audit database %s: %s", AuditFile, err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 			sqliteCompareHashes = nil
 			for _, h := range stored {
@@ -234,13 +234,13 @@ func Process() {
 			file, err := os.ReadFile(AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 
 			auditor, err = NewAuditor(string(file), AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 			// the audit file cannot contain its own hash, so never process or expect it
 			auditor.Exclude(AuditFile)
@@ -261,7 +261,7 @@ func Process() {
 	if FileOutput != "" {
 		if err := prepareOutput(FileOutput, sqliteOutput); err != nil {
 			printError(err.Error())
-			os.Exit(1)
+			os.Exit(ExitError)
 		}
 	}
 
@@ -336,7 +336,7 @@ func Process() {
 				file, err := os.Open(FileInput)
 				if err != nil {
 					printError(fmt.Sprintf("failed to open input file: %s, %s", FileInput, err.Error()))
-					os.Exit(1)
+					os.Exit(ExitError)
 				}
 				defer file.Close()
 
@@ -361,7 +361,7 @@ func Process() {
 				// Check for errors during scanning
 				if err := scanner.Err(); err != nil {
 					printError(fmt.Sprintf("error reading input file: %s, %s", FileInput, err.Error()))
-					os.Exit(1)
+					os.Exit(ExitError)
 				}
 			}()
 		}
@@ -390,28 +390,21 @@ func Process() {
 
 	result, valid := fileSummarize(fileSummaryQueue)
 
-	// any file which could not be processed means the output is incomplete
-	if fileErrors.Load() {
-		valid = false
-	}
-
 	if FileOutput == "" {
 		fmt.Print(result)
-		if !valid {
-			os.Exit(1)
-		}
 	} else {
 		// we don't write out sqlite as it is written as we go
 		if !sqliteOutput {
 			if err := os.WriteFile(FileOutput, []byte(result), 0600); err != nil {
 				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 		}
 		fmt.Println("results written to " + FileOutput)
-		if !valid {
-			os.Exit(1)
-		}
+	}
+
+	if code := exitCode(valid); code != ExitOK {
+		os.Exit(code)
 	}
 }
 

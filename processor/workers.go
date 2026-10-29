@@ -14,7 +14,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -742,7 +741,8 @@ func processStandardInput(output chan Result) {
 				break
 			}
 
-			log.Fatal(err)
+			printError(fmt.Sprintf("reading standard input: %s", err.Error()))
+			os.Exit(ExitError)
 		}
 
 		nChunks++
@@ -806,7 +806,8 @@ func processStandardInput(output chan Result) {
 		}
 
 		if err != nil && err != io.EOF {
-			log.Fatal(err)
+			printError(fmt.Sprintf("reading standard input: %s", err.Error()))
+			os.Exit(ExitError)
 		}
 	}
 

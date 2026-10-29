@@ -711,6 +711,17 @@ echo changed >> "$AUDITDIR/samename/d/a.txt"
 check "audit file sharing a name with an audited file test" \
     "cd '$AUDITDIR/samename/d' && '$HASHIT' -a ../a.txt . | grep -q 'Files modified: 1' && '$HASHIT' -a ../a.md5 . | grep -q 'Files modified: 1'"
 
+# exit codes are 0 for success, 1 for a failed audit and 2 for an error
+mkdir -p "$AUDITDIR/exitcodes"
+echo 1 > "$AUDITDIR/exitcodes/a"
+"$HASHIT" -f hashdeep "$AUDITDIR/exitcodes" > "$AUDITDIR/exitcodes.txt"
+check "exit code 0 for a passed audit test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' > /dev/null; [ \$? -eq 0 ]"
+echo changed >> "$AUDITDIR/exitcodes/a"
+check "exit code 1 for a failed audit test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' > /dev/null; [ \$? -eq 1 ]"
+check "exit code 2 for an audit which could not check every file test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' '$AUDITDIR/nope' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "exit code 2 for a missing path test" "'$HASHIT' '$AUDITDIR/nope' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "exit code 2 for an invalid option test" "'$HASHIT' --not-a-real-option > /dev/null 2>&1; [ \$? -eq 2 ]"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

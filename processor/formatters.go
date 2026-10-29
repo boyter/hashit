@@ -37,9 +37,32 @@ func printDebug(msg string) {
 	}
 }
 
-// Used for failures, whether processing stops or continues and later exits non zero
+// Exit codes, so scripts can tell a failed audit apart from hashit being unable to do its job
+const (
+	ExitOK          = 0 // everything processed, and any audit passed
+	ExitAuditFailed = 1 // everything processed, but the audit failed
+	ExitError       = 2 // an error was printed, such as an invalid option or unreadable file
+)
+
+// errorOccurred is set by every printError, so the exit code reflects any error regardless of
+// whether processing stopped or continued
+var errorOccurred atomic.Bool
+
+// Used for failures, whether processing stops or continues and later exits with ExitError
 func printError(msg string) {
+	errorOccurred.Store(true)
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
+}
+
+// exitCode returns the code to exit with once processing is done
+func exitCode(valid bool) int {
+	if errorOccurred.Load() {
+		return ExitError
+	}
+	if !valid {
+		return ExitAuditFailed
+	}
+	return ExitOK
 }
 
 // Used for problems which do not stop processing, such as a flag being ignored
