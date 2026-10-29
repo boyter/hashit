@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/boyter/hashit/assets"
@@ -50,6 +52,11 @@ type checkedWriter struct {
 
 func (c *checkedWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
+	// a reader which has gone away, such as head, is a SIGPIPE, which exits the same way however
+	// it is noticed first
+	if errors.Is(err, syscall.EPIPE) {
+		exit(exitSIGPIPE)
+	}
 	if err != nil {
 		c.mu.Lock()
 		if c.err == nil {
@@ -157,7 +164,7 @@ func makeTimestampNano() int64 {
 
 func fileSummarize(input chan Result) (string, bool) {
 	if AuditFile != "" {
-		if isSQLiteDB(AuditFile) {
+		if auditor == nil {
 			return doSqliteAudit(input)
 		}
 		return doAudit(input)

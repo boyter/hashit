@@ -919,6 +919,49 @@ echo a > "$AUDITDIR/sidecar/a"
 check "non sqlite output keeps files named like sidecars test" \
     "[ -f '$AUDITDIR/sidecar/notes-journal' ] && grep -q 'notes-journal' '$AUDITDIR/sidecar/notes'"
 
+# round 8
+mkdir -p "$AUDITDIR/r8/w" "$AUDITDIR/r8/t"
+echo 1 > "$AUDITDIR/r8/t/a"
+(cd "$AUDITDIR/r8/w" && "$HASHIT" -f sqlite -o ../t.db ../t > /dev/null)
+check "sqlite database of a parent relative path audits test" "cd '$AUDITDIR/r8/w' && '$HASHIT' -a ../t.db ../t | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r8/src/sub" "$AUDITDIR/r8/copy"
+echo 1 > "$AUDITDIR/r8/src/a"
+echo 2 > "$AUDITDIR/r8/src/sub/b"
+(cd "$AUDITDIR/r8/src" && "$HASHIT" -f sqlite -o m.db . > /dev/null)
+cp -r "$AUDITDIR/r8/src" "$AUDITDIR/r8/copy/"
+check "copied sqlite database audits from inside the tree test" "cd '$AUDITDIR/r8/copy/src' && '$HASHIT' -a m.db . | grep -q 'Audit passed'"
+check "copied sqlite database audits from outside the tree test" "cd / && '$HASHIT' -a '$AUDITDIR/r8/copy/src/m.db' '$AUDITDIR/r8/copy/src' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r8/glob"
+echo 1 > "$AUDITDIR/r8/glob/a"
+echo 2 > "$AUDITDIR/r8/glob/b"
+(cd "$AUDITDIR/r8/glob" && "$HASHIT" -f sum -c md5 -o sums.md5 * > /dev/null)
+check "audit file matched by a wildcard is skipped test" "cd '$AUDITDIR/r8/glob' && '$HASHIT' -a sums.md5 * 2>/dev/null | grep -q 'Audit passed'"
+check "output matched by a wildcard is skipped test" "cd '$AUDITDIR/r8/glob' && '$HASHIT' -f sum -c md5 -o sums.md5 --overwrite * > /dev/null 2>&1 && ! grep -q sums.md5 sums.md5"
+mkdir -p "$AUDITDIR/r8/real/sub"
+ln -s real/sub "$AUDITDIR/r8/dl"
+echo 1 > "$AUDITDIR/r8/real/sub/f"
+(cd "$AUDITDIR/r8" && "$HASHIT" -o dl/../new.txt real/sub > /dev/null)
+check "new output through a symlinked directory is created where it resolves test" "[ -f '$AUDITDIR/r8/real/new.txt' ] && [ ! -e '$AUDITDIR/r8/new.txt' ]"
+mkdir -p "$AUDITDIR/r8/y1"
+echo 1 > "$AUDITDIR/r8/y1/a"
+(cd "$AUDITDIR/r8/y1" && "$HASHIT" -f hashdeep . > manifest.txt && ln -s manifest.txt mlink)
+check "audit file through a differently named symlink test" "cd '$AUDITDIR/r8/y1' && '$HASHIT' -a mlink . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r8/y2/C" "$AUDITDIR/r8/y2/e"
+echo 1 > "$AUDITDIR/r8/y2/C/a"
+printf '%%%%%%%% HASHDEEP-1.0\n%%%%%%%% size,md5,sha256,filename\n## Invoked from: /nonexistent\n%s\n' "$(cd "$AUDITDIR/r8/y2/C" && "$HASHIT" -f hashdeep a | grep ',a$')" > "$AUDITDIR/r8/y2/C/manifest.txt"
+ln -s ../C/manifest.txt "$AUDITDIR/r8/y2/e/m"
+check "audit file symlinked from another directory uses its real directory test" "cd / && '$HASHIT' -a '$AUDITDIR/r8/y2/e/m' '$AUDITDIR/r8/y2/C' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r8/X" "$AUDITDIR/r8/Y"
+echo 1 > "$AUDITDIR/r8/X/a"
+"$HASHIT" -o "$AUDITDIR/r8/X/out" "$AUDITDIR/r8/X" > /dev/null
+ln -s ../X "$AUDITDIR/r8/Y/dl"
+ln "$AUDITDIR/r8/X/out" "$AUDITDIR/r8/X/hard"
+"$HASHIT" -o "$AUDITDIR/r8/X/out" --overwrite "$AUDITDIR/r8/Y" > /dev/null
+check "output through a symlinked directory is not hashed test" "! grep -q 'dl/out' '$AUDITDIR/r8/X/out' && grep -q 'dl/hard' '$AUDITDIR/r8/X/out'"
+check "audit file read from a pipe test" "cd '$AUDITDIR/r8/glob' && cat sums.md5 | '$HASHIT' -a /dev/stdin a b | grep -q 'Audit passed'"
+check "sqlite audit database from a pipe is an error test" "cat '$AUDITDIR/r8/t.db' | '$HASHIT' -a /dev/stdin '$AUDITDIR/r8/t' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "broken pipe exits 141 test" "'$HASHIT' -o '$AUDITDIR/r8/piped.txt' --overwrite '$AUDITDIR/r7/big' 2>/dev/null | (exec 0<&-; sleep 0.2); [ \${PIPESTATUS[0]} -eq 141 ]"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

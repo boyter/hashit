@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -43,11 +44,18 @@ type fileJob struct {
 	explicit bool
 }
 
-// skippedOwnFile reports skipping the audit or output file. Supplying it explicitly is an error,
-// as otherwise the output would be replaced by results which do not include it
+// ownFileSupplied is set when the audit or output file was supplied explicitly and skipped
+var ownFileSupplied atomic.Bool
+
+// filesHashed is the number of files hashed, used to tell if only skipped files were supplied
+var filesHashed atomic.Int64
+
+// skippedOwnFile reports skipping the audit or output file when supplied explicitly, such as by a
+// wildcard which includes it. One found walking a directory is skipped silently
 func skippedOwnFile(job fileJob) {
 	if job.explicit {
-		printFileError(fmt.Sprintf("Unable to process %s as it is the audit or output file", job.path))
+		ownFileSupplied.Store(true)
+		printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", job.path))
 	}
 }
 
@@ -93,13 +101,12 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 			continue
 		}
 
-		// a symlink to the existing output file would hash its old content, while a hard link to
-		// it is ordinary data which keeps the old content after the output is replaced
-		if isOldOutput(fi) {
-			if lfi, err := os.Lstat(res); err == nil && lfi.Mode()&os.ModeSymlink != 0 {
-				skippedOwnFile(job)
-				continue
-			}
+		// a symlink to the existing output file, or a path to it through a symlinked directory,
+		// would hash its old content, while a hard link to it is ordinary data which keeps the old
+		// content after the output is replaced
+		if isOldOutputPath(res, fi) {
+			skippedOwnFile(job)
+			continue
 		}
 
 		// directories can be supplied using --input, and would otherwise hash as an empty file
@@ -164,6 +171,7 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 				r.File = res
 				r.Bytes = fsize
 				r.MTime = mtime
+				filesHashed.Add(1)
 				output <- r
 			}
 
@@ -206,6 +214,7 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 				r.File = res
 				r.Bytes = fsize
 				r.MTime = mtime
+				filesHashed.Add(1)
 				output <- r
 			}
 		}

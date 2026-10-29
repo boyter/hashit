@@ -8,7 +8,6 @@ Yes the name is *very intentional* and similar to what say when I realise I need
 
 [![Go](https://github.com/boyter/hashit/actions/workflows/go.yml/badge.svg)](https://github.com/boyter/hashit/actions/workflows/go.yml)
 [![Scc Count Badge](https://sloc.xyz/github/boyter/hashit/)](https://github.com/boyter/hashit/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/boyter/hashit)](https://goreportcard.com/report/github.com/boyter/hashit)
 
 Licensed under the MIT license.
 
@@ -81,7 +80,7 @@ Flags:
       --no-stream               do not print results as files are processed for text, sum and hashonly formats; other formats and --output never stream
   -M, --not-match stringArray   ignore files and directories whose name matches regular expression when walking directories
   -o, --output string           output filename (default stdout, or hashit.db for the sqlite format)
-      --overwrite               allow output to replace an existing file
+      --overwrite               allow output to replace an existing regular file; a symlink which cannot be followed is always refused
   -p, --progress                display progress of files as they are processed
   -r, --recursive               traverse directories when multiple paths are supplied; a single directory or no path is always traversed
       --skip-hidden             skip hidden files and directories when walking directories
@@ -138,7 +137,7 @@ Files are processed in parallel, so the order of the output may vary between run
 
 - No path processes the current directory, unless data is piped or redirected into `hashit` from a file, in which case it hashes standard input. A path of `-` is not standard input. A single directory is always recursed.
 - When multiple paths are supplied, directories are skipped with a warning unless `-r` is used. Audits always recurse.
-- Arguments which match an existing path are used as is, otherwise they are expanded as a wildcard, as shells such as `cmd.exe` do not do this. So `hashit '*.go'` works on any platform. Unlike most shells this expansion also matches hidden files.
+- Arguments which match an existing path are used as is, otherwise they are expanded as a wildcard, as shells such as `cmd.exe` do not do this. So `hashit '*.go'` works on any platform. Unlike most shells this expansion also matches hidden files. A wildcard which matches several paths counts as several paths, so directories it matches are only recursed with `-r`.
 - `--input` reads the paths to process from a file, one per line, which are used exactly as written. Wildcards are not expanded and directories are an error even with `-r`. Empty lines and Windows line endings are allowed, and paths supplied as arguments are ignored with a warning.
 - Symbolic links to files and directories are followed as `hashdeep` does, skipping any which would create a cycle. Symbolic links which cannot be followed, such as broken links or loops, FIFOs, sockets and devices found while walking a directory are skipped with a warning, while one supplied directly or in an `--input` file is an error.
 - Hidden files are included unless `--skip-hidden` is used. `.gitignore`, `.ignore` and `.gitmodules` files are not respected unless `--gitignore`, `--ignore` or `--gitmodule` are used. `--exclude-dir` takes a directory name such as `node_modules`, or the end of a path such as `vendor/cache`, matched at any depth. `--not-match` (`-M`) takes a regular expression matched against file and directory names and can be repeated. These only apply when walking directories, not to files supplied directly. A symbolic link to a directory is checked against them by its own name, but is then walked on its own, so ignore file rules from directories above it do not apply inside it.
@@ -146,7 +145,7 @@ Files are processed in parallel, so the order of the output may vary between run
 
 #### Output Formats
 
-`--format` (`-f`) selects the output format. Results are written to standard output, or to a file with `--output` (`-o`). The output file is written to a temporary file next to it first, so the directory must be writable, being the directory of the file a symbolic link points to when `--output` is one, and an existing file is only replaced with `--overwrite`, is never replaced when it is a directory or other special file, and is kept rather than replaced when any error occurred. A replaced file keeps its permission bits, but not its owner, special bits such as setuid, or extended attributes. When `--output` is a symbolic link the file it points to is replaced, and a symbolic link which cannot be followed, such as a loop or a link to a file which does not exist, is refused. The replacement is a new file, so other hard links to the old file keep the old content. If `hashit` is interrupted by `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT` or `SIGPIPE` the temporary file is removed and it exits with 128 plus the signal number, such as `130` for `SIGINT`. `SIGKILL` cannot be caught, so may leave the temporary file behind. The message `results written to` is printed to standard output. The output file, symbolic links to it, and the audit file are never included in the results. Supplying one of them as an input is an error, so an existing output file is kept.
+`--format` (`-f`) selects the output format. Results are written to standard output, or to a file with `--output` (`-o`). The output file is written to a temporary file next to it first, so the directory must be writable, being the directory of the file a symbolic link points to when `--output` is one, and an existing file is only replaced with `--overwrite`, is never replaced when it is a directory or other special file, and is kept rather than replaced when any error occurred. A new output file is still written when errors occurred, so it may not contain every file. A replaced file keeps its permission bits, but not its owner, special bits such as setuid, or extended attributes. When `--output` is a symbolic link the file it points to is replaced, and a symbolic link which cannot be followed, such as a loop or a link to a file which does not exist, is refused. The replacement is a new file, so other hard links to the old file keep the old content. If `hashit` is interrupted by `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT` or `SIGPIPE` the temporary file is removed and it exits with 128 plus the signal number, such as `130` for `SIGINT`. `SIGKILL` and other signals such as `SIGUSR1` are not caught, so may leave the temporary file behind. The message `results written to` is printed to standard output. The output file, the audit file, and paths reaching them through a symbolic link, either a link to the file or a symbolically linked directory, are never included in the results. Another hard link to the output file is ordinary data and is included. Supplying one of them explicitly, such as with a wildcard like `hashit -a sums.md5 *`, skips it with a `WARN`. When nothing else was hashed an existing output file is kept rather than replaced with empty results, so `hashit -o doc.txt --overwrite doc.txt` is an error.
 
 - `text`, the default, shown above. `--mtime` adds an `MTime` line in local time.
 - `json`, an array of objects such as `[{"File":"example/a.txt","MD5":"b1946ac92492d2347c6235b4d2611184","Bytes":6}]`. The keys are `File`, `CRC32`, `XxHash64`, `MD4`, `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, `Blake2b256`, `Blake2b512`, `Blake3`, `Sha3224`, `Sha3256`, `Sha3384`, `Sha3512`, `ed2k` and `Bytes`. Hashes which were not calculated are omitted. `--mtime` adds `MTime` in RFC 3339 format with nanoseconds and the local time zone.
@@ -167,7 +166,7 @@ If any file cannot be read, such as a path which does not exist or a file which 
 - `1` everything was processed, but the audit failed.
 - `2` an error was printed, such as an invalid option, a path which does not exist, a file which could not be read, or output which could not be written. This includes an audit which could not check every file.
 
-When interrupted by a signal `hashit` exits with 128 plus the signal number, such as `130` for `SIGINT` and `141` for `SIGPIPE`.
+When interrupted by a signal `hashit` exits with 128 plus the signal number, such as `130` for `SIGINT` and `141` for `SIGPIPE`, which is also the code when the program reading its output exits early, such as `hashit . | head`.
 
 ### Ignoring Files (`.hashignore`)
 
@@ -207,7 +206,7 @@ To hash the project while respecting the ignore rules, you would run:
 $ hashit --hashignore my_project/
 ```
 
-In this case, `hashit` would process `main.go` (and the `.hashignore` file itself) but would skip `data.log` and the entire `node_modules` directory. A `.hashignore` file in a subdirectory applies to that subdirectory, and patterns such as `!keep.log` and `/build` work as they do in `.gitignore`.
+In this case, `hashit` would process `main.go` (and the `.hashignore` file itself) but would skip `data.log` and the entire `node_modules` directory. A `.hashignore` file in a subdirectory applies to that subdirectory, and patterns such as `!keep.log` and `/build` work as they do in `.gitignore`. A symbolically linked directory is followed but is matched as a file, so a directory pattern such as `node_modules/` does not exclude it, use `node_modules` or `--exclude-dir` instead.
 
 ### Auditing
 
@@ -329,7 +328,7 @@ Some other points worth knowing:
 - The audit compares the files found in the supplied paths against everything in the audit file, so auditing a subset of the files reports the rest as missing.
 - A copy of a known file, where the original is still present, is reported as new. `hashdeep` reports it as moved. Both fail the audit.
 - A file which cannot be read, including files in a directory which cannot be read, is reported as could not be read in `-v` output, counted as missing when it is in the audit file and not counted otherwise, and `hashit` exits with `2` rather than `1`.
-- The same file supplied more than once, such as through `.` and `./sub`, is only counted once.
+- The same file supplied more than once by the same absolute path, such as through `.` and `./sub`, is only counted once. The same file reached through a symbolic link is a different path, so is counted again.
 - Modification times are recorded with `--mtime` but are not compared by an audit.
 - The audit file of an empty directory passes when audited against an empty directory, as does an audit file which is empty or only contains comments, which `md5sum -c` treats as an error. `hashdeep` reports an error for an audit file with no files in it.
 - An audit file written by a shell redirect into the directory being hashed, such as `hashit --format hashdeep . > manifest.txt`, lists itself as an empty file. That entry is ignored when auditing, but `--output manifest.txt` avoids it entirely and is recommended, especially for the `sum` format which writes as it goes and so may record part of itself, which then fails when audited from another directory.
@@ -351,7 +350,7 @@ hashdeep: Audit passed
 
 #### Paths in Audit Files
 
-Relative paths in a `hashdeep` file are resolved against the directory recorded in its `## Invoked from:` line, so an audit file created with `hashit --format hashdeep .` can be audited from anywhere using either a relative or absolute path. When the invoked from directory does not contain the files, such as after they have been copied elsewhere, paths are also resolved against the directory containing the audit file and then the current directory. Paths are always compared as absolute paths, so the path to audit may be supplied as relative or absolute, and `./file` and `file` are the same file. So a manifest stored at the root of a set of files, created from that directory, can be audited from anywhere after the files are copied or shipped elsewhere. Symbolic links in the path to audit are not resolved, so a manifest created through `real/` and audited through a link to it reports every file as moved, as `hashdeep` does. When two files on disk match the same record, such as when the path to audit overlaps a copy of the files, the one matching through the invoked from directory is used and the other is reported as new.
+Relative paths in a `hashdeep` file are resolved against the directory recorded in its `## Invoked from:` line, so an audit file created with `hashit --format hashdeep .` can be audited from anywhere using either a relative or absolute path. When the invoked from directory does not contain the files, such as after they have been copied elsewhere, paths are also resolved against the directory containing the audit file, being where the file really is and then where the path supplied for it is when that is a symbolic link, and then the current directory. Relative paths in `sum` files have no invoked from directory, so are resolved against the current directory first. Matching is case sensitive on every platform. Paths are always compared as absolute paths, so the path to audit may be supplied as relative or absolute, and `./file` and `file` are the same file. So a manifest stored at the root of a set of files, created from that directory, can be audited from anywhere after the files are copied or shipped elsewhere. Symbolic links in the path to audit are not resolved, so a manifest created through `real/` and audited through a link to it reports every file as moved, as `hashdeep` does. When two files on disk match the same record, such as when the path to audit overlaps a copy of the files, the one matching through the invoked from directory is used and the other is reported as new.
 
 If the audit file is inside the directory being audited it is skipped, as it can never contain its own hash. `hashdeep` and `md5sum` do not do this, so when generating a file for them to verify, write it outside the directory being hashed, otherwise they will report the partially written file as changed.
 
@@ -406,7 +405,7 @@ results written to audit.db
 
 #### Verifying with a SQLite Audit Database
 
-To audit a directory against a SQLite database, use the `-a` or `--audit` flag, pointing it to your database file. `hashit` will automatically detect that it's a SQLite file.
+To audit a directory against a SQLite database, use the `-a` or `--audit` flag, pointing it to your database file. `hashit` will automatically detect that it's a SQLite file. Other audit files can be read from a pipe such as `/dev/stdin`, but a SQLite database must be a regular file.
 
 ```shell
 # Run an audit against the database we just created
@@ -428,7 +427,7 @@ If a file is modified, the audit will fail and report the change, and `-v` lists
 $ hashit --hash all -a audit.db .
 ```
 
-The database is opened read-only and is never modified by an audit. If another tool has switched the database to WAL mode, SQLite creates `-wal` and `-shm` files next to it, and the audit fails when the directory is read only, so run `sqlite3 audit.db 'pragma journal_mode=delete'` first. Which files have been seen is tracked in a temporary table, which SQLite moves to a file once it outgrows its cache, so memory use does not grow with the size of the database. The table is created in SQLite's temporary directory, which can be changed by setting `SQLITE_TMPDIR` for very large audits. Files on disk which are not in the database, being new or moved files, are held in memory until the end of the audit, so auditing a directory with many new files will use more memory. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
+The database is opened read-only and is never modified by an audit. If another tool has switched the database to WAL mode, SQLite creates `-wal` and `-shm` files next to it, and the audit fails when the directory is read only, so run `sqlite3 audit.db 'pragma journal_mode=delete'` first. Which files have been seen is tracked in a temporary table, which SQLite moves to a file once it outgrows its cache, so memory use does not grow with the size of the database. The table is created in SQLite's temporary directory, which can be changed by setting `SQLITE_TMPDIR` for very large audits. Files on disk which are not in the database, being new or moved files, are held in memory until the end of the audit, so auditing a directory with many new files will use more memory. The directory `hashit` was run from is stored in the database, and paths are matched the same way as `hashdeep` files, see [Paths in Audit Files](#paths-in-audit-files), so a database of relative paths can be audited from any directory using relative or absolute paths, and a database stored at the root of a set of files can be audited after they are copied elsewhere. To do this the absolute path of every record is first indexed in a temporary table.
 
 ```shell
 # Example of a failed audit after modifying a file

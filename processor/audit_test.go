@@ -8,30 +8,72 @@ import (
 	"testing"
 )
 
-func TestSqlitePathCandidates(t *testing.T) {
-	wd, _ := os.Getwd()
-
-	expect := func(got []string, want ...string) {
-		t.Helper()
-		if len(got) != len(want) {
-			t.Fatalf("expected %v got %v", want, got)
+func TestAbsFrom(t *testing.T) {
+	cases := []struct{ base, p, want string }{
+		{"/srv/media", "a.txt", "/srv/media/a.txt"},
+		{"/srv/media", "./sub/../a.txt", "/srv/media/a.txt"},
+		{"/srv/media", "../other/a.txt", "/srv/other/a.txt"},
+		{"/srv/media", "/abs/./a.txt", "/abs/a.txt"},
+	}
+	for _, c := range cases {
+		if got := absFrom(c.base, c.p); got != filepath.FromSlash(c.want) {
+			t.Errorf("%q %q: expected %q got %q", c.base, c.p, c.want, got)
 		}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Errorf("expected %v got %v", want, got)
-			}
+	}
+}
+
+func TestAuditBases(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	link := filepath.Join(dir, "link")
+	if err := os.Mkdir(real, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(link, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "audit.txt"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(real, "audit.txt"), filepath.Join(link, "m")); err != nil {
+		t.Skip("symlinks not supported")
+	}
+	realDir := realPath(real)
+
+	// the invoked from directory first, then where the audit file really is, then where the
+	// path supplied for it is, then the working directory, without repeats
+	got := auditBases("/inv", filepath.Join(link, "m"), "/cwd")
+	want := []string{filepath.FromSlash("/inv"), realDir, link, filepath.FromSlash("/cwd")}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("expected %v got %v", want, got)
 		}
 	}
 
-	// relative to the working directory when no invoked from is recorded, with and without ./
-	expect(sqlitePathCandidates("./a.txt", ""), "a.txt", "./a.txt", filepath.Join(wd, "a.txt"))
-	expect(sqlitePathCandidates("a.txt", ""), "a.txt", "./a.txt", filepath.Join(wd, "a.txt"))
+	// without an invoked from directory the working directory is first
+	got = auditBases("", filepath.Join(real, "audit.txt"), "/cwd")
+	if len(got) != 2 || got[0] != filepath.FromSlash("/cwd") || got[1] != realDir {
+		t.Errorf("expected [/cwd %s] got %v", realDir, got)
+	}
+}
 
-	// relative to invoked from, whether supplied as absolute or relative
-	expect(sqlitePathCandidates("/srv/media/sub/a.txt", "/srv/media"), "sub/a.txt", "./sub/a.txt", "/srv/media/sub/a.txt")
-
-	// a path outside invoked from may have been stored relative with a leading ..
-	expect(sqlitePathCandidates("/srv/other/a.txt", "/srv/media"), "../other/a.txt", "/srv/other/a.txt")
+func TestOutputDir(t *testing.T) {
+	cases := map[string]string{
+		"new.txt":       ".",
+		"dl/../new.txt": "dl/..",
+		"/new.txt":      "/",
+		"/a/b/new.txt":  "/a/b",
+		"./new.txt":     ".",
+		"a//new.txt":    "a/",
+	}
+	for p, want := range cases {
+		if got := outputDir(filepath.FromSlash(p)); got != filepath.FromSlash(want) {
+			t.Errorf("%q: expected %q got %q", p, want, got)
+		}
+	}
 }
 
 func TestDotPrefix(t *testing.T) {

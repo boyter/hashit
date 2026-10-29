@@ -114,7 +114,7 @@ func main() {
 		&processor.Overwrite,
 		"overwrite",
 		false,
-		"allow output to replace an existing file",
+		"allow output to replace an existing regular file; a symlink which cannot be followed is always refused",
 	)
 	flags.BoolVar(
 		&processor.NoStream,
