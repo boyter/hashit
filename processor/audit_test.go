@@ -52,3 +52,28 @@ func TestDotPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestAuditFailed(t *testing.T) {
+	t.Cleanup(func() { AllowMoved = false })
+
+	cases := []struct {
+		allowMoved                         bool
+		modified, moved, newFiles, missing int
+		want                               bool
+	}{
+		{false, 0, 0, 0, 0, false},
+		{false, 0, 1, 0, 0, true},
+		{true, 0, 1, 0, 0, false},
+		{true, 1, 1, 0, 0, true},
+		{true, 0, 1, 1, 0, true},
+		{true, 0, 1, 0, 1, true},
+		{true, 0, 0, 0, 0, false},
+	}
+
+	for _, c := range cases {
+		AllowMoved = c.allowMoved
+		if got := auditFailed(c.modified, c.moved, c.newFiles, c.missing); got != c.want {
+			t.Errorf("%+v: expected %v got %v", c, c.want, got)
+		}
+	}
+}

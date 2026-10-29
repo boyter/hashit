@@ -343,7 +343,7 @@ order by f.filepath`)
 	}
 
 	status := Passed
-	if filesMissing > 0 || len(newFiles) > 0 || filesModified > 0 || moved > 0 {
+	if auditFailed(filesModified, moved, len(newFiles), filesMissing) {
 		status = Failed
 	}
 

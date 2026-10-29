@@ -606,6 +606,34 @@ fi
 audit_test "hashdeep can audit hashit --absolute output test" \
     "cd '$AUDITDIR/media' && '$HASHIT' --absolute -f hashdeep . > ../absolute.txt && hashdeep -r -a -k ../absolute.txt . < /dev/null"
 
+# --allow-moved passes an audit where files moved but fails for anything else
+mkdir -p "$AUDITDIR/moved/sub"
+echo 1 > "$AUDITDIR/moved/a"
+echo 2 > "$AUDITDIR/moved/b"
+(cd "$AUDITDIR/moved" && "$HASHIT" -f hashdeep . > ../moved.txt && "$HASHIT" -f sqlite -o ../moved.db . > /dev/null)
+mv "$AUDITDIR/moved/a" "$AUDITDIR/moved/sub/renamed"
+for AUDITFILE in moved.txt moved.db; do
+    if (cd "$AUDITDIR/moved" && ! "$HASHIT" -a "../$AUDITFILE" . > /dev/null && "$HASHIT" --allow-moved -a "../$AUDITFILE" . | grep -q 'Files moved: 1'); then
+        echo -e "${GREEN}PASSED allow moved $AUDITFILE test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED allow moved $AUDITFILE test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+echo 3 > "$AUDITDIR/moved/new"
+for AUDITFILE in moved.txt moved.db; do
+    if (cd "$AUDITDIR/moved" && ! "$HASHIT" --allow-moved -a "../$AUDITFILE" . > /dev/null); then
+        echo -e "${GREEN}PASSED allow moved still fails new file $AUDITFILE test"
+    else
+        echo -e "${RED}======================================================="
+        echo -e "FAILED allow moved still fails new file $AUDITFILE test"
+        echo -e "======================================================="
+        exit
+    fi
+done
+
 # https://github.com/boyter/hashit/issues/20
 audit_test "hashdeep can audit hashit --mtime output test" \
     "cd '$AUDITDIR/media' && '$HASHIT' --mtime -f hashdeep . > ../mtime-hashdeep.txt && grep -q '^## mtime ' ../mtime-hashdeep.txt && hashdeep -l -r -a -k ../mtime-hashdeep.txt . < /dev/null"
