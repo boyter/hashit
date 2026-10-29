@@ -180,13 +180,13 @@ func main() {
 		&processor.SkipHidden,
 		"skip-hidden",
 		false, // Default to false, meaning hidden files are PROCESSED by default
-		"skip hidden files and directories",
+		"skip hidden files and directories when walking directories",
 	)
 	flags.StringSliceVar(
 		&processor.PathDenyList,
 		"exclude-dir",
 		[]string{},
-		"directories to exclude",
+		"names of directories to exclude when walking directories",
 	)
 	flags.BoolVar(
 		&processor.Ignore,
@@ -205,7 +205,7 @@ func main() {
 		"not-match",
 		`M`,
 		[]string{},
-		"ignore files and directories whose name matches regular expression",
+		"ignore files and directories whose name matches regular expression when walking directories",
 	)
 
 	if err := rootCmd.Execute(); err != nil {
