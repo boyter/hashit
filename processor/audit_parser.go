@@ -30,7 +30,7 @@ type Auditor struct {
 	pathLookup map[string]*AuditRecord   // every path key a record can be found by
 	hashLookup map[string][]*AuditRecord // "hashname:value" to records, used to find moved files
 	hashNames  []string                  // hashes present in the audit file which we are able to calculate
-	baseDir    string                    // directory relative paths in the audit file are relative to
+	baseDirs   []string                  // directories relative paths in the audit file may be relative to
 }
 
 type FileStatus int
@@ -148,10 +148,15 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if isHashdeepFormat(input) {
 		err = hdl.parseHashdeepFile(input)
 	} else {
-		// md5sum -c resolves relative paths against the working directory, while tools such
-		// as RapidCRC resolve them against the checksum file, so we index both
-		hdl.baseDir = filepath.Dir(auditFilename)
 		err = hdl.parseSumFile(input, auditFilename)
+	}
+
+	// Relative paths are matched against the working directory, and also against the directory
+	// containing the audit file, as tools such as RapidCRC do for sum files. For hashdeep files
+	// this lets a manifest stored at the root of a set of files be audited after they have been
+	// copied elsewhere, where the invoked from directory no longer applies
+	if abs, err := filepath.Abs(filepath.Dir(auditFilename)); err == nil {
+		hdl.baseDirs = append(hdl.baseDirs, abs)
 	}
 	if err != nil {
 		return nil, err
@@ -301,7 +306,7 @@ func (hdl *Auditor) Exclude(path string) {
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !contains(pathKeys(r.Filename, hdl.baseDir), abs) {
+		if !contains(hdl.recordKeys(r), abs) {
 			records = append(records, r)
 		}
 	}
@@ -319,6 +324,23 @@ func (hdl *Auditor) Exclude(path string) {
 	hdl.buildLookups()
 }
 
+// recordKeys returns every path key a record can be found by, resolving it against each base directory
+func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
+	if len(hdl.baseDirs) == 0 {
+		return pathKeys(r.Filename, "")
+	}
+
+	var keys []string
+	for _, base := range hdl.baseDirs {
+		for _, k := range pathKeys(r.Filename, base) {
+			if !contains(keys, k) {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
+}
+
 func (hdl *Auditor) addRecord(r *AuditRecord) {
 	r.Order = len(hdl.records)
 	hdl.records = append(hdl.records, r)
@@ -327,7 +349,7 @@ func (hdl *Auditor) addRecord(r *AuditRecord) {
 func (hdl *Auditor) buildLookups() {
 	seen := map[string]bool{}
 	for _, r := range hdl.records {
-		for _, k := range pathKeys(r.Filename, hdl.baseDir) {
+		for _, k := range hdl.recordKeys(r) {
 			// first record wins where the same file appears more than once
 			if _, ok := hdl.pathLookup[k]; !ok {
 				hdl.pathLookup[k] = r
@@ -388,8 +410,8 @@ func (hdl *Auditor) parseHashdeepFile(input string) error {
 		// Skip comment lines starting with #, but record where hashdeep was invoked from
 		// as relative paths in the file are relative to it
 		if strings.HasPrefix(line, "#") {
-			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && hdl.baseDir == "" {
-				hdl.baseDir = strings.TrimSpace(dir)
+			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && len(hdl.baseDirs) == 0 {
+				hdl.baseDirs = append(hdl.baseDirs, strings.TrimSpace(dir))
 			}
 			continue
 		}
@@ -502,7 +524,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	}
 
 	if improper != 0 {
-		printWarn(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
+		printWarn(fmt.Sprintf("audit file has %d improperly formatted lines which were ignored", improper))
 	}
 
 	return nil

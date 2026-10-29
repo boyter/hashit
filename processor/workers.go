@@ -39,7 +39,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 	var bar *uiprogress.Bar
 	filename := ""
 	if Progress {
-		bar = uiprogress.AddBar(UiBarMax)
+		bar = progressBars.AddBar(UiBarMax)
 		bar.AppendFunc(func(b *uiprogress.Bar) string {
 			return "file: " + filename
 		})
@@ -54,11 +54,30 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			continue
 		}
 
+		// Stat before opening, as opening a FIFO or device would block until something writes to it
+		fi, err := os.Stat(res)
+		if err != nil {
+			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
+			continue
+		}
+
+		// directories can be supplied using --input, and would otherwise hash as an empty file
+		if fi.IsDir() {
+			printFileError(fmt.Sprintf("Unable to process %s as it is a directory", res))
+			continue
+		}
+
+		// FIFOs, sockets and devices have no fixed content to hash
+		if !fi.Mode().IsRegular() {
+			printWarn(fmt.Sprintf("Skipping %s as it is not a regular file", res))
+			continue
+		}
+
 		// Open the file and determine if we should read it from disk or memory map
 		// based on how large it is reported as being
 		file, err := os.OpenFile(res, os.O_RDONLY, 0644)
 		if err != nil {
-			printFileError(fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
+			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
 			continue
 		}
 
@@ -72,20 +91,6 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				m := stat.ModTime()
 				mtime = &m
 			}
-		}
-
-		fi, err := file.Stat()
-		if err != nil {
-			printFileError(fmt.Sprintf("Unable to get file info for file %s with error %s", res, err.Error()))
-			_ = file.Close()
-			continue
-		}
-
-		// directories can be supplied using --input, and would otherwise hash as an empty file
-		if fi.IsDir() {
-			printFileError(fmt.Sprintf("Unable to process %s as it is a directory", res))
-			_ = file.Close()
-			continue
 		}
 
 		// update the ui if required
@@ -129,7 +134,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 			content, err := readAll(file, n)
 			if err != nil {
-				printFileError(fmt.Sprintf("reading file %s: %s", res, err.Error()))
+				fileFailed(res, fmt.Sprintf("reading file %s: %s", res, err.Error()))
 				_ = file.Close()
 				continue
 			}
@@ -166,7 +171,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		printFileError(fmt.Sprintf("opening file %s: %s", filename, err.Error()))
+		fileFailed(filename, fmt.Sprintf("opening file %s: %s", filename, err.Error()))
 		return Result{}, err
 	}
 	defer func(file *os.File) {
@@ -388,7 +393,7 @@ func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, er
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
-			printFileError(fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+			fileFailed(filename, fmt.Sprintf("reading file %s: %s", filename, err.Error()))
 			return Result{}, err
 		}
 

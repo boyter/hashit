@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,16 @@ func printWarn(msg string) {
 // fileErrors is set when any file could not be processed, so that we exit non zero at the end
 // in the same way md5sum and similar tools do, rather than stopping at the first error
 var fileErrors atomic.Bool
+
+// failedFiles holds the paths of files which could not be read, so an audit can report them as
+// unreadable rather than missing
+var failedFiles sync.Map
+
+// fileFailed reports a file which could not be read and records it for the audit and exit code
+func fileFailed(path string, msg string) {
+	failedFiles.Store(path, true)
+	printFileError(msg)
+}
 
 // printFileError reports a file which could not be processed and records it for the exit code
 func printFileError(msg string) {
@@ -157,13 +168,26 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
+	// files which exist but could not be read are reported as such rather than as not found
+	unreadable := map[*AuditRecord]bool{}
+	failedFiles.Range(func(key, _ any) bool {
+		if r := auditor.Lookup(key.(string)); r != nil {
+			unreadable[r] = true
+		}
+		return true
+	})
+
 	filesMissing := 0
 	for _, r := range auditor.Records() {
 		o, ok := outcomes[r]
 		if !ok {
 			filesMissing++
 			if Verbose {
-				fmt.Printf("%v: File expected but not found\n", r.Filename)
+				if unreadable[r] {
+					fmt.Printf("%v: File could not be read\n", r.Filename)
+				} else {
+					fmt.Printf("%v: File expected but not found\n", r.Filename)
+				}
 			}
 			continue
 		}
@@ -443,7 +467,7 @@ func toJSON(input chan Result) string {
 	}
 
 	jsonString, _ := json.Marshal(results)
-	return string(jsonString)
+	return string(jsonString) + "\n"
 }
 
 func toHashDeep(input chan Result) string {
@@ -451,7 +475,7 @@ func toHashDeep(input chan Result) string {
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		printError(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
+		printWarn(fmt.Sprintf("unable to determine working directory: %s", err.Error()))
 		pwd = ""
 	}
 

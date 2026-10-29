@@ -280,6 +280,15 @@ order by f.filepath`)
 	}
 	defer rows.Close()
 
+	// files which exist but could not be read are reported as such rather than as not found
+	unreadable := map[string]bool{}
+	failedFiles.Range(func(key, _ any) bool {
+		for _, p := range sqlitePathCandidates(key.(string), invokedFrom) {
+			unreadable[p] = true
+		}
+		return true
+	})
+
 	knownFileCount := 0
 	moved := 0
 	filesMissing := 0
@@ -331,7 +340,11 @@ order by f.filepath`)
 		if !foundMove {
 			filesMissing++
 			if Verbose {
-				fmt.Printf("%v: File expected but not found\n", record.Filename)
+				if unreadable[record.Filename] {
+					fmt.Printf("%v: File could not be read\n", record.Filename)
+				} else {
+					fmt.Printf("%v: File expected but not found\n", record.Filename)
+				}
 			}
 		}
 	}

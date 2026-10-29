@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -67,6 +68,9 @@ var FileOutput = ""
 
 // AuditFile sets the file that we want to audit against similar to hashdeep
 var AuditFile = ""
+
+// progressBars renders the --progress bars
+var progressBars *uiprogress.Progress
 
 // auditor holds the parsed AuditFile
 var auditor *Auditor
@@ -173,6 +177,10 @@ func Process() {
 
 	// If nothing was supplied as an argument to run against, assume run against everything in the
 	// current directory recursively
+	if FileInput != "" && len(DirFilePaths) != 0 {
+		printWarn("paths supplied as arguments are ignored when using --input")
+	}
+
 	defaultPath := false
 	if len(DirFilePaths) == 0 {
 		DirFilePaths = append(DirFilePaths, ".")
@@ -180,8 +188,10 @@ func Process() {
 	}
 
 	// If a single argument is supplied, enable recursive as if it's a file no problem
-	// but if its a directory the user probably wants to hash everything in that directory
-	if len(DirFilePaths) == 1 {
+	// but if its a directory the user probably wants to hash everything in that directory.
+	// When auditing directories are always processed, otherwise every file in a skipped
+	// directory would be reported as missing
+	if len(DirFilePaths) == 1 || AuditFile != "" {
 		Recursive = true
 	}
 
@@ -298,18 +308,22 @@ func Process() {
 						prefix = dotPrefix(f, fp)
 					}
 
-					// If there is an error which is usually does not exist then exit non zero
+					// A path which does not exist is reported and the rest still processed, then we
+					// exit non zero at the end, in the same way as a file which cannot be read
 					if err != nil {
-						printError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
-						os.Exit(1)
+						printFileError(fmt.Sprintf("file or directory issue: %s %s", fp, err.Error()))
+						continue
+					}
+
+					if !fi.IsDir() {
+						fileListQueue <- prefix + fp
+						continue
+					}
+
+					if Recursive {
+						walkDirectoryWithIgnore(fp, prefix, fileListQueue)
 					} else {
-						if fi.IsDir() {
-							if Recursive {
-								walkDirectoryWithIgnore(fp, prefix, fileListQueue)
-							}
-						} else {
-							fileListQueue <- prefix + fp
-						}
+						printWarn(fmt.Sprintf("Skipping directory %s, use -r to process directories when supplying multiple paths", prefix+fp))
 					}
 				}
 				close(fileListQueue)
@@ -328,7 +342,11 @@ func Process() {
 
 				// Read the file line by line
 				for scanner.Scan() {
-					line := scanner.Text()
+					// skip blank lines, and allow lists written with windows line endings
+					line := strings.TrimRight(scanner.Text(), "\r")
+					if line == "" {
+						continue
+					}
 					if Absolute {
 						if abs, err := filepath.Abs(line); err == nil {
 							line = abs
@@ -347,7 +365,10 @@ func Process() {
 		}
 
 		if Progress {
-			uiprogress.Start() // start rendering of progress bars
+			// render to stderr so the bars do not end up in redirected output
+			progressBars = uiprogress.New()
+			progressBars.SetOut(os.Stderr)
+			progressBars.Start()
 		}
 
 		var wg sync.WaitGroup
@@ -404,6 +425,23 @@ func validateOptions() error {
 	for _, h := range Hash {
 		if h != "all" && !contains(hashPriority, h) {
 			return fmt.Errorf("unknown hash %q, use --hashes to list supported hashes", h)
+		}
+	}
+
+	if NoThreads < 1 {
+		return fmt.Errorf("--threads must be at least 1, got %d", NoThreads)
+	}
+
+	for _, exclude := range Exclude {
+		if _, err := regexp.Compile(exclude); err != nil {
+			return fmt.Errorf("invalid --not-match regular expression %q: %s", exclude, err.Error())
+		}
+	}
+
+	// check the output can be created before doing any work, rather than failing at the end
+	if FileOutput != "" {
+		if fi, err := os.Stat(filepath.Dir(FileOutput)); err != nil || !fi.IsDir() {
+			return fmt.Errorf("unable to write output file %s as its directory does not exist", FileOutput)
 		}
 	}
 	return nil
