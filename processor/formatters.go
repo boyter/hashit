@@ -41,6 +41,11 @@ func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
 }
 
+// Used for problems which do not stop processing, such as a flag being ignored
+func printWarn(msg string) {
+	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("WARN %s: %s", getFormattedTime(), msg))
+}
+
 // fileErrors is set when any file could not be processed, so that we exit non zero at the end
 // in the same way md5sum and similar tools do, rather than stopping at the first error
 var fileErrors atomic.Bool

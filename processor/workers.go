@@ -67,7 +67,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		if MTime {
 			stat, err := times.Stat(res)
 			if err != nil {
-				printError(fmt.Sprintf("Unable to read mtime file %s with error %s", res, err.Error()))
+				printWarn(fmt.Sprintf("Unable to read mtime file %s with error %s", res, err.Error()))
 			} else {
 				m := stat.ModTime()
 				mtime = &m
@@ -106,7 +106,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			fileStartTime := makeTimestampMilli()
 			r, err := processScanner(res, int(fsize), bar)
 			if Trace {
-				printTrace(fmt.Sprintf("milliseconds processMemoryMap: %s: %d", res, makeTimestampMilli()-fileStartTime))
+				printTrace(fmt.Sprintf("milliseconds processScanner: %s: %d", res, makeTimestampMilli()-fileStartTime))
 			}
 
 			if err == nil {
@@ -148,7 +148,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			}
 
 			if Trace {
-				printTrace(fmt.Sprintf("nanoseconds processReadFileParallel: %s: %d", res, makeTimestampNano()-fileStartTime))
+				printTrace(fmt.Sprintf("nanoseconds processReadFile: %s: %d", res, makeTimestampNano()-fileStartTime))
 			}
 
 			if err == nil {

@@ -197,7 +197,7 @@ func Process() {
 	}
 
 	if AllowMoved && AuditFile == "" {
-		printError("--allow-moved only applies when auditing with --audit, ignoring flag")
+		printWarn("--allow-moved only applies when auditing with --audit, ignoring flag")
 	}
 
 	// Where audit file is set we load it up front so we only calculate the hashes it contains
@@ -216,7 +216,7 @@ func Process() {
 				}
 			}
 			if len(sqliteCompareHashes) == 0 {
-				printError(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
+				printWarn(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
 			}
 		} else {
 			file, err := os.ReadFile(AuditFile)
@@ -260,7 +260,7 @@ func Process() {
 	if strings.ToLower(Format) == "hashdeep" {
 		// if hashdeep, we need to ensure md5 is set or sha256, or both, and if neither are set both
 		if !hasHash("md5") && !hasHash("sha256") {
-			printError("hashdeep format without supported hash - setting md5 and sha256")
+			printWarn("hashdeep format without supported hash - setting md5 and sha256")
 			Hash = []string{"md5", "sha256"}
 		}
 	}
@@ -270,7 +270,7 @@ func Process() {
 
 	if StandardInput {
 		if MTime {
-			printError("cannot use --mtime option with standard input, ignoring flag")
+			printWarn("cannot use --mtime option with standard input, ignoring flag")
 		}
 		go processStandardInput(fileSummaryQueue)
 	} else {

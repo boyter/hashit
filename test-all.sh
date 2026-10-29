@@ -208,7 +208,7 @@ else
     exit
 fi
 
-if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'ERROR'; then
+if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'WARN'; then
     echo -e "${GREEN}PASSED stdin mtime test"
 else
     echo -e "${RED}======================================================="

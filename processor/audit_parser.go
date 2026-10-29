@@ -492,7 +492,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	}
 
 	if improper != 0 {
-		printError(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
+		printWarn(fmt.Sprintf("audit file %d lines are improperly formatted and were ignored", improper))
 	}
 
 	return nil
