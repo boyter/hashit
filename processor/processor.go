@@ -4,15 +4,17 @@ package processor
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"math/rand"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
-
-	"github.com/gosuri/uiprogress"
+	"syscall"
 )
 
 // Global Version
@@ -45,6 +47,9 @@ var NoStream = false
 // HashSupplied is set when --hash was supplied rather than left as the default
 var HashSupplied = false
 
+// FormatSupplied is set when --format was supplied rather than left as the default
+var FormatSupplied = false
+
 // Overwrite allows output to replace an existing file
 var Overwrite = false
 
@@ -72,9 +77,6 @@ var FileOutput = ""
 // AuditFile sets the file that we want to audit against similar to hashdeep
 var AuditFile = ""
 
-// progressBars renders the --progress bars
-var progressBars *uiprogress.Progress
-
 // auditor holds the parsed AuditFile
 var auditor *Auditor
 
@@ -86,14 +88,66 @@ var sqliteCompareHashes []string
 var skipFiles = map[string]bool{}
 
 // addSkipFile adds a file to skipFiles, along with the files SQLite creates alongside a database
-func addSkipFile(path string) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return
+func addSkipFile(path string, byIdentity bool, sqlite bool) {
+	// by path, and by real path so the file and SQLite's -wal and -shm files are skipped when
+	// reached through a symlinked path, as they may not exist yet to compare by identity. Only a
+	// SQLite database has those files, otherwise files with those names are unrelated
+	suffixes := []string{""}
+	if sqlite {
+		suffixes = append(suffixes, "-wal", "-shm", "-journal")
 	}
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		skipFiles[abs+suffix] = true
+	for _, p := range []string{path, realPath(path)} {
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		for _, suffix := range suffixes {
+			skipFiles[abs+suffix] = true
+		}
 	}
+
+	// also match by identity, so the file is skipped when reached through a symlinked path. This
+	// is not used for an existing output file, as another hard link to it is ordinary data
+	if byIdentity {
+		if fi, err := os.Stat(path); err == nil {
+			skipFileInfos = append(skipFileInfos, fi)
+		}
+	}
+}
+
+// skipFileInfos holds the skipped files which exist, to compare against by identity
+var skipFileInfos []os.FileInfo
+
+// oldOutputInfo is the existing output file, to recognise symlinks to it
+var oldOutputInfo os.FileInfo
+
+// oldOutputReal is the real path of the existing output file
+var oldOutputReal string
+
+// isOldOutputPath reports if path reaches the existing output file through a symlink, either the
+// file itself being one or a symlinked directory in its path. Another hard link to it is not, as
+// it is ordinary data which keeps the old content after the output is replaced
+func isOldOutputPath(path string, fi os.FileInfo) bool {
+	if oldOutputInfo == nil || !os.SameFile(fi, oldOutputInfo) {
+		return false
+	}
+	if lfi, err := os.Lstat(path); err == nil && lfi.Mode()&os.ModeSymlink != 0 {
+		return true
+	}
+	return realPath(path) == oldOutputReal
+}
+
+// isSkippedFileInfo reports if fi is the same file as one which should never be processed
+func isSkippedFileInfo(fi os.FileInfo) bool {
+	for _, s := range skipFileInfos {
+		if os.SameFile(fi, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldSkipFile reports if the file is one we should never process
@@ -102,7 +156,19 @@ func shouldSkipFile(path string) bool {
 		return false
 	}
 	abs, err := filepath.Abs(path)
-	return err == nil && skipFiles[abs]
+	if err == nil && skipFiles[abs] {
+		return true
+	}
+
+	// SQLite sidecar files reached through a symlinked path are matched by their real path
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		if strings.HasSuffix(path, suffix) {
+			if real := realPath(path); real != "" && skipFiles[real] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
@@ -166,6 +232,10 @@ func Process() {
 	// Display the supported hashes then bail out
 	if Hashes {
 		printHashes()
+		if stdout.err != nil {
+			printError(fmt.Sprintf("unable to write output: %s", stdout.err.Error()))
+			os.Exit(ExitError)
+		}
 		return
 	}
 
@@ -211,13 +281,34 @@ func Process() {
 		os.Exit(ExitError)
 	}
 
+	if Progress && !progressSupported {
+		printWarn(fmt.Sprintf("--progress is not supported on %s, ignoring flag", runtime.GOOS))
+		Progress = false
+	}
+
+	if FormatSupplied && AuditFile != "" && strings.ToLower(Format) != "text" {
+		printWarn("--format is ignored when auditing")
+	}
+
 	if AllowMoved && AuditFile == "" {
 		printWarn("--allow-moved only applies when auditing with --audit, ignoring flag")
 	}
 
+	// Interrupting removes any temporary output, and exits with the conventional code for the signal
+	removeOutputTempOnSignal()
+
 	// Where audit file is set we load it up front so we only calculate the hashes it contains
 	if AuditFile != "" {
-		if isSQLiteDB(AuditFile) {
+		auditContent, auditSQLite, err := readAuditFile(AuditFile)
+		if err != nil {
+			printError(err.Error())
+			os.Exit(ExitError)
+		}
+		if auditSQLite && !sqliteSupported {
+			printError(fmt.Sprintf("unable to audit against %s as SQLite databases are not supported on %s", AuditFile, runtime.GOOS))
+			os.Exit(ExitError)
+		}
+		if auditSQLite {
 			// we calculate the hashes requested and compare those the database also has
 			stored, err := sqliteAuditHashes(AuditFile)
 			if err != nil {
@@ -234,13 +325,7 @@ func Process() {
 				printWarn(fmt.Sprintf("none of the requested hashes %s are in audit database which has %s, every file will be reported as modified", strings.Join(Hash, ","), strings.Join(stored, ",")))
 			}
 		} else {
-			file, err := os.ReadFile(AuditFile)
-			if err != nil {
-				printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
-				os.Exit(ExitError)
-			}
-
-			auditor, err = NewAuditor(string(file), AuditFile)
+			auditor, err = NewAuditor(string(auditContent), AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
 				os.Exit(ExitError)
@@ -254,7 +339,7 @@ func Process() {
 				Hash = auditor.HashNames()
 			}
 		}
-		addSkipFile(AuditFile)
+		addSkipFile(AuditFile, true, auditSQLite)
 	}
 
 	// The sqlite format writes to the database as we go, so default the name up front
@@ -273,16 +358,22 @@ func Process() {
 			printError(err.Error())
 			os.Exit(ExitError)
 		}
-		addSkipFile(outputTemp)
+		addSkipFile(outputTemp, true, sqliteOutput)
+		addSkipFile(outputTarget, false, sqliteOutput)
+		if fi, err := os.Stat(outputTarget); err == nil {
+			oldOutputInfo = fi
+			oldOutputReal = realPath(outputTarget)
+		}
 	}
 
 	// The output file is being written while we process, so its hash is meaningless
 	if FileOutput != "" {
-		addSkipFile(FileOutput)
+		addSkipFile(FileOutput, false, sqliteOutput)
 	}
 
 	// If format is set to hashdeep
-	if strings.ToLower(Format) == "hashdeep" {
+	// an audit uses the hashes chosen for it above and ignores --format
+	if strings.ToLower(Format) == "hashdeep" && AuditFile == "" {
 		// if hashdeep, we need to ensure md5 is set or sha256, or both, and if neither are set both
 		if !hasHash("md5") && !hasHash("sha256") {
 			printWarn("hashdeep format without supported hash - setting md5 and sha256")
@@ -303,7 +394,7 @@ func Process() {
 		go processStandardInput(fileSummaryQueue)
 	} else {
 		// Files ready to be read from disk
-		fileListQueue := make(chan string, FileListQueueSize)
+		fileListQueue := make(chan fileJob, FileListQueueSize)
 
 		if FileInput == "" {
 			// Spawn routine to start finding files on disk
@@ -332,7 +423,7 @@ func Process() {
 					}
 
 					if !fi.IsDir() {
-						fileListQueue <- prefix + fp
+						fileListQueue <- fileJob{path: prefix + fp, explicit: true}
 						continue
 					}
 
@@ -368,7 +459,7 @@ func Process() {
 							line = abs
 						}
 					}
-					fileListQueue <- line
+					fileListQueue <- fileJob{path: line, explicit: true}
 				}
 				close(fileListQueue)
 
@@ -381,10 +472,7 @@ func Process() {
 		}
 
 		if Progress {
-			// render to stderr so the bars do not end up in redirected output
-			progressBars = uiprogress.New()
-			progressBars.SetOut(os.Stderr)
-			progressBars.Start()
+			startProgress()
 		}
 
 		var wg sync.WaitGroup
@@ -408,14 +496,19 @@ func Process() {
 		fmt.Fprint(stdout, result)
 	} else {
 		// sqlite has already been written to the temporary file as it went
-		written := true
+		written := !sqliteWriteFailed
+		if sqliteWriteFailed {
+			printError(fmt.Sprintf("unable to write output file %s, the new results were discarded", FileOutput))
+			removeSqliteFiles(outputTemp)
+			setOutputTemp("")
+		}
 		if !sqliteOutput {
 			if err := os.WriteFile(outputTemp, []byte(result), 0600); err != nil {
 				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
 				written = false
 			}
 		}
-		if written && finishOutput() {
+		if written && finishOutput(sqliteOutput) {
 			fmt.Fprintln(stdout, "results written to "+FileOutput)
 		}
 	}
@@ -436,6 +529,14 @@ var validFormats = []string{"text", "json", "sum", "hashdeep", "hashonly", "sqli
 func validateOptions() error {
 	if !contains(validFormats, strings.ToLower(Format)) {
 		return fmt.Errorf("unknown format %q, supported formats are %s", Format, strings.Join(validFormats, ", "))
+	}
+
+	if strings.ToLower(Format) == "sqlite" && AuditFile == "" && !sqliteSupported {
+		return fmt.Errorf("the sqlite format is not supported on %s", runtime.GOOS)
+	}
+
+	if len(Hash) == 0 {
+		return errors.New("no hashes requested, use --hashes to list supported hashes")
 	}
 
 	for _, h := range Hash {
@@ -463,7 +564,7 @@ func validateOptions() error {
 
 	// check the output can be created before doing any work, rather than failing at the end
 	if FileOutput != "" {
-		if fi, err := os.Stat(filepath.Dir(FileOutput)); err != nil || !fi.IsDir() {
+		if fi, err := os.Stat(outputDir(FileOutput)); err != nil || !fi.IsDir() {
 			return fmt.Errorf("unable to write output file %s as its directory does not exist", FileOutput)
 		}
 	}
@@ -473,11 +574,18 @@ func validateOptions() error {
 // prepareOutput refuses to write over an existing file unless overwrite has been allowed. An
 // existing sqlite database is removed, as writing into it would merge with the previous results
 func prepareOutput(path string, sqlite bool) error {
-	if _, err := os.Lstat(path); err != nil {
+	lfi, err := os.Lstat(path)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("unable to check output file %s: %s", path, err.Error())
+	}
+
+	// a symlink which points nowhere or is a loop cannot be resolved reliably, so is refused
+	fi, statErr := os.Stat(path)
+	if lfi.Mode()&os.ModeSymlink != 0 && statErr != nil {
+		return fmt.Errorf("output file %s is a symlink which cannot be followed, refusing to replace it: %s", path, statErr.Error())
 	}
 
 	if !Overwrite {
@@ -485,7 +593,7 @@ func prepareOutput(path string, sqlite bool) error {
 	}
 
 	// never replace a directory or anything else which is not a regular file
-	if fi, err := os.Stat(path); err == nil && !fi.Mode().IsRegular() {
+	if statErr == nil && !fi.Mode().IsRegular() {
 		return fmt.Errorf("output file %s is not a regular file, refusing to replace it", path)
 	}
 
@@ -505,22 +613,181 @@ func prepareOutput(path string, sqlite bool) error {
 // processing has finished, so an existing file is never lost to a run which fails part way
 var outputTemp = ""
 
-// createOutputTemp creates the temporary output file next to FileOutput, which also confirms
-// the directory can be written to before doing any work
+// outputMode is the permissions of the file being replaced, when outputModeSet
+var outputMode os.FileMode
+var outputModeSet bool
+
+// outputExisted is set when the output already existed before processing, which only happens when
+// overwrite was allowed
+var outputExisted bool
+
+// outputTempMu guards outputTemp, which the signal handler reads
+var outputTempMu sync.Mutex
+
+func outputTempName() string {
+	outputTempMu.Lock()
+	defer outputTempMu.Unlock()
+	return outputTemp
+}
+
+func setOutputTemp(path string) {
+	outputTempMu.Lock()
+	outputTemp = path
+	outputTempMu.Unlock()
+}
+
+// outputTarget is the file actually replaced, being FileOutput or what it links to, so a symlinked
+// output path keeps the link and updates the file it points at
+var outputTarget = ""
+
+// resolveOutputTarget follows FileOutput through any symlinks using the operating system's own
+// resolution, as resolving them by hand gets paths such as link/../file wrong when link is a
+// symlinked directory. prepareOutput has already refused symlinks which cannot be followed
+func resolveOutputTarget(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+
+	// a new file is created in its directory as the operating system resolves it, so dl/../new
+	// where dl is a symlinked directory is created next to what dl points at
+	base := filepath.Base(path)
+	if base == "." || base == ".." || base == string(filepath.Separator) {
+		return path
+	}
+	if dir, err := filepath.EvalSymlinks(outputDir(path)); err == nil {
+		return filepath.Join(dir, base)
+	}
+	return path
+}
+
+// outputDir returns the directory a path is in without cleaning it, as cleaning dl/../new to new
+// is wrong when dl is a symlinked directory
+func outputDir(path string) string {
+	i := len(path) - 1
+	for i >= len(filepath.VolumeName(path)) && !os.IsPathSeparator(path[i]) {
+		i--
+	}
+	if i < len(filepath.VolumeName(path)) {
+		// a Windows path such as C:new is in the working directory of that drive
+		return filepath.VolumeName(path) + "."
+	}
+	if i == len(filepath.VolumeName(path)) {
+		// the root, such as / or C:\
+		return path[:i+1]
+	}
+	return path[:i]
+}
+
+// readAuditFile reads the audit file, reporting whether it is a SQLite database, which is opened
+// separately. A file which is not a regular file, such as a pipe, can only be read once, so it is
+// read in full and checked from memory, and cannot be a database
+func readAuditFile(path string) ([]byte, bool, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, false, fmt.Errorf("unable to read audit file: %s", err.Error())
+	}
+
+	if fi.Mode().IsRegular() {
+		if isSQLiteDB(path) {
+			return nil, true, nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, false, fmt.Errorf("unable to read audit file: %s", err.Error())
+		}
+		return content, false, nil
+	}
+
+	if fi.IsDir() {
+		return nil, false, fmt.Errorf("unable to read audit file: %s is a directory", path)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, fmt.Errorf("unable to read audit file: %s", err.Error())
+	}
+	if strings.HasPrefix(string(content), sqliteHeader) {
+		return nil, false, fmt.Errorf("audit database %s must be a regular file, it cannot be read from a pipe", path)
+	}
+	return content, false, nil
+}
+
+// createOutputTemp creates the temporary output file next to the output, which also confirms
+// the directory can be written to before doing any work. It is created with the permissions
+// of the file it will replace, or the default for a new file after the umask is applied
 func createOutputTemp() error {
-	f, err := os.CreateTemp(filepath.Dir(FileOutput), "."+filepath.Base(FileOutput)+".*.tmp")
+	outputTarget = resolveOutputTarget(FileOutput)
+	dir, base := filepath.Dir(outputTarget), filepath.Base(outputTarget)
+
+	var f *os.File
+	var err error
+	for i := 0; i < 100; i++ {
+		name := filepath.Join(dir, fmt.Sprintf(".%s.%d.hashit.tmp", base, rand.Uint32()))
+		f, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+		if !os.IsExist(err) {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
 	}
-	outputTemp = f.Name()
+	setOutputTemp(f.Name())
+
+	_, err = os.Lstat(outputTarget)
+	outputExisted = err == nil
+
+	// the permissions of an existing file are applied just before it is replaced, as applying a
+	// read only mode now would stop the results being written
+	outputModeSet = false
+	if fi, err := os.Stat(outputTarget); err == nil {
+		outputMode = fi.Mode().Perm()
+		outputModeSet = true
+	}
 	return f.Close()
 }
 
+// removeOutputTempOnSignal removes the temporary output when interrupted, as otherwise it would be
+// left behind and hashed by later runs. Signals ignored when started, such as SIGHUP under nohup,
+// stay ignored
+func removeOutputTempOnSignal() {
+	var handled []os.Signal
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGPIPE} {
+		if !signal.Ignored(sig) {
+			handled = append(handled, sig)
+		}
+	}
+	if len(handled) == 0 {
+		return
+	}
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, handled...)
+	go func() {
+		sig := <-signals
+		// the conventional 128 plus the signal number
+		code := 130
+		switch sig {
+		case syscall.SIGTERM:
+			code = 143
+		case syscall.SIGHUP:
+			code = 129
+		case syscall.SIGQUIT:
+			code = 131
+		case syscall.SIGPIPE:
+			code = exitSIGPIPE
+		}
+		exit(code)
+	}()
+}
+
+// exitSIGPIPE is the conventional exit code for SIGPIPE
+const exitSIGPIPE = 141
+
 // exit removes any temporary output before exiting
 func exit(code int) {
+	outputTempMu.Lock()
 	if outputTemp != "" {
 		removeSqliteFiles(outputTemp)
 	}
+	outputTempMu.Unlock()
 	os.Exit(code)
 }
 
@@ -531,27 +798,80 @@ func removeSqliteFiles(path string) {
 }
 
 // finishOutput moves the temporary output into place. An existing file is only replaced when no
-// errors occurred, so a mistyped path or unreadable file never destroys an earlier result
-func finishOutput() bool {
-	if _, err := os.Lstat(FileOutput); err == nil && errorOccurred.Load() {
+// errors occurred, so a mistyped path or unreadable file never destroys an earlier result. The
+// replacement is a new file, so any other hard links to the old file keep the old content
+func finishOutput(sqliteOutput bool) bool {
+	outputTempMu.Lock()
+	defer outputTempMu.Unlock()
+
+	if _, err := os.Lstat(outputTarget); err == nil && errorOccurred.Load() {
 		printError(fmt.Sprintf("not replacing existing output file %s as errors occurred, the new results were discarded", FileOutput))
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""
 		return false
 	}
 
-	// sidecar files left by a previous database must not be applied to the new one
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		_ = os.Remove(FileOutput + suffix)
-	}
-	if err := os.Rename(outputTemp, FileOutput); err != nil {
-		printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
+	// the output supplied as the only file to process, such as -o doc.txt doc.txt, would otherwise
+	// replace it with empty results
+	if _, err := os.Lstat(outputTarget); err == nil && ownFileSupplied.Load() && filesHashed.Load() == 0 {
+		printError(fmt.Sprintf("not replacing existing output file %s as the only files supplied were the audit or output file, the new results were discarded", FileOutput))
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""
 		return false
 	}
+
+	if outputModeSet {
+		_ = os.Chmod(outputTemp, outputMode)
+	}
+
+	// sidecar files left by a previous database must not be applied to the new one, but only when
+	// replacing a SQLite database, as otherwise files with those names are unrelated
+	if sqliteOutput && isSQLiteDB(outputTarget) {
+		for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+			_ = os.Remove(outputTarget + suffix)
+		}
+	}
+	if err := installOutput(); err != nil {
+		printError(err.Error())
+		removeSqliteFiles(outputTemp)
+		outputTemp = ""
+		return false
+	}
+	if sqliteOutput {
+		removeSqliteFiles(outputTemp)
+	}
 	outputTemp = ""
 	return true
+}
+
+// installOutput moves the temporary output into place. An output which did not exist before
+// processing is hard linked into place, which fails rather than replacing a file created there
+// while processing, such as by another run writing the same output
+func installOutput() error {
+	if outputExisted || Overwrite {
+		if err := os.Rename(outputTemp, outputTarget); err != nil {
+			return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
+		}
+		return nil
+	}
+
+	err := os.Link(outputTemp, outputTarget)
+	if err == nil {
+		_ = os.Remove(outputTemp)
+		return nil
+	}
+	if os.IsExist(err) {
+		return fmt.Errorf("output file %s was created while processing, use --overwrite to replace it, the new results were discarded", FileOutput)
+	}
+
+	// file systems without hard links can only check before renaming
+	if _, err := os.Lstat(outputTarget); err == nil {
+		return fmt.Errorf("output file %s was created while processing, use --overwrite to replace it, the new results were discarded", FileOutput)
+	}
+	if err := os.Rename(outputTemp, outputTarget); err != nil {
+		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
+	}
+	return nil
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

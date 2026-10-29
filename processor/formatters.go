@@ -6,18 +6,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/boyter/hashit/assets"
 	"github.com/boyter/hashit/processor/database"
-	_ "modernc.org/sqlite"
 )
 
 // Get the time as standard UTC/Zulu format
@@ -49,6 +51,11 @@ type checkedWriter struct {
 
 func (c *checkedWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
+	// a reader which has gone away, such as head, is a SIGPIPE, which exits the same way however
+	// it is noticed first
+	if errors.Is(err, syscall.EPIPE) {
+		exit(exitSIGPIPE)
+	}
 	if err != nil {
 		c.mu.Lock()
 		if c.err == nil {
@@ -79,6 +86,11 @@ func printError(msg string) {
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("ERROR %s: %s", getFormattedTime(), msg))
 }
 
+// PrintError is printError for use outside the package
+func PrintError(msg string) {
+	printError(msg)
+}
+
 // exitCode returns the code to exit with once processing is done
 func exitCode(valid bool) int {
 	if errorOccurred.Load() {
@@ -102,6 +114,22 @@ var fileErrors atomic.Bool
 // failedFiles holds the paths of files which could not be read, so an audit can report them as
 // unreadable rather than missing
 var failedFiles sync.Map
+
+// failedDirs holds the absolute paths of directories which could not be read
+var failedDirs sync.Map
+
+// isUnderFailedDir reports if the absolute path is inside a directory which could not be read
+func isUnderFailedDir(abs string) bool {
+	found := false
+	failedDirs.Range(func(key, _ any) bool {
+		if isAncestorOrSelf(key.(string), abs) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
 
 // fileFailed reports a file which could not be read and records it for the audit and exit code
 func fileFailed(path string, msg string) {
@@ -135,7 +163,7 @@ func makeTimestampNano() int64 {
 
 func fileSummarize(input chan Result) (string, bool) {
 	if AuditFile != "" {
-		if isSQLiteDB(AuditFile) {
+		if auditor == nil {
 			return doSqliteAudit(input)
 		}
 		return doAudit(input)
@@ -203,6 +231,16 @@ func doAudit(input chan Result) (string, bool) {
 	outcomes := map[*AuditRecord]outcome{}
 	var newFileCandidates []Result
 
+	// Two files on disk can resolve to the same record, so decide which claims it once every file
+	// has arrived, so the result does not depend on the order files were processed in. A file
+	// matching the record's own path wins over one matching through another directory, then the
+	// first path in sort order
+	type claim struct {
+		res     Result
+		primary bool
+	}
+	claims := map[*AuditRecord]claim{}
+
 	seen := map[string]bool{}
 	for res := range input {
 		// overlapping paths such as . and ./sub supply the same file twice
@@ -210,25 +248,42 @@ func doAudit(input chan Result) (string, bool) {
 			continue
 		}
 		examinedCount++
-		r, status := auditor.Find(res)
 
-		switch status {
-		case FileMatched:
-			matched++
-			outcomes[r] = outcome{status: status, file: res.File}
-		case FileModified:
-			filesModified++
-			outcomes[r] = outcome{status: status, file: res.File}
-		case FileNew:
+		r, primary := auditor.LookupPrimary(res.File)
+		if r == nil {
 			newFileCandidates = append(newFileCandidates, res)
-		default:
-			panic("unhandled default case")
+			continue
+		}
+
+		existing, ok := claims[r]
+		if !ok {
+			claims[r] = claim{res: res, primary: primary}
+			continue
+		}
+		if primary != existing.primary && primary || primary == existing.primary && res.File < existing.res.File {
+			claims[r] = claim{res: res, primary: primary}
+			newFileCandidates = append(newFileCandidates, existing.res)
+		} else {
+			newFileCandidates = append(newFileCandidates, res)
+		}
+	}
+
+	for r, c := range claims {
+		r.Matched = true
+		if recordMatches(r, c.res) {
+			matched++
+			outcomes[r] = outcome{status: FileMatched, file: c.res.File}
+		} else {
+			filesModified++
+			outcomes[r] = outcome{status: FileModified, file: c.res.File}
 		}
 	}
 
 	// With every file on disk accounted for, anything new may be a known file which was
 	// moved or renamed, which we identify by matching size and hashes against unmatched records
 	var newFiles []Result
+	// in path order, so which of several identical files is reported as moved is always the same
+	sort.Slice(newFileCandidates, func(i, j int) bool { return newFileCandidates[i].File < newFileCandidates[j].File })
 	for _, res := range newFileCandidates {
 		if r := auditor.FindMoved(res); r != nil {
 			moved++
@@ -240,12 +295,30 @@ func doAudit(input chan Result) (string, bool) {
 
 	// files which exist but could not be read are reported as such rather than as not found
 	unreadable := map[*AuditRecord]bool{}
+	var unreadableNew []string
 	failedFiles.Range(func(key, _ any) bool {
+		// a record claimed by another file is reported for that file, so the unreadable file is
+		// listed on its own, as it is when it has no record
 		if r := auditor.Lookup(key.(string)); r != nil {
-			unreadable[r] = true
+			if _, claimed := outcomes[r]; !claimed {
+				unreadable[r] = true
+				return true
+			}
 		}
+		unreadableNew = append(unreadableNew, key.(string))
 		return true
 	})
+	isUnreadable := func(r *AuditRecord) bool {
+		if unreadable[r] {
+			return true
+		}
+		for _, k := range auditor.recordKeys(r) {
+			if filepath.IsAbs(k) && isUnderFailedDir(k) {
+				return true
+			}
+		}
+		return false
+	}
 
 	filesMissing := 0
 	for _, r := range auditor.Records() {
@@ -253,7 +326,7 @@ func doAudit(input chan Result) (string, bool) {
 		if !ok {
 			filesMissing++
 			if Verbose {
-				if unreadable[r] {
+				if isUnreadable(r) {
 					fmt.Fprintf(stdout, "%v: File could not be read\n", r.Filename)
 				} else {
 					fmt.Fprintf(stdout, "%v: File expected but not found\n", r.Filename)
@@ -281,6 +354,11 @@ func doAudit(input chan Result) (string, bool) {
 	if Verbose {
 		for _, res := range sortedPaths(newFiles) {
 			fmt.Fprintf(stdout, "%v: File new\n", res.File)
+		}
+		// files on disk which are not in the audit file and could not be read
+		sort.Strings(unreadableNew)
+		for _, f := range unreadableNew {
+			fmt.Fprintf(stdout, "%v: File could not be read\n", f)
 		}
 	}
 
@@ -592,6 +670,9 @@ func toHashDeep(input chan Result) string {
 	return str.String()
 }
 
+// sqliteWriteFailed is set when the database could not be written, so it is never used as output
+var sqliteWriteFailed bool
+
 func toSqlite(input chan Result) (string, bool) {
 	// if not file output specified we need to do it ourselves
 	if FileOutput == "" {
@@ -614,11 +695,15 @@ func toSqlite(input chan Result) (string, bool) {
 	db, err := connectSqliteDb(outputTemp)
 	if err != nil {
 		printError(fmt.Sprintf("problem creating database %s: %s", FileOutput, err.Error()))
+		sqliteWriteFailed = true
 		return "", false
 	}
-	defer func(db *sql.DB) {
-		_ = db.Close()
-	}(db)
+	closed := false
+	defer func() {
+		if !closed {
+			_ = db.Close()
+		}
+	}()
 	db.SetMaxOpenConns(1) // we are writing, so set the number of writes to 1
 
 	queries := database.New(db)
@@ -626,6 +711,7 @@ func toSqlite(input chan Result) (string, bool) {
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		printError(fmt.Sprintf("problem with tx %s", FileOutput))
+		sqliteWriteFailed = true
 		return "", false
 	}
 	withTx := queries.WithTx(tx)
@@ -634,8 +720,22 @@ func toSqlite(input chan Result) (string, bool) {
 	if pwd, err := os.Getwd(); err == nil {
 		if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataInvokedFrom, Value: pwd}); err != nil {
 			printError(err.Error())
+			sqliteWriteFailed = true
 			return "", false
 		}
+	}
+
+	// record which hashes were calculated, so an audit does not have to guess from the rows
+	var calculated []string
+	for _, name := range hashPriority {
+		if hasHash(name) {
+			calculated = append(calculated, name)
+		}
+	}
+	if err := withTx.MetadataSet(context.Background(), database.MetadataSetParams{Key: metadataHashes, Value: strings.Join(calculated, ",")}); err != nil {
+		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
 	}
 
 	count := 0
@@ -670,6 +770,7 @@ func toSqlite(input chan Result) (string, bool) {
 		})
 		if err != nil {
 			printError(err.Error())
+			sqliteWriteFailed = true
 			return "", false
 		}
 
@@ -679,12 +780,14 @@ func toSqlite(input chan Result) (string, bool) {
 			err := tx.Commit()
 			if err != nil {
 				printError(err.Error())
+				sqliteWriteFailed = true
 				return "", false
 			}
 
 			tx, err = db.BeginTx(context.Background(), nil)
 			if err != nil {
 				printError(err.Error())
+				sqliteWriteFailed = true
 				return "", false
 			}
 			withTx = queries.WithTx(tx)
@@ -692,10 +795,11 @@ func toSqlite(input chan Result) (string, bool) {
 		count++
 	}
 
-	// its possible this was already commited so ignore
 	err = tx.Commit()
 	if err != nil {
 		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
 	}
 
 	// ensure we merge the WAL into a single file, and leave the database out of WAL mode so that
@@ -703,6 +807,15 @@ func toSqlite(input chan Result) (string, bool) {
 	_, err = db.Exec("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
 	if err != nil {
 		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
+	}
+
+	closed = true
+	if err := db.Close(); err != nil {
+		printError(err.Error())
+		sqliteWriteFailed = true
+		return "", false
 	}
 
 	return "", true
@@ -739,7 +852,12 @@ func contains(list []string, v string) bool {
 }
 
 func connectSqliteDb(pathName string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", fmt.Sprintf("%s?_busy_timeout=5000", pathName))
+	// build a file URI so a path containing ? or # is not taken as the start of parameters
+	abs, err := filepath.Abs(pathName)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", sqliteFileURI(abs, "_pragma=busy_timeout(5000)"))
 	if err != nil {
 		return nil, err
 	}

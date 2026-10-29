@@ -49,6 +49,7 @@ func main() {
 			}
 
 			processor.HashSupplied = cmd.Flags().Changed("hash")
+			processor.FormatSupplied = cmd.Flags().Changed("format")
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
@@ -61,7 +62,7 @@ func main() {
 		"hash",
 		"c",
 		[]string{"md5", "sha1", "sha256", "sha512"},
-		"hashes to be run for each file (set to 'all' for all possible hashes)",
+		"hashes to be run for each file (set to 'all' for all possible hashes); hashdeep and sum audits use the hashes in the audit file",
 	)
 	flags.StringVarP(
 		&processor.Format,
@@ -95,7 +96,7 @@ func main() {
 		"output",
 		"o",
 		"",
-		"output filename (default stdout)",
+		"output filename (default stdout, or hashit.db for the sqlite format)",
 	)
 	flags.BoolVar(
 		&processor.AllowMoved,
@@ -113,7 +114,7 @@ func main() {
 		&processor.Overwrite,
 		"overwrite",
 		false,
-		"allow output to replace an existing file",
+		"allow output to replace an existing regular file; a symlink which cannot be followed is always refused",
 	)
 	flags.BoolVar(
 		&processor.NoStream,
@@ -201,7 +202,7 @@ func main() {
 		&processor.PathDenyList,
 		"exclude-dir",
 		[]string{},
-		"names of directories to exclude when walking directories",
+		"directories to exclude when walking directories, by name such as node_modules or the end of a path such as vendor/cache",
 	)
 	flags.BoolVar(
 		&processor.Ignore,
@@ -223,8 +224,10 @@ func main() {
 		"ignore files and directories whose name matches regular expression when walking directories",
 	)
 
-	// an invalid flag or argument is an error the same as any other
+	// an invalid flag or argument is an error the same as any other, and is printed the same way
+	rootCmd.SilenceErrors = true
 	if err := rootCmd.Execute(); err != nil {
+		processor.PrintError(err.Error())
 		os.Exit(processor.ExitError)
 	}
 }

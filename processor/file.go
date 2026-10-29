@@ -3,7 +3,9 @@
 package processor
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,12 +14,14 @@ import (
 	"github.com/boyter/gocodewalker"
 )
 
-// isExcludedDirectory reports if a directory name is excluded by --exclude-dir or --not-match,
-// for symlinks to directories which the walker sees as files. Ignore file rules such as
-// .gitignore are not applied to them
-func isExcludedDirectory(name string) bool {
+// isExcludedDirectory reports if a directory is excluded by --exclude-dir or --not-match, for
+// symlinks to directories which the walker sees as files. As with the walker, --exclude-dir
+// matches the end of the path, such as node_modules or vendor/cache, and --not-match the name
+func isExcludedDirectory(location string, name string) bool {
+	path := "/" + strings.Trim(filepath.ToSlash(location), "/")
 	for _, d := range PathDenyList {
-		if strings.TrimRight(d, "/") == name {
+		d = strings.Trim(filepath.ToSlash(d), "/")
+		if d != "" && strings.HasSuffix(path, "/"+d) {
 			return true
 		}
 	}
@@ -69,7 +73,7 @@ func realPath(path string) string {
 
 // walkDirectoryWithIgnore walks the directory sending every file found to output, with
 // prefix added to the start of each path
-func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
+func walkDirectoryWithIgnore(toWalk string, prefix string, output chan fileJob) {
 	fileListQueue := make(chan *gocodewalker.File, 1000)
 	var fileWalker *gocodewalker.FileWalker
 	if NoThreads != 1 {
@@ -92,6 +96,14 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 
 	// handle the errors by printing them out and then ignore
 	errorHandler := func(err error) bool {
+		// record directories which could not be read, so an audit can report their files as
+		// unreadable rather than missing
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			if abs, aerr := filepath.Abs(pathErr.Path); aerr == nil {
+				failedDirs.Store(abs, true)
+			}
+		}
 		printFileError(fmt.Sprintf("unable to walk %s: %s", toWalk, err.Error()))
 		return true
 	}
@@ -117,7 +129,7 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 		if fi, err := os.Lstat(f.Location); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 			if target, err := os.Stat(f.Location); err == nil && target.IsDir() {
 				// the walker sees the symlink as a file, so apply directory exclusions ourselves
-				if isExcludedDirectory(f.Filename) {
+				if isExcludedDirectory(f.Location, f.Filename) {
 					continue
 				}
 				real := realPath(f.Location)
@@ -132,6 +144,6 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 			}
 		}
 
-		output <- prefix + f.Location
+		output <- fileJob{path: prefix + f.Location}
 	}
 }

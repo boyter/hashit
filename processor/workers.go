@@ -10,18 +10,21 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/djherbis/times"
-	"github.com/gosuri/uiprogress"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
 	"go.felesatra.moe/hash/ed2k"
@@ -33,35 +36,74 @@ const (
 	UiBarMax = 1024 // 1024 should be dividable by most things
 )
 
-func fileProcessorWorker(input chan string, output chan Result) {
+// fileJob is a file to process, and whether it was supplied explicitly as an argument or in an
+// input file, rather than found while walking a directory
+type fileJob struct {
+	path     string
+	explicit bool
+}
 
-	var bar *uiprogress.Bar
+// ownFileSupplied is set when the audit or output file was supplied explicitly and skipped
+var ownFileSupplied atomic.Bool
+
+// filesHashed is the number of files hashed, used to tell if only skipped files were supplied
+var filesHashed atomic.Int64
+
+// skippedOwnFile reports skipping the audit or output file when supplied explicitly, such as by a
+// wildcard which includes it. One found walking a directory is skipped silently
+func skippedOwnFile(job fileJob) {
+	if job.explicit {
+		ownFileSupplied.Store(true)
+		printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", job.path))
+	}
+}
+
+func fileProcessorWorker(input chan fileJob, output chan Result) {
+
+	var bar progressBar
 	filename := ""
 	if Progress {
-		bar = progressBars.AddBar(UiBarMax)
-		bar.AppendFunc(func(b *uiprogress.Bar) string {
+		bar = newProgressBar(func() string {
 			return "file: " + filename
 		})
 	}
 
-	for res := range input {
+	for job := range input {
+		res := job.path
 		if Debug {
 			printDebug(fmt.Sprintf("processing %s", res))
 		}
 
 		if shouldSkipFile(res) {
+			skippedOwnFile(job)
 			continue
 		}
 
 		// Stat before opening, as opening a FIFO or device would block until something writes to it
 		fi, err := os.Stat(res)
 		if err != nil {
-			// a symlink which points nowhere has no content to hash, hashdeep ignores these
-			if lfi, lerr := os.Lstat(res); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && os.IsNotExist(err) {
-				printWarn(fmt.Sprintf("Skipping %s as it is a symlink to something which does not exist", res))
+			// a symlink which points nowhere found while walking has no content to hash, and
+			// hashdeep ignores these, but one supplied explicitly is an error
+			if lfi, lerr := os.Lstat(res); !job.explicit && lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && (os.IsNotExist(err) || errors.Is(err, syscall.ELOOP)) {
+				printWarn(fmt.Sprintf("Skipping %s as it is a symlink which cannot be followed", res))
 				continue
 			}
 			fileFailed(res, fmt.Sprintf("Unable to process file %s with error %s", res, err.Error()))
+			continue
+		}
+
+		// SQLite creates -wal and -shm files next to the temporary output while writing, which may
+		// be reached through a symlinked path, so match those by name
+		if temp := outputTempName(); isSkippedFileInfo(fi) || (temp != "" && strings.HasPrefix(filepath.Base(res), filepath.Base(temp))) {
+			skippedOwnFile(job)
+			continue
+		}
+
+		// a symlink to the existing output file, or a path to it through a symlinked directory,
+		// would hash its old content, while a hard link to it is ordinary data which keeps the old
+		// content after the output is replaced
+		if isOldOutputPath(res, fi) {
+			skippedOwnFile(job)
 			continue
 		}
 
@@ -71,9 +113,14 @@ func fileProcessorWorker(input chan string, output chan Result) {
 			continue
 		}
 
-		// FIFOs, sockets and devices have no fixed content to hash
+		// FIFOs, sockets and devices have no fixed content to hash, which is an error when one
+		// was supplied explicitly
 		if !fi.Mode().IsRegular() {
-			printWarn(fmt.Sprintf("Skipping %s as it is not a regular file", res))
+			if job.explicit {
+				fileFailed(res, fmt.Sprintf("Unable to process %s as it is not a regular file", res))
+			} else {
+				printWarn(fmt.Sprintf("Skipping %s as it is not a regular file", res))
+			}
 			continue
 		}
 
@@ -122,6 +169,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				r.File = res
 				r.Bytes = fsize
 				r.MTime = mtime
+				filesHashed.Add(1)
 				output <- r
 			}
 
@@ -164,6 +212,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 				r.File = res
 				r.Bytes = fsize
 				r.MTime = mtime
+				filesHashed.Add(1)
 				output <- r
 			}
 		}
@@ -172,7 +221,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 }
 
 // Random tests indicate that mmap is faster when not in power save mode
-func processScanner(filename string, fsize int, bar *uiprogress.Bar) (Result, error) {
+func processScanner(filename string, fsize int, bar progressBar) (Result, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		fileFailed(filename, fmt.Sprintf("opening file %s: %s", filename, err.Error()))
