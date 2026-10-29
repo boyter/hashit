@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -27,11 +26,12 @@ type AuditRecord struct {
 // Auditor parses and holds an audit file which can then be used for audit purposes
 // by providing methods to look up records by either path or hash
 type Auditor struct {
-	records    []*AuditRecord
-	pathLookup map[string]*AuditRecord   // every path key a record can be found by
-	hashLookup map[string][]*AuditRecord // "hashname:value" to records, used to find moved files
-	hashNames  []string                  // hashes present in the audit file which we are able to calculate
-	baseDirs   []string                  // directories relative paths in the audit file may be relative to
+	records     []*AuditRecord
+	pathLookup  map[string]*AuditRecord   // every path key a record can be found by
+	hashLookup  map[string][]*AuditRecord // "hashname:value" to records, used to find moved files
+	hashNames   []string                  // hashes present in the audit file which we are able to calculate
+	baseDirs    []string                  // directories relative paths in the audit file may be relative to
+	primaryBase string                    // directory relative paths were created relative to, empty for the working directory
 }
 
 type FileStatus int
@@ -94,6 +94,7 @@ var sumExtensions = map[string][]string{
 	".sha3-384": {HashNames.Sha3384},
 	".sha3-512": {HashNames.Sha3512},
 	".b3":       {HashNames.Blake3},
+	".ed2k":     {HashNames.Ed2k},
 }
 
 // sumLengths is the hash assumed for a given hex length when the file extension does not tell us
@@ -304,7 +305,7 @@ func (hdl *Auditor) Exclude(path string) {
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !hdl.refersOnlyTo(r, abs) {
+		if !hdl.isOwnEntry(r, abs) {
 			records = append(records, r)
 		}
 	}
@@ -339,22 +340,39 @@ func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
 	return keys
 }
 
-// refersOnlyTo reports if the record resolves to the file at abs and to no other existing file.
-// A relative path can resolve against several directories, so a record may resolve to the audit
-// file while actually being a different file which happens to share its name
-func (hdl *Auditor) refersOnlyTo(r *AuditRecord, abs string) bool {
-	keys := append(hdl.recordKeys(r), pathKeys(r.Filename, "")...)
-	if !contains(keys, abs) {
-		return false
+// isOwnEntry reports if the record is the audit file listing itself, which happens when it is
+// written by a shell redirect into the directory being hashed. The record must resolve to the
+// audit file using the directory paths are relative to, being the invoked from directory for
+// hashdeep files or the working directory otherwise. A record which only resolves to it some
+// other way, such as through the audit file's own directory after a tree has been copied, must
+// also describe an empty file, as the audit file was when it was hashed. Otherwise it may be a
+// different file which happens to share the audit file's name, and must still be audited
+func (hdl *Auditor) isOwnEntry(r *AuditRecord, abs string) bool {
+	if contains(pathKeys(r.Filename, hdl.primaryBase), abs) {
+		return true
 	}
-	for _, k := range keys {
-		if k != abs && filepath.IsAbs(k) {
-			if _, err := os.Stat(k); err == nil {
-				return false
-			}
+	return contains(hdl.recordKeys(r), abs) && isEmptyRecord(r)
+}
+
+// isEmptyRecord reports if the record describes an empty file, by size or when the size is not
+// recorded, as in sum files, by every hash being that of empty content
+func isEmptyRecord(r *AuditRecord) bool {
+	if r.Size >= 0 {
+		return r.Size == 0
+	}
+
+	// calculate the hash of empty content for every hash, restoring the requested hashes after
+	requested := Hash
+	Hash = []string{"all"}
+	empty, _ := processReadFile("", &[]byte{})
+	Hash = requested
+
+	for name, v := range r.Hashes {
+		if empty.hashValue(name) != v {
+			return false
 		}
 	}
-	return true
+	return len(r.Hashes) != 0
 }
 
 func (hdl *Auditor) addRecord(r *AuditRecord) {
@@ -428,6 +446,7 @@ func (hdl *Auditor) parseHashdeepFile(input string) error {
 		if strings.HasPrefix(line, "#") {
 			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && len(hdl.baseDirs) == 0 {
 				hdl.baseDirs = append(hdl.baseDirs, strings.TrimSpace(dir))
+				hdl.primaryBase = strings.TrimSpace(dir)
 			}
 			continue
 		}
@@ -540,6 +559,10 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 	}
 
 	if improper != 0 {
+		// a file such as text or json output has no valid lines, and is not an audit file at all
+		if len(hdl.records) == 0 {
+			return fmt.Errorf("audit file has %d lines and none are in a supported format", improper)
+		}
 		printWarn(fmt.Sprintf("audit file has %d improperly formatted lines which were ignored", improper))
 	}
 

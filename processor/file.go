@@ -12,6 +12,23 @@ import (
 	"github.com/boyter/gocodewalker"
 )
 
+// isExcludedDirectory reports if a directory name is excluded by --exclude-dir or --not-match,
+// for symlinks to directories which the walker sees as files. Ignore file rules such as
+// .gitignore are not applied to them
+func isExcludedDirectory(name string) bool {
+	for _, d := range PathDenyList {
+		if strings.TrimRight(d, "/") == name {
+			return true
+		}
+	}
+	for _, exclude := range Exclude {
+		if regexp.MustCompile(exclude).MatchString(name) {
+			return true
+		}
+	}
+	return false
+}
+
 // isAncestorOrSelf reports if dir is the same as or contains path, both being real absolute paths
 func isAncestorOrSelf(dir string, path string) bool {
 	if dir == path {
@@ -90,7 +107,7 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 	go func() {
 		err := fileWalker.Start()
 		if err != nil {
-			printError(err.Error())
+			printFileError(fmt.Sprintf("unable to walk %s: %s", toWalk, err.Error()))
 		}
 	}()
 
@@ -99,7 +116,14 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan string) {
 		// Follow it as hashdeep does, unless it leads back into a directory already being walked
 		if fi, err := os.Lstat(f.Location); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 			if target, err := os.Stat(f.Location); err == nil && target.IsDir() {
-				if real := realPath(f.Location); real == "" || isSymlinkCycle(f.Location, real) {
+				// the walker sees the symlink as a file, so apply directory exclusions ourselves
+				if isExcludedDirectory(f.Filename) {
+					continue
+				}
+				real := realPath(f.Location)
+				if real == "" {
+					printFileError(fmt.Sprintf("unable to resolve symlink %s", prefix+f.Location))
+				} else if isSymlinkCycle(f.Location, real) {
 					printWarn(fmt.Sprintf("Skipping symlink %s as it creates a cycle", prefix+f.Location))
 				} else {
 					walkDirectoryWithIgnore(f.Location, prefix, output)

@@ -711,6 +711,54 @@ echo changed >> "$AUDITDIR/samename/d/a.txt"
 check "audit file sharing a name with an audited file test" \
     "cd '$AUDITDIR/samename/d' && '$HASHIT' -a ../a.txt . | grep -q 'Files modified: 1' && '$HASHIT' -a ../a.md5 . | grep -q 'Files modified: 1'"
 
+# exit codes are 0 for success, 1 for a failed audit and 2 for an error
+mkdir -p "$AUDITDIR/exitcodes"
+echo 1 > "$AUDITDIR/exitcodes/a"
+"$HASHIT" -f hashdeep "$AUDITDIR/exitcodes" > "$AUDITDIR/exitcodes.txt"
+check "exit code 0 for a passed audit test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' > /dev/null; [ \$? -eq 0 ]"
+echo changed >> "$AUDITDIR/exitcodes/a"
+check "exit code 1 for a failed audit test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' > /dev/null; [ \$? -eq 1 ]"
+check "exit code 2 for an audit which could not check every file test" "'$HASHIT' -a '$AUDITDIR/exitcodes.txt' '$AUDITDIR/exitcodes' '$AUDITDIR/nope' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "exit code 2 for a missing path test" "'$HASHIT' '$AUDITDIR/nope' > /dev/null 2>&1; [ \$? -eq 2 ]"
+check "exit code 2 for an invalid option test" "'$HASHIT' --not-a-real-option > /dev/null 2>&1; [ \$? -eq 2 ]"
+
+# a failed run never destroys an existing output file
+mkdir -p "$AUDITDIR/keep"
+echo 1 > "$AUDITDIR/keep/a"
+"$HASHIT" -f sqlite -o "$AUDITDIR/keep.db" "$AUDITDIR/keep" > /dev/null
+check "overwrite keeps existing output when errors occur test" \
+    "! '$HASHIT' -f sqlite --overwrite -o '$AUDITDIR/keep.db' '$AUDITDIR/nope' > /dev/null 2>&1 && '$HASHIT' -a '$AUDITDIR/keep.db' '$AUDITDIR/keep' | grep -q 'Files matched: 1'"
+check "output same as audit file is refused test" \
+    "! '$HASHIT' -a '$AUDITDIR/keep.db' -o '$AUDITDIR/keep.db' --overwrite '$AUDITDIR/keep' > /dev/null 2>&1 && head -c 15 '$AUDITDIR/keep.db' | grep -q 'SQLite format 3'"
+check "no temporary output files left behind test" "! ls -a '$AUDITDIR' | grep -q '\.tmp\$'"
+if [ -w /dev/full ]; then
+    check "failed write to standard output exits 2 test" "'$HASHIT' -c md5 '$AUDITDIR/keep' > /dev/full 2>/dev/null; [ \$? -eq 2 ]"
+fi
+"$HASHIT" "$AUDITDIR/keep" > "$AUDITDIR/keep-text.txt"
+check "text output as an audit file is an error test" "'$HASHIT' -a '$AUDITDIR/keep-text.txt' '$AUDITDIR/keep' > /dev/null 2>&1; [ \$? -eq 2 ]"
+mkdir -p "$AUDITDIR/overlap/s"
+echo 1 > "$AUDITDIR/overlap/a"
+echo 2 > "$AUDITDIR/overlap/s/b"
+check "overlapping audit paths are counted once test" \
+    "cd '$AUDITDIR/overlap' && '$HASHIT' -f hashdeep . > ../overlap.txt && '$HASHIT' -a ../overlap.txt . s | grep -q 'Files examined: 2'"
+mkdir -p "$AUDITDIR/samename2/d"
+echo real > "$AUDITDIR/samename2/d/audit.txt"
+echo keep > "$AUDITDIR/samename2/d/keep"
+(cd "$AUDITDIR/samename2/d" && "$HASHIT" -f hashdeep -o ../audit.txt . > /dev/null && rm audit.txt)
+check "deleted file sharing the audit file name is missing test" \
+    "cd '$AUDITDIR/samename2/d' && '$HASHIT' -a ../audit.txt . | grep -q 'Files missing: 1'"
+mkdir -p "$AUDITDIR/redirect/orig"
+echo 1 > "$AUDITDIR/redirect/orig/x"
+(cd "$AUDITDIR/redirect/orig" && "$HASHIT" -f hashdeep . > manifest.txt)
+cp -r "$AUDITDIR/redirect/orig" "$AUDITDIR/redirect/copy"
+check "copied manifest written by redirect while original exists test" \
+    "cd / && '$HASHIT' -a '$AUDITDIR/redirect/copy/manifest.txt' '$AUDITDIR/redirect/copy' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/pnpm/real_nm"
+echo x > "$AUDITDIR/pnpm/real_nm/m.js"
+ln -s real_nm "$AUDITDIR/pnpm/node_modules"
+check "exclude-dir applies to symlinked directories test" \
+    "! '$HASHIT' -c md5 -f sum --exclude-dir node_modules '$AUDITDIR/pnpm' 2>/dev/null | grep -q 'node_modules/'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

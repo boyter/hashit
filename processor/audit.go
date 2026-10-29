@@ -218,7 +218,12 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// new files are usually few, so are held in memory indexed by hash to identify moves
 	var newFileCandidates []Result
 
+	seenFiles := map[string]bool{}
 	for res := range input {
+		// overlapping paths such as . and ./sub supply the same file twice
+		if isDuplicateFile(seenFiles, res.File) {
+			continue
+		}
 		examinedCount++
 
 		var record *AuditRecord
@@ -311,11 +316,11 @@ order by f.filepath`)
 			switch FileStatus(status.Int64) {
 			case FileMatched:
 				if VeryVerbose {
-					fmt.Printf("%v: Ok\n", diskFile.String)
+					fmt.Fprintf(stdout, "%v: Ok\n", diskFile.String)
 				}
 			case FileModified:
 				if Verbose {
-					fmt.Printf("%v: File modified\n", diskFile.String)
+					fmt.Fprintf(stdout, "%v: File modified\n", diskFile.String)
 				}
 			}
 			continue
@@ -331,7 +336,7 @@ order by f.filepath`)
 					foundMove = true
 					moved++
 					if Verbose {
-						fmt.Printf("%v -> %v: File moved\n", record.Filename, newFileCandidates[i].File)
+						fmt.Fprintf(stdout, "%v -> %v: File moved\n", record.Filename, newFileCandidates[i].File)
 					}
 					break
 				}
@@ -342,9 +347,9 @@ order by f.filepath`)
 			filesMissing++
 			if Verbose {
 				if unreadable[record.Filename] {
-					fmt.Printf("%v: File could not be read\n", record.Filename)
+					fmt.Fprintf(stdout, "%v: File could not be read\n", record.Filename)
 				} else {
-					fmt.Printf("%v: File expected but not found\n", record.Filename)
+					fmt.Fprintf(stdout, "%v: File expected but not found\n", record.Filename)
 				}
 			}
 		}
@@ -363,7 +368,7 @@ order by f.filepath`)
 
 	if Verbose {
 		for _, res := range sortedPaths(newFiles) {
-			fmt.Printf("%v: File new\n", res.File)
+			fmt.Fprintf(stdout, "%v: File new\n", res.File)
 		}
 	}
 

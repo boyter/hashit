@@ -136,31 +136,36 @@ Files are processed in parallel, so the order of the output may vary between run
 
 #### Paths
 
-- No path processes the current directory, unless data is piped or redirected into `hashit` from a file, in which case it hashes standard input. A single directory is always recursed.
+- No path processes the current directory, unless data is piped or redirected into `hashit` from a file, in which case it hashes standard input. A path of `-` is not standard input. A single directory is always recursed.
 - When multiple paths are supplied, directories are skipped with a warning unless `-r` is used. Audits always recurse.
-- Arguments which match an existing path are used as is, otherwise they are expanded as a wildcard, as shells such as `cmd.exe` do not do this. So `hashit '*.go'` works on any platform.
-- `--input` reads the paths to process from a file, one per line. Blank lines are ignored, and paths supplied as arguments are ignored with a warning.
-- Symbolic links to files and directories are followed as `hashdeep` does, skipping any which would create a cycle, and broken symbolic links are skipped with a warning. FIFOs, sockets and devices are skipped with a warning.
-- Hidden files are included unless `--skip-hidden` is used. `.gitignore`, `.ignore` and `.gitmodules` files are not respected unless `--gitignore`, `--ignore` or `--gitmodule` are used. `--exclude-dir` takes directory names such as `node_modules`, not paths, and `--not-match` (`-M`) takes a regular expression matched against file and directory names and can be repeated. These only apply when walking directories, not to files supplied directly.
+- Arguments which match an existing path are used as is, otherwise they are expanded as a wildcard, as shells such as `cmd.exe` do not do this. So `hashit '*.go'` works on any platform. Unlike most shells this expansion also matches hidden files.
+- `--input` reads the paths to process from a file, one per line, which are used exactly as written. Wildcards are not expanded and directories are an error even with `-r`. Empty lines and Windows line endings are allowed, and paths supplied as arguments are ignored with a warning.
+- Symbolic links to files and directories are followed as `hashdeep` does, skipping any which would create a cycle. Broken symbolic links found while walking a directory are skipped with a warning, while one supplied directly is an error. FIFOs, sockets and devices are skipped with a warning.
+- Hidden files are included unless `--skip-hidden` is used. `.gitignore`, `.ignore` and `.gitmodules` files are not respected unless `--gitignore`, `--ignore` or `--gitmodule` are used. `--exclude-dir` takes a directory name such as `node_modules`, or the end of a path such as `vendor/cache`, matched at any depth. `--not-match` (`-M`) takes a regular expression matched against file and directory names and can be repeated. These only apply when walking directories, not to files supplied directly, and for symbolic links to directories only `--exclude-dir` and `--not-match` are applied.
+- Hash names for `--hash` are not case sensitive, so `-c MD5,SHA256` works.
 
 #### Output Formats
 
-`--format` (`-f`) selects the output format. Results are written to standard output, or to a file with `--output` (`-o`), which will not replace an existing file unless `--overwrite` is used.
+`--format` (`-f`) selects the output format. Results are written to standard output, or to a file with `--output` (`-o`). The output file is written to a temporary file next to it first, and an existing file is only replaced with `--overwrite`, is never replaced when it is a directory or other special file, and is kept rather than replaced when any error occurred.
 
-- `text`, the default, shown above. `--mtime` adds an `MTime` line.
-- `json`, an array of objects using the names above, such as `[{"File":"example/a.txt","MD5":"b1946ac92492d2347c6235b4d2611184","Bytes":6}]`. Hashes which were not calculated are omitted. `--mtime` adds `MTime` in RFC 3339 format.
-- `sum`, the same as `md5sum` and similar tools, see [Auditing with sum Files](#auditing-with-sum-files).
-- `hashdeep`, see [Auditing](#auditing).
-- `hashonly`, one hash per line with nothing else. With several hashes or files there is nothing to say which hash belongs to which file, so it is best used with a single hash and file.
+- `text`, the default, shown above. `--mtime` adds an `MTime` line in local time.
+- `json`, an array of objects such as `[{"File":"example/a.txt","MD5":"b1946ac92492d2347c6235b4d2611184","Bytes":6}]`. The keys are `File`, `CRC32`, `XxHash64`, `MD4`, `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, `Blake2b256`, `Blake2b512`, `Blake3`, `Sha3224`, `Sha3256`, `Sha3384`, `Sha3512`, `ed2k` and `Bytes`. Hashes which were not calculated are omitted. `--mtime` adds `MTime` in RFC 3339 format with nanoseconds and the local time zone.
+- `sum`, the same as `md5sum` and similar tools, with one line per hash per file when several hashes are selected. `--mtime` adds a `# mtime` comment line, see [Auditing with sum Files](#auditing-with-sum-files).
+- `hashdeep`, see [Auditing](#auditing). `--mtime` adds a `## mtime` comment line, see [Modification Times](#modification-times).
+- `hashonly`, one hash per line. With several hashes or files there is nothing to say which hash belongs to which file, so it is best used with a single hash and file. `--mtime` adds the time on its own line.
 - `sqlite`, a database written to `--output`, or `hashit.db` when not supplied, see [SQLite Auditing](#sqlite-auditing-recommended-for-large-datasets).
 
-Files larger than `--stream-size` bytes are read in chunks rather than all at once. `text`, `sum` and `hashonly` output to the terminal is printed as each file is processed, unless `--no-stream` is used. `--debug`, `--trace` and `--progress` output is written to standard error.
+Files larger than `--stream-size` bytes are read in chunks rather than all at once. `text`, `sum` and `hashonly` output to standard output, rather than `--output`, is printed as each file is processed unless `--no-stream` is used. `--debug`, `--trace` and `--progress` output is written to standard error.
 
 #### Errors and Exit Codes
 
 If any file cannot be read, such as a path which does not exist or a file which lacks permissions, an error is printed, the remaining files are still processed, and `hashit` exits with a non zero code. Messages where processing continues normally, such as a skipped directory, are labelled `WARN`.
 
-`hashit` exits with `0` on success and `1` when anything could not be processed or an audit failed. A failed audit and an error both exit with `1`, so check the output to tell them apart.
+`hashit` exits with one of the following codes, so scripts can tell a failed audit apart from `hashit` being unable to do its job:
+
+- `0` everything was processed, and any audit passed.
+- `1` everything was processed, but the audit failed.
+- `2` an error was printed, such as an invalid option, a path which does not exist, a file which could not be read, or output which could not be written. This includes an audit which could not check every file.
 
 ### Ignoring Files (`.hashignore`)
 
@@ -200,7 +205,7 @@ To hash the project while respecting the ignore rules, you would run:
 $ hashit --hashignore my_project/
 ```
 
-In this case, `hashit` would process `main.go` (and the `.hashignore` file itself) but would skip `data.log` and the entire `node_modules` directory.
+In this case, `hashit` would process `main.go` (and the `.hashignore` file itself) but would skip `data.log` and the entire `node_modules` directory. A `.hashignore` file in a subdirectory applies to that subdirectory, and patterns such as `!keep.log` and `/build` work as they do in `.gitignore`.
 
 ### Auditing
 
@@ -290,7 +295,7 @@ Known files expecting: 1
 $ rm -rf /tmp/hashit-audit-test audit.txt
 ```
 
-`hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. To check that every known file is still present and unmodified, while allowing files to have been moved or renamed, use `--allow-moved`. New, missing or modified files still fail the audit.
+`hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. To check that every known file is still present and unmodified, while allowing files to have been moved or renamed, use `--allow-moved`. New, missing or modified files still fail the audit. Files are matched by path first, so a file renamed onto the path of another known file, such as two files swapping names, is reported as modified rather than moved.
 
 ```shell
 $ mv a.txt archive/a.txt
@@ -318,12 +323,14 @@ Use `-v` (`--verbose`) to list every file which is not matched, and `-vv` (`--vv
 
 Some other points worth knowing:
 
-- Only `hashdeep`, `sum` and `sqlite` files can be audited against, not `text` or `json` output.
+- Only `hashdeep`, `sum` and `sqlite` files can be audited against. A file with no lines in a supported format, such as `text` or `json` output, is an error. `--format` is ignored when auditing, and `--hash` is ignored with a warning for `hashdeep` and `sum` files, which use the hashes they contain. `--output` writes the summary to a file.
 - The audit compares the files found in the supplied paths against everything in the audit file, so auditing a subset of the files reports the rest as missing.
 - A copy of a known file, where the original is still present, is reported as new. `hashdeep` reports it as moved. Both fail the audit.
-- A file which exists but cannot be read is reported as could not be read, counted as missing, and fails the audit.
+- A file which exists but cannot be read is reported as could not be read and counted as missing, and `hashit` exits with `2` rather than `1`.
+- The same file supplied more than once, such as through `.` and `./sub`, is only counted once.
 - Modification times are recorded with `--mtime` but are not compared by an audit.
-- The audit file of an empty directory passes when audited against an empty directory.
+- The audit file of an empty directory passes when audited against an empty directory. `hashdeep` reports an error for an audit file with no files in it.
+- An audit file written by a shell redirect into the directory being hashed, such as `hashit --format hashdeep . > manifest.txt`, lists itself as an empty file. That entry is ignored when auditing, but `--output manifest.txt` avoids it entirely.
 
 #### Modification Times
 
@@ -356,7 +363,7 @@ $ hashit -a checksums.md5 .
 
 Note that `md5sum *` does not include files in subdirectories, while `hashit` audits the whole directory, so for a directory with subdirectories generate the file with something like `find . -type f -exec md5sum {} +`.
 
-The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha224`, `.sha256`, `.sha384`, `.sha512`, `.sha3-224`, `.sha3-256`, `.sha3-384`, `.sha3-512`, `.b2` or `.blake2b` (Blake2b-512 or Blake2b-256), `.b3` or `.blake3`, or `.crc32`, and otherwise by the length of the hash. Where lengths are shared the more common hash is assumed, being `md5` over `md4`, `sha256` over `sha3-256`, `blake3` and `b2sum -l 256`, and `sha512` over `sha3-512` and `b2sum`. A wrong guess reports every file as modified, so name `b2sum` files `.b2` or use `--tag` output for the others. Relative paths are resolved against both the current directory and the directory containing the sum file, so run the audit from the directory the sum file was created in, or keep the sum file at the root of the files it lists.
+The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha224`, `.sha256`, `.sha384`, `.sha512`, `.sha3-224`, `.sha3-256`, `.sha3-384`, `.sha3-512`, `.b2` or `.blake2b` (Blake2b-512 or Blake2b-256), `.b3` or `.blake3`, `.ed2k`, or `.crc32`, and otherwise by the length of the hash. Where lengths are shared the more common hash is assumed, being `md5` over `md4` and `ed2k`, `sha224` over `sha3-224`, `sha256` over `sha3-256`, `blake3` and `b2sum -l 256`, `sha384` over `sha3-384`, and `sha512` over `sha3-512` and `b2sum`. A wrong guess reports every file as modified, so name `b2sum` files `.b2` or use `--tag` output for the others. Relative paths are resolved against both the current directory and the directory containing the sum file, so run the audit from the directory the sum file was created in, or keep the sum file at the root of the files it lists.
 
 Likewise the output of `hashit --format sum` can be verified by `md5sum -c` and friends, so long as only a single hash is selected:
 
@@ -385,7 +392,7 @@ results written to audit.db
 
 This creates a file named `audit.db` containing a `file_hashes` table with each file's path, hashes and size, and a `metadata` table recording the directory `hashit` was run from. With `--mtime` the modification time is also stored in RFC 3339 format, otherwise it is `NULL`. Audits do not compare it. The database file is not included in its own results when it is inside the directory being hashed.
 
-`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database or an empty file. Every other format also refuses to replace an existing file without `--overwrite`, though with it any regular file is replaced. A directory is never replaced.
+`hashit` will not write to an existing database, as that would mix the new results with an earlier audit. Pass `--overwrite` to replace it, which is only allowed when the existing file is a SQLite database or an empty file. The new database is written to a temporary file and only replaces the existing one once finished without errors, so a mistyped path does not destroy an earlier audit. Every other format also refuses to replace an existing file without `--overwrite`, though with it any regular file is replaced. A directory is never replaced.
 
 ```shell
 $ hashit --format sqlite --output audit.db --hash all .
@@ -411,14 +418,14 @@ Known files expecting: 25
         Files missing: 0
 ```
 
-If a file is modified, the audit will fail and report the change, and `-v` lists which files changed. The audit calculates the hashes requested with `--hash`, or the defaults when not supplied, and compares each one the database also stores. To compare every stored hash use `--hash all` when auditing as well. If none of the requested hashes are in the database a warning is printed and every file is reported as modified.
+If a file is modified, the audit will fail and report the change, and `-v` lists which files changed. The audit calculates the hashes requested with `--hash`, or the defaults of `md5`, `sha1`, `sha256` and `sha512` when not supplied, and compares each one the database also stores. To compare every stored hash use `--hash all` when auditing as well. If none of the requested hashes are in the database a warning is printed and every file is reported as modified.
 
 ```shell
 # the most thorough check, calculating and comparing every hash
 $ hashit --hash all -a audit.db .
 ```
 
-The database is opened read-only and is never modified by an audit. Which files have been seen is tracked in a temporary table on disk rather than in memory, so memory use does not grow with the size of the database. The table is created in SQLite's temporary directory, which can be changed by setting `SQLITE_TMPDIR` for very large audits. Files on disk which are not in the database, being new or moved files, are held in memory until the end of the audit, so auditing a directory with many new files will use more memory. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
+The database is opened read-only and is never modified by an audit. If another tool has switched the database to WAL mode, SQLite creates `-wal` and `-shm` files next to it, so run `sqlite3 audit.db 'pragma journal_mode=delete'` first. Which files have been seen is tracked in a temporary table, which SQLite moves to a file once it outgrows its cache, so memory use does not grow with the size of the database. The table is created in SQLite's temporary directory, which can be changed by setting `SQLITE_TMPDIR` for very large audits. Files on disk which are not in the database, being new or moved files, are held in memory until the end of the audit, so auditing a directory with many new files will use more memory. The directory `hashit` was run from is stored in the database, so as with `hashdeep` files, a database of relative paths can be audited from any directory using relative or absolute paths.
 
 ```shell
 # Example of a failed audit after modifying a file
@@ -513,7 +520,7 @@ if __name__ == "__main__":
 While `hashit` aims for compatibility, there are some minor differences in the command-line interface:
 
 *   **Audit Flag:** `hashdeep` uses two flags to start an audit (`-a -k <file>`), whereas `hashit` uses a single flag that takes the audit file as its argument (`-a <file>`).
-*   **Matching Modes:** `hashdeep` has matching modes, `-m` and `-x` to list files which do or do not match known hashes, and `-M` and `-X` to also display their hashes. `hashit` does not currently have an equivalent.
+*   **Matching Modes:** `hashdeep` has matching modes, `-m` and `-x` to list files which do or do not match known hashes, and `-M` and `-X` to also display their hashes. `hashit` does not currently have an equivalent, and `-M` in `hashit` is `--not-match`, which excludes files by name.
 *   **Modified Files:** `hashdeep` matches on hashes alone, so a modified file is reported as both a new file and a known file not found. `hashit` matches on path first and reports it as modified.
 *   **Paths:** `hashit` outputs relative paths by default, the same as `hashdeep -l`, see [Absolute Paths](#absolute-paths). A single directory is recursed without needing `-r`.
 *   **Audit File:** `hashit` skips the audit file when it is inside the directory being audited, and resolves relative paths against the directory containing it, see [Paths in Audit Files](#paths-in-audit-files).

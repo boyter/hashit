@@ -42,6 +42,9 @@ var Recursive = false
 // Do not print out results as they are processed
 var NoStream = false
 
+// HashSupplied is set when --hash was supplied rather than left as the default
+var HashSupplied = false
+
 // Overwrite allows output to replace an existing file
 var Overwrite = false
 
@@ -205,7 +208,7 @@ func Process() {
 
 	if err := validateOptions(); err != nil {
 		printError(err.Error())
-		os.Exit(1)
+		os.Exit(ExitError)
 	}
 
 	if AllowMoved && AuditFile == "" {
@@ -219,7 +222,7 @@ func Process() {
 			stored, err := sqliteAuditHashes(AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to read audit database %s: %s", AuditFile, err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 			sqliteCompareHashes = nil
 			for _, h := range stored {
@@ -234,17 +237,20 @@ func Process() {
 			file, err := os.ReadFile(AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to read audit file: %s", err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 
 			auditor, err = NewAuditor(string(file), AuditFile)
 			if err != nil {
 				printError(fmt.Sprintf("unable to parse audit file %s: %s", AuditFile, err.Error()))
-				os.Exit(1)
+				os.Exit(ExitError)
 			}
 			// the audit file cannot contain its own hash, so never process or expect it
 			auditor.Exclude(AuditFile)
 			if len(auditor.HashNames()) != 0 {
+				if HashSupplied {
+					printWarn("--hash is ignored when auditing a hashdeep or sum file, the hashes it contains are used")
+				}
 				Hash = auditor.HashNames()
 			}
 		}
@@ -261,8 +267,13 @@ func Process() {
 	if FileOutput != "" {
 		if err := prepareOutput(FileOutput, sqliteOutput); err != nil {
 			printError(err.Error())
-			os.Exit(1)
+			os.Exit(ExitError)
 		}
+		if err := createOutputTemp(); err != nil {
+			printError(err.Error())
+			os.Exit(ExitError)
+		}
+		addSkipFile(outputTemp)
 	}
 
 	// The output file is being written while we process, so its hash is meaningless
@@ -285,6 +296,9 @@ func Process() {
 	if StandardInput {
 		if MTime {
 			printWarn("cannot use --mtime option with standard input, ignoring flag")
+		}
+		if Progress {
+			printWarn("cannot use --progress option with standard input, ignoring flag")
 		}
 		go processStandardInput(fileSummaryQueue)
 	} else {
@@ -336,7 +350,7 @@ func Process() {
 				file, err := os.Open(FileInput)
 				if err != nil {
 					printError(fmt.Sprintf("failed to open input file: %s, %s", FileInput, err.Error()))
-					os.Exit(1)
+					exit(ExitError)
 				}
 				defer file.Close()
 
@@ -361,7 +375,7 @@ func Process() {
 				// Check for errors during scanning
 				if err := scanner.Err(); err != nil {
 					printError(fmt.Sprintf("error reading input file: %s, %s", FileInput, err.Error()))
-					os.Exit(1)
+					exit(ExitError)
 				}
 			}()
 		}
@@ -390,28 +404,28 @@ func Process() {
 
 	result, valid := fileSummarize(fileSummaryQueue)
 
-	// any file which could not be processed means the output is incomplete
-	if fileErrors.Load() {
-		valid = false
-	}
-
 	if FileOutput == "" {
-		fmt.Print(result)
-		if !valid {
-			os.Exit(1)
-		}
+		fmt.Fprint(stdout, result)
 	} else {
-		// we don't write out sqlite as it is written as we go
+		// sqlite has already been written to the temporary file as it went
+		written := true
 		if !sqliteOutput {
-			if err := os.WriteFile(FileOutput, []byte(result), 0600); err != nil {
+			if err := os.WriteFile(outputTemp, []byte(result), 0600); err != nil {
 				printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
-				os.Exit(1)
+				written = false
 			}
 		}
-		fmt.Println("results written to " + FileOutput)
-		if !valid {
-			os.Exit(1)
+		if written && finishOutput() {
+			fmt.Fprintln(stdout, "results written to "+FileOutput)
 		}
+	}
+
+	if stdout.err != nil {
+		printError(fmt.Sprintf("unable to write output: %s", stdout.err.Error()))
+	}
+
+	if code := exitCode(valid); code != ExitOK {
+		exit(code)
 	}
 }
 
@@ -437,6 +451,13 @@ func validateOptions() error {
 	for _, exclude := range Exclude {
 		if _, err := regexp.Compile(exclude); err != nil {
 			return fmt.Errorf("invalid --not-match regular expression %q: %s", exclude, err.Error())
+		}
+	}
+
+	// writing the report over the audit file would destroy it
+	if FileOutput != "" && AuditFile != "" {
+		if a, b := realPath(FileOutput), realPath(AuditFile); a != "" && a == b {
+			return fmt.Errorf("--output %s is the same file as --audit, refusing to overwrite it", FileOutput)
 		}
 	}
 
@@ -477,12 +498,60 @@ func prepareOutput(path string, sqlite bool) error {
 		return fmt.Errorf("output file %s is not a SQLite database, refusing to replace it", path)
 	}
 
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("unable to remove existing output file %s: %s", path+suffix, err.Error())
-		}
-	}
 	return nil
+}
+
+// outputTemp is the temporary file results are written to, which replaces FileOutput once
+// processing has finished, so an existing file is never lost to a run which fails part way
+var outputTemp = ""
+
+// createOutputTemp creates the temporary output file next to FileOutput, which also confirms
+// the directory can be written to before doing any work
+func createOutputTemp() error {
+	f, err := os.CreateTemp(filepath.Dir(FileOutput), "."+filepath.Base(FileOutput)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
+	}
+	outputTemp = f.Name()
+	return f.Close()
+}
+
+// exit removes any temporary output before exiting
+func exit(code int) {
+	if outputTemp != "" {
+		removeSqliteFiles(outputTemp)
+	}
+	os.Exit(code)
+}
+
+func removeSqliteFiles(path string) {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		_ = os.Remove(path + suffix)
+	}
+}
+
+// finishOutput moves the temporary output into place. An existing file is only replaced when no
+// errors occurred, so a mistyped path or unreadable file never destroys an earlier result
+func finishOutput() bool {
+	if _, err := os.Lstat(FileOutput); err == nil && errorOccurred.Load() {
+		printError(fmt.Sprintf("not replacing existing output file %s as errors occurred, the new results were discarded", FileOutput))
+		removeSqliteFiles(outputTemp)
+		outputTemp = ""
+		return false
+	}
+
+	// sidecar files left by a previous database must not be applied to the new one
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		_ = os.Remove(FileOutput + suffix)
+	}
+	if err := os.Rename(outputTemp, FileOutput); err != nil {
+		printError(fmt.Sprintf("unable to write output file %s: %s", FileOutput, err.Error()))
+		removeSqliteFiles(outputTemp)
+		outputTemp = ""
+		return false
+	}
+	outputTemp = ""
+	return true
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

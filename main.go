@@ -48,6 +48,7 @@ func main() {
 				processor.VeryVerbose = true
 			}
 
+			processor.HashSupplied = cmd.Flags().Changed("hash")
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
@@ -222,7 +223,8 @@ func main() {
 		"ignore files and directories whose name matches regular expression when walking directories",
 	)
 
+	// an invalid flag or argument is an error the same as any other
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(processor.ExitError)
 	}
 }

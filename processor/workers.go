@@ -14,7 +14,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -58,7 +57,7 @@ func fileProcessorWorker(input chan string, output chan Result) {
 		fi, err := os.Stat(res)
 		if err != nil {
 			// a symlink which points nowhere has no content to hash, hashdeep ignores these
-			if lfi, lerr := os.Lstat(res); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+			if lfi, lerr := os.Lstat(res); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 && os.IsNotExist(err) {
 				printWarn(fmt.Sprintf("Skipping %s as it is a symlink to something which does not exist", res))
 				continue
 			}
@@ -742,7 +741,8 @@ func processStandardInput(output chan Result) {
 				break
 			}
 
-			log.Fatal(err)
+			printError(fmt.Sprintf("reading standard input: %s", err.Error()))
+			exit(ExitError)
 		}
 
 		nChunks++
@@ -806,7 +806,8 @@ func processStandardInput(output chan Result) {
 		}
 
 		if err != nil && err != io.EOF {
-			log.Fatal(err)
+			printError(fmt.Sprintf("reading standard input: %s", err.Error()))
+			exit(ExitError)
 		}
 	}
 
