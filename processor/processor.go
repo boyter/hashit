@@ -49,6 +49,9 @@ var NoStream = false
 // HashSupplied is set when --hash was supplied rather than left as the default
 var HashSupplied = false
 
+// FormatSupplied is set when --format was supplied rather than left as the default
+var FormatSupplied = false
+
 // Overwrite allows output to replace an existing file
 var Overwrite = false
 
@@ -90,18 +93,28 @@ var sqliteCompareHashes []string
 var skipFiles = map[string]bool{}
 
 // addSkipFile adds a file to skipFiles, along with the files SQLite creates alongside a database
-func addSkipFile(path string) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return
-	}
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		skipFiles[abs+suffix] = true
+func addSkipFile(path string, byIdentity bool) {
+	// by path, and by real path so SQLite's -wal and -shm files are skipped when reached through
+	// a symlinked path, as they may not exist yet to compare by identity
+	for _, p := range []string{path, realPath(path)} {
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			skipFiles[abs+suffix] = true
+		}
 	}
 
-	// also match by identity, so the file is skipped when reached through a symlinked path
-	if fi, err := os.Stat(path); err == nil {
-		skipFileInfos = append(skipFileInfos, fi)
+	// also match by identity, so the file is skipped when reached through a symlinked path. This
+	// is not used for an existing output file, as another hard link to it is ordinary data
+	if byIdentity {
+		if fi, err := os.Stat(path); err == nil {
+			skipFileInfos = append(skipFileInfos, fi)
+		}
 	}
 }
 
@@ -124,7 +137,19 @@ func shouldSkipFile(path string) bool {
 		return false
 	}
 	abs, err := filepath.Abs(path)
-	return err == nil && skipFiles[abs]
+	if err == nil && skipFiles[abs] {
+		return true
+	}
+
+	// SQLite sidecar files reached through a symlinked path are matched by their real path
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		if strings.HasSuffix(path, suffix) {
+			if real := realPath(path); real != "" && skipFiles[real] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DirFilePaths is not set via flags but by arguments following the flags for file or directory to process
@@ -237,6 +262,10 @@ func Process() {
 		os.Exit(ExitError)
 	}
 
+	if FormatSupplied && AuditFile != "" {
+		printWarn("--format is ignored when auditing")
+	}
+
 	if AllowMoved && AuditFile == "" {
 		printWarn("--allow-moved only applies when auditing with --audit, ignoring flag")
 	}
@@ -280,7 +309,7 @@ func Process() {
 				Hash = auditor.HashNames()
 			}
 		}
-		addSkipFile(AuditFile)
+		addSkipFile(AuditFile, true)
 	}
 
 	// The sqlite format writes to the database as we go, so default the name up front
@@ -300,13 +329,13 @@ func Process() {
 			os.Exit(ExitError)
 		}
 		removeOutputTempOnSignal()
-		addSkipFile(outputTemp)
-		addSkipFile(outputTarget)
+		addSkipFile(outputTemp, true)
+		addSkipFile(outputTarget, false)
 	}
 
 	// The output file is being written while we process, so its hash is meaningless
 	if FileOutput != "" {
-		addSkipFile(FileOutput)
+		addSkipFile(FileOutput, false)
 	}
 
 	// If format is set to hashdeep
@@ -505,11 +534,24 @@ func validateOptions() error {
 // prepareOutput refuses to write over an existing file unless overwrite has been allowed. An
 // existing sqlite database is removed, as writing into it would merge with the previous results
 func prepareOutput(path string, sqlite bool) error {
-	if _, err := os.Lstat(path); err != nil {
+	lfi, err := os.Lstat(path)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("unable to check output file %s: %s", path, err.Error())
+	}
+
+	fi, statErr := os.Stat(path)
+	if lfi.Mode()&os.ModeSymlink != 0 && statErr != nil {
+		if !os.IsNotExist(statErr) {
+			// such as a symlink loop, which can never be written through
+			return fmt.Errorf("output file %s is a symlink which cannot be followed, refusing to replace it: %s", path, statErr.Error())
+		}
+		if !Overwrite {
+			return fmt.Errorf("output file %s is a symlink to a file which does not exist, use --overwrite to create it", path)
+		}
+		return nil
 	}
 
 	if !Overwrite {
@@ -517,7 +559,7 @@ func prepareOutput(path string, sqlite bool) error {
 	}
 
 	// never replace a directory or anything else which is not a regular file
-	if fi, err := os.Stat(path); err == nil && !fi.Mode().IsRegular() {
+	if statErr == nil && !fi.Mode().IsRegular() {
 		return fmt.Errorf("output file %s is not a regular file, refusing to replace it", path)
 	}
 
@@ -536,6 +578,24 @@ func prepareOutput(path string, sqlite bool) error {
 // outputTemp is the temporary file results are written to, which replaces FileOutput once
 // processing has finished, so an existing file is never lost to a run which fails part way
 var outputTemp = ""
+
+// outputMode is the permissions of the file being replaced, or 0 for a new file
+var outputMode os.FileMode
+
+// outputTempMu guards outputTemp, which the signal handler reads
+var outputTempMu sync.Mutex
+
+func outputTempName() string {
+	outputTempMu.Lock()
+	defer outputTempMu.Unlock()
+	return outputTemp
+}
+
+func setOutputTemp(path string) {
+	outputTempMu.Lock()
+	outputTemp = path
+	outputTempMu.Unlock()
+}
 
 // outputTarget is the file actually replaced, being FileOutput or what it links to, so a symlinked
 // output path keeps the link and updates the file it points at
@@ -580,10 +640,13 @@ func createOutputTemp() error {
 	if err != nil {
 		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
 	}
-	outputTemp = f.Name()
+	setOutputTemp(f.Name())
 
+	// the permissions of an existing file are applied just before it is replaced, as applying a
+	// read only mode now would stop the results being written
+	outputMode = 0
 	if fi, err := os.Stat(outputTarget); err == nil {
-		_ = f.Chmod(fi.Mode().Perm())
+		outputMode = fi.Mode().Perm()
 	}
 	return f.Close()
 }
@@ -592,12 +655,18 @@ func createOutputTemp() error {
 // left behind and hashed by later runs
 func removeOutputTempOnSignal() {
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 	go func() {
 		sig := <-signals
+		// the conventional 128 plus the signal number
 		code := 130
-		if sig == syscall.SIGTERM {
+		switch sig {
+		case syscall.SIGTERM:
 			code = 143
+		case syscall.SIGHUP:
+			code = 129
+		case syscall.SIGQUIT:
+			code = 131
 		}
 		exit(code)
 	}()
@@ -605,9 +674,11 @@ func removeOutputTempOnSignal() {
 
 // exit removes any temporary output before exiting
 func exit(code int) {
+	outputTempMu.Lock()
 	if outputTemp != "" {
 		removeSqliteFiles(outputTemp)
 	}
+	outputTempMu.Unlock()
 	os.Exit(code)
 }
 
@@ -621,11 +692,18 @@ func removeSqliteFiles(path string) {
 // errors occurred, so a mistyped path or unreadable file never destroys an earlier result. The
 // replacement is a new file, so any other hard links to the old file keep the old content
 func finishOutput() bool {
+	outputTempMu.Lock()
+	defer outputTempMu.Unlock()
+
 	if _, err := os.Lstat(outputTarget); err == nil && errorOccurred.Load() {
 		printError(fmt.Sprintf("not replacing existing output file %s as errors occurred, the new results were discarded", FileOutput))
 		removeSqliteFiles(outputTemp)
 		outputTemp = ""
 		return false
+	}
+
+	if outputMode != 0 {
+		_ = os.Chmod(outputTemp, outputMode)
 	}
 
 	// sidecar files left by a previous database must not be applied to the new one

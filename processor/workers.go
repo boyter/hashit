@@ -59,6 +59,9 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 		}
 
 		if shouldSkipFile(res) {
+			if job.explicit {
+				printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", res))
+			}
 			continue
 		}
 
@@ -77,7 +80,10 @@ func fileProcessorWorker(input chan fileJob, output chan Result) {
 
 		// SQLite creates -wal and -shm files next to the temporary output while writing, which may
 		// be reached through a symlinked path, so match those by name
-		if isSkippedFileInfo(fi) || (outputTemp != "" && strings.HasPrefix(filepath.Base(res), filepath.Base(outputTemp))) {
+		if temp := outputTempName(); isSkippedFileInfo(fi) || (temp != "" && strings.HasPrefix(filepath.Base(res), filepath.Base(temp))) {
+			if job.explicit {
+				printWarn(fmt.Sprintf("Skipping %s as it is the audit or output file", res))
+			}
 			continue
 		}
 

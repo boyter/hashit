@@ -46,8 +46,7 @@ func connectSqliteDbReadOnly(pathName string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: "mode=ro"}
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqliteFileURI(abs, "mode=ro"))
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +59,18 @@ func connectSqliteDbReadOnly(pathName string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// sqliteFileURI builds a file URI for SQLite, so a path containing ? or # is not taken as the
+// start of parameters. Windows paths such as C:/x.db need a leading slash, as otherwise the drive
+// would be read as the host
+func sqliteFileURI(abs string, query string) string {
+	path := filepath.ToSlash(abs)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	u := url.URL{Scheme: "file", Path: path, RawQuery: query}
+	return u.String()
 }
 
 // fileHashToRecord converts a database row into an AuditRecord so it can be compared
@@ -155,7 +166,7 @@ func sqlitePathCandidates(file string, invokedFrom string) []string {
 	// hashit was run, so try both
 	addRelative := func(p string) {
 		add(p)
-		if !filepath.IsAbs(p) && !strings.HasPrefix(p, "..") {
+		if !filepath.IsAbs(p) && !escapesDir(p) {
 			add("." + string(filepath.Separator) + p)
 		}
 	}
@@ -170,7 +181,7 @@ func sqlitePathCandidates(file string, invokedFrom string) []string {
 	}
 
 	if invokedFrom != "" {
-		if rel, err := filepath.Rel(invokedFrom, abs); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(invokedFrom, abs); err == nil && !escapesDir(rel) {
 			addRelative(rel)
 		}
 	}
@@ -255,13 +266,23 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		status := FileModified
 		if recordMatches(record, res) {
 			status = FileMatched
+		}
+
+		// a record already claimed by another file on disk is not counted twice, and the second
+		// file is treated as new
+		result, err := insertSeen.ExecContext(ctx, record.Filename, int(status), res.File)
+		if err != nil {
+			printError(fmt.Sprintf("failed to record audit result for file %s: %s", res.File, err.Error()))
+			continue
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			newFileCandidates = append(newFileCandidates, res)
+			continue
+		}
+		if status == FileMatched {
 			matched++
 		} else {
 			filesModified++
-		}
-
-		if _, err := insertSeen.ExecContext(ctx, record.Filename, int(status), res.File); err != nil {
-			printError(fmt.Sprintf("failed to record audit result for file %s: %s", res.File, err.Error()))
 		}
 	}
 

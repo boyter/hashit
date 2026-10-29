@@ -77,3 +77,24 @@ func TestAuditFailed(t *testing.T) {
 		}
 	}
 }
+
+func TestSqliteFileURI(t *testing.T) {
+	cases := map[string]string{
+		"/tmp/x.db":     "file:///tmp/x.db?mode=ro",
+		"/tmp/x?y#z.db": "file:///tmp/x%3Fy%23z.db?mode=ro",
+		"C:/data/x.db":  "file:///C:/data/x.db?mode=ro",
+	}
+	for abs, want := range cases {
+		if got := sqliteFileURI(abs, "mode=ro"); got != want {
+			t.Errorf("%s: expected %s got %s", abs, want, got)
+		}
+	}
+}
+
+func TestEscapesDir(t *testing.T) {
+	for rel, want := range map[string]bool{"..": true, "../a": true, "..notes": false, "..cfg/x": false, "a/..b": false} {
+		if got := escapesDir(rel); got != want {
+			t.Errorf("%q: expected %v got %v", rel, want, got)
+		}
+	}
+}

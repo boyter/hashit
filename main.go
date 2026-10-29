@@ -49,6 +49,7 @@ func main() {
 			}
 
 			processor.HashSupplied = cmd.Flags().Changed("hash")
+			processor.FormatSupplied = cmd.Flags().Changed("format")
 			processor.DirFilePaths = filePaths
 			processor.Process()
 		},
@@ -201,7 +202,7 @@ func main() {
 		&processor.PathDenyList,
 		"exclude-dir",
 		[]string{},
-		"names of directories to exclude when walking directories",
+		"directories to exclude when walking directories, by name such as node_modules or the end of a path such as vendor/cache",
 	)
 	flags.BoolVar(
 		&processor.Ignore,

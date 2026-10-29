@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -226,6 +225,16 @@ func doAudit(input chan Result) (string, bool) {
 	outcomes := map[*AuditRecord]outcome{}
 	var newFileCandidates []Result
 
+	// Two files on disk can resolve to the same record, so decide which claims it once every file
+	// has arrived, so the result does not depend on the order files were processed in. A file
+	// matching the record's own path wins over one matching through another directory, then the
+	// first path in sort order
+	type claim struct {
+		res     Result
+		primary bool
+	}
+	claims := map[*AuditRecord]claim{}
+
 	seen := map[string]bool{}
 	for res := range input {
 		// overlapping paths such as . and ./sub supply the same file twice
@@ -233,19 +242,34 @@ func doAudit(input chan Result) (string, bool) {
 			continue
 		}
 		examinedCount++
-		r, status := auditor.Find(res)
 
-		switch status {
-		case FileMatched:
-			matched++
-			outcomes[r] = outcome{status: status, file: res.File}
-		case FileModified:
-			filesModified++
-			outcomes[r] = outcome{status: status, file: res.File}
-		case FileNew:
+		r, primary := auditor.LookupPrimary(res.File)
+		if r == nil {
 			newFileCandidates = append(newFileCandidates, res)
-		default:
-			panic("unhandled default case")
+			continue
+		}
+
+		existing, ok := claims[r]
+		if !ok {
+			claims[r] = claim{res: res, primary: primary}
+			continue
+		}
+		if primary != existing.primary && primary || primary == existing.primary && res.File < existing.res.File {
+			claims[r] = claim{res: res, primary: primary}
+			newFileCandidates = append(newFileCandidates, existing.res)
+		} else {
+			newFileCandidates = append(newFileCandidates, res)
+		}
+	}
+
+	for r, c := range claims {
+		r.Matched = true
+		if recordMatches(r, c.res) {
+			matched++
+			outcomes[r] = outcome{status: FileMatched, file: c.res.File}
+		} else {
+			filesModified++
+			outcomes[r] = outcome{status: FileModified, file: c.res.File}
 		}
 	}
 
@@ -786,8 +810,7 @@ func connectSqliteDb(pathName string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: "_pragma=busy_timeout(5000)"}
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqliteFileURI(abs, "_pragma=busy_timeout(5000)"))
 	if err != nil {
 		return nil, err
 	}

@@ -162,10 +162,6 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if abs, err := filepath.Abs(filepath.Dir(auditFilename)); err == nil {
 		hdl.baseDirs = append(hdl.baseDirs, abs)
 	}
-	// and the working directory, so a path supplied as absolute matches as well as a relative one
-	if wd, err := os.Getwd(); err == nil {
-		hdl.baseDirs = append(hdl.baseDirs, wd)
-	}
 	hdl.removeDuplicates()
 	if err != nil {
 		return nil, err
@@ -207,7 +203,7 @@ func (hdl *Auditor) Records() []*AuditRecord {
 
 // Lookup finds the record for a file on disk using its path, returning nil if not found
 func (hdl *Auditor) Lookup(file string) *AuditRecord {
-	for _, k := range pathKeys(file, "") {
+	for _, k := range lookupKeys(file) {
 		if r, ok := hdl.pathLookup[k]; ok {
 			return r
 		}
@@ -215,10 +211,48 @@ func (hdl *Auditor) Lookup(file string) *AuditRecord {
 	return nil
 }
 
+// LookupPrimary finds the record for a file on disk, and reports whether the file matched the
+// record's own path rather than through another directory such as the audit file's
+func (hdl *Auditor) LookupPrimary(file string) (*AuditRecord, bool) {
+	r := hdl.Lookup(file)
+	if r == nil {
+		return nil, false
+	}
+	keys := pathKeys(r.Filename, hdl.primaryBase)
+	for _, k := range lookupKeys(file) {
+		if contains(keys, k) {
+			return r, true
+		}
+	}
+	return r, false
+}
+
+// lookupKeys returns the keys a file on disk is looked up by. An absolute path inside the working
+// directory is also tried relative to it, so auditing by absolute path matches as auditing by
+// relative path does, without resolving records against the working directory
+func lookupKeys(file string) []string {
+	keys := pathKeys(file, "")
+	if filepath.IsAbs(file) {
+		if wd, err := os.Getwd(); err == nil {
+			if rel, err := filepath.Rel(wd, file); err == nil && !escapesDir(rel) {
+				keys = append(keys, filepath.Clean(rel))
+			}
+		}
+	}
+	return keys
+}
+
+// escapesDir reports if a relative path leads outside the directory it is relative to
+func escapesDir(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // Find checks a file on disk against the audit records by path and marks the record as seen
 func (hdl *Auditor) Find(res Result) (*AuditRecord, FileStatus) {
 	r := hdl.Lookup(res.File)
-	if r == nil {
+	// a record already claimed by another file on disk, such as when two paths resolve to the
+	// same record, is not counted twice, and the second file is treated as new
+	if r == nil || r.Matched {
 		return nil, FileNew
 	}
 
@@ -389,7 +423,10 @@ func (hdl *Auditor) removeDuplicates() {
 	seen := map[string]bool{}
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		key := filepath.Clean(r.Filename)
+		// compare the resolved path, so the same file listed by relative and absolute path is a
+		// duplicate too
+		keys := pathKeys(r.Filename, hdl.primaryBase)
+		key := keys[len(keys)-1]
 		if seen[key] {
 			continue
 		}
@@ -432,10 +469,20 @@ func (hdl *Auditor) addRecord(r *AuditRecord) {
 }
 
 func (hdl *Auditor) buildLookups() {
+	// Each record's own resolution, against the directory paths were created relative to, takes
+	// priority over any other resolution, as otherwise a record resolved through the audit file's
+	// directory can claim the path of a different record. Within each pass the first record wins
+	for _, r := range hdl.records {
+		for _, k := range pathKeys(r.Filename, hdl.primaryBase) {
+			if _, ok := hdl.pathLookup[k]; !ok {
+				hdl.pathLookup[k] = r
+			}
+		}
+	}
+
 	seen := map[string]bool{}
 	for _, r := range hdl.records {
 		for _, k := range hdl.recordKeys(r) {
-			// first record wins where the same file appears more than once
 			if _, ok := hdl.pathLookup[k]; !ok {
 				hdl.pathLookup[k] = r
 			}
@@ -575,6 +622,7 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 
 	extHashes := sumExtensions[strings.ToLower(filepath.Ext(auditFilename))]
 	byFile := map[string]*AuditRecord{}
+	duplicateSumLines := 0
 	improper := 0
 
 	for scanner.Scan() {
@@ -602,11 +650,21 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 			byFile[filename] = r
 			hdl.addRecord(r)
 		}
+		// the same path listed again with a different value of the same hash keeps the first, the
+		// same as a path listed twice in a hashdeep file
+		if existing, ok := r.Hashes[name]; ok && existing != value {
+			duplicateSumLines++
+			continue
+		}
 		r.Hashes[name] = value
 	}
 
 	if err := scanner.Err(); err != nil {
 		return err
+	}
+
+	if duplicateSumLines != 0 {
+		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", duplicateSumLines))
 	}
 
 	if improper != 0 {
