@@ -866,6 +866,52 @@ echo a > "$AUDITDIR/r6/dupsum/a"
 check "sum file listing a path twice uses the first test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Audit passed'"
 check "format with audit warns test" "'$HASHIT' -f json -a '$AUDITDIR/r6/empty.txt' '$AUDITDIR/r6/empty' 2>&1 >/dev/null | grep -q 'format is ignored'"
 
+# round 7
+mkdir -p "$AUDITDIR/r7/t/deep" "$AUDITDIR/r7/in"
+echo x > "$AUDITDIR/r7/in/x"
+ln -s t/deep "$AUDITDIR/r7/tdl"
+echo precious > "$AUDITDIR/r7/real2"
+echo old > "$AUDITDIR/r7/t/real2"
+ln -s tdl/../real2 "$AUDITDIR/r7/lnk2"
+"$HASHIT" -c md5 -f sum -o "$AUDITDIR/r7/lnk2" --overwrite "$AUDITDIR/r7/in" > /dev/null
+check "symlinked output through a symlinked directory replaces the right file test" \
+    "grep -q precious '$AUDITDIR/r7/real2' && grep -q 'in/x' '$AUDITDIR/r7/t/real2'"
+mkdir -p "$AUDITDIR/r7/c/sub"
+echo A > "$AUDITDIR/r7/c/x"
+echo B > "$AUDITDIR/r7/c/sub/x"
+(cd "$AUDITDIR/r7/c" && "$HASHIT" -f hashdeep -o ../cm.txt . > /dev/null && "$HASHIT" -f sqlite -o ../cm.db . > /dev/null)
+for AUDITFILE in cm.txt cm.db; do
+    check "audit from a subdirectory matches the right record $AUDITFILE test" \
+        "cd '$AUDITDIR/r7/c/sub' && '$HASHIT' -v -a ../../$AUDITFILE . | grep -q 'x: File expected but not found' && ! '$HASHIT' -v -a ../../$AUDITFILE . | grep -q 'File modified'"
+    check "overlapping audit paths pass $AUDITFILE test" "cd '$AUDITDIR/r7/c/sub' && '$HASHIT' -a ../../$AUDITFILE . .. | grep -q 'Audit passed'"
+done
+(cd "$AUDITDIR/r7/in" && sha1sum x > ../x.sha1)
+check "hashdeep format with a sha1 audit file test" "cd '$AUDITDIR/r7/in' && '$HASHIT' -f hashdeep -a ../x.sha1 . 2>/dev/null | grep -q 'Audit passed'"
+echo OLD > "$AUDITDIR/r7/in/out.txt"
+ln -s out.txt "$AUDITDIR/r7/in/lnk"
+(cd "$AUDITDIR/r7/in" && "$HASHIT" -c md5 -f sum -o out.txt --overwrite . > /dev/null)
+check "symlink to the output file is not hashed test" "! grep -q 'lnk' '$AUDITDIR/r7/in/out.txt'"
+echo keep > "$AUDITDIR/r7/doc.txt"
+check "output supplied as input is an error and kept test" "! '$HASHIT' -o '$AUDITDIR/r7/doc.txt' --overwrite '$AUDITDIR/r7/doc.txt' > /dev/null 2>&1 && grep -q keep '$AUDITDIR/r7/doc.txt'"
+echo o > "$AUDITDIR/r7/m0" && chmod 000 "$AUDITDIR/r7/m0"
+"$HASHIT" -o "$AUDITDIR/r7/m0" --overwrite "$AUDITDIR/r7/x.sha1" > /dev/null
+check "output with mode 000 keeps it test" "[ \"\$(stat -c '%a' '$AUDITDIR/r7/m0')\" == '0' ]"
+chmod 644 "$AUDITDIR/r7/m0"
+mkdir -p "$AUDITDIR/r7/loop"
+echo 1 > "$AUDITDIR/r7/loop/f"
+ln -s self "$AUDITDIR/r7/loop/self"
+check "symlink loop found while walking is a warning test" "'$HASHIT' '$AUDITDIR/r7/loop' > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r7/big"
+for i in $(seq 1 300); do echo $i > "$AUDITDIR/r7/big/$i"; done
+"$HASHIT" -o "$AUDITDIR/r7/piped.txt" --debug --threads 1 "$AUDITDIR/r7/big" 2>&1 | head -c 10 > /dev/null
+check "broken pipe leaves no temporary file test" "! ls -a '$AUDITDIR/r7' | grep -q 'hashit.tmp'"
+mkdir -p "$AUDITDIR/r7/mv"
+echo same > "$AUDITDIR/r7/mv/a"
+(cd "$AUDITDIR/r7/mv" && "$HASHIT" -f hashdeep . > ../mv.txt)
+rm "$AUDITDIR/r7/mv/a"
+for n in 1 2 3 4; do mkdir -p "$AUDITDIR/r7/mv/d$n" && echo same > "$AUDITDIR/r7/mv/d$n/copy"; done
+check "moved target is the first in path order test" "cd '$AUDITDIR/r7/mv' && '$HASHIT' -v --allow-moved -a ../mv.txt . | grep -q 'd1/copy: File moved'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
