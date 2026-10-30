@@ -867,7 +867,7 @@ check "two files matching one record are not both counted test" \
 mkdir -p "$AUDITDIR/r6/dupsum"
 echo a > "$AUDITDIR/r6/dupsum/a"
 (cd "$AUDITDIR/r6/dupsum" && md5sum a > ../dupsum.md5 && echo "00000000000000000000000000000000  a" >> ../dupsum.md5)
-check "sum file listing a path twice uses the first test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Audit passed'"
+check "sum file listing a path twice with different hashes is modified test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Files modified: 1' && ! md5sum -c ../dupsum.md5 > /dev/null 2>&1"
 check "format with audit warns test" "'$HASHIT' -f json -a '$AUDITDIR/r6/empty.txt' '$AUDITDIR/r6/empty' 2>&1 >/dev/null | grep -q 'format is ignored'"
 
 # round 7
@@ -1010,6 +1010,28 @@ mkdir -p "$AUDITDIR/r10/cr"
 echo 1 > "$AUDITDIR/r10/cr/$(printf 'cr\r')"
 (cd "$AUDITDIR/r10" && "$HASHIT" -f hashdeep cr > cr.hd)
 check "hashdeep filename ending in a carriage return test" "cd '$AUDITDIR/r10' && '$HASHIT' -a cr.hd cr | grep -q 'Audit passed' && sed 's/\$/\r/' cr.hd > crlf.hd && '$HASHIT' -a crlf.hd cr | grep -q 'Audit passed'"
+
+# round 11
+mkdir -p "$AUDITDIR/r11/FP/real/d" "$AUDITDIR/r11/FP/d" "$AUDITDIR/r11/m"
+printf a > "$AUDITDIR/r11/FP/real/d/a"
+printf a > "$AUDITDIR/r11/FP/d/a"
+ln -s real/d "$AUDITDIR/r11/FP/link"
+(cd "$AUDITDIR/r11/FP" && "$HASHIT" -f hashdeep -o ../m/d.hd d > /dev/null && "$HASHIT" -f sqlite -o ../m/d.db d > /dev/null)
+printf changed > "$AUDITDIR/r11/FP/d/a"
+check ".. from a symlinked working directory audits the directory read test" "cd '$AUDITDIR/r11/FP/link' && ! '$HASHIT' -a ../../m/d.hd ../d > /dev/null && ! '$HASHIT' -a ../../m/d.db ../d > /dev/null"
+check "--absolute with .. from a symlinked working directory test" "cd '$AUDITDIR/r11/FP/link' && '$HASHIT' --absolute -f sum -c md5 ../d | grep -q '/r11/FP/real/d/a\$'"
+mkdir -p "$AUDITDIR/r11/t" "$AUDITDIR/r11/other/x"
+echo a > "$AUDITDIR/r11/t/a"
+echo o > "$AUDITDIR/r11/other/o"
+ln -s ../other/x "$AUDITDIR/r11/t/sl"
+check "a symlink followed by .. hashes the directory the operating system reads test" "cd '$AUDITDIR/r11' && '$HASHIT' -f sum -c md5 t/sl/.. | grep -q 'other/o\$'"
+mkdir -p "$AUDITDIR/r11/s/sub"
+echo a > "$AUDITDIR/r11/s/plain"
+echo b > "$AUDITDIR/r11/s/sub/b"
+(cd "$AUDITDIR/r11/s" && md5sum ./plain sub/b > ../dup.txt && echo "0000000000000000000000000000000000000000  plain" >> ../dup.txt)
+check "every line of a sum file listing a file twice is checked test" "cd '$AUDITDIR/r11/s' && ! '$HASHIT' -a ../dup.txt . > /dev/null 2>&1 && ! sha1sum -c ../dup.txt > /dev/null 2>&1"
+(cd "$AUDITDIR/r11/s" && md5sum ./plain sub/b > ../both.txt && sha1sum plain >> ../both.txt)
+check "a sum file listing a file with two hashes passes test" "cd '$AUDITDIR/r11/s' && '$HASHIT' -a ../both.txt . | grep -q 'Audit passed'"
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"

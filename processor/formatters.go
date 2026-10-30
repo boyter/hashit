@@ -192,10 +192,7 @@ const (
 
 // isDuplicateFile reports if the file has already been seen, recording it if not
 func isDuplicateFile(seen map[string]bool, file string) bool {
-	key, err := filepath.Abs(file)
-	if err != nil {
-		key = filepath.Clean(file)
-	}
+	key := absFrom(workingDir(), file)
 	if seen[key] {
 		return true
 	}

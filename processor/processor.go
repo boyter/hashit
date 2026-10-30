@@ -100,8 +100,8 @@ func addSkipFile(path string, byIdentity bool, sqlite bool) {
 		if p == "" {
 			continue
 		}
-		abs, err := filepath.Abs(p)
-		if err != nil {
+		abs := absFrom(workingDir(), p)
+		if !filepath.IsAbs(abs) {
 			continue
 		}
 		for _, suffix := range suffixes {
@@ -155,8 +155,7 @@ func shouldSkipFile(path string) bool {
 	if len(skipFiles) == 0 {
 		return false
 	}
-	abs, err := filepath.Abs(path)
-	if err == nil && skipFiles[abs] {
+	if skipFiles[absFrom(workingDir(), path)] {
 		return true
 	}
 
@@ -401,17 +400,17 @@ func Process() {
 			go func() {
 				// Check if the paths or files added exist and inform the user if they don't
 				for _, f := range DirFilePaths {
-					fp := filepath.Clean(f)
+					fp, cleaned := cleanPathArg(f)
 					fi, err := os.Stat(fp)
 
 					// keep a leading ./ the user supplied as hashdeep and md5sum do, so that our
 					// output matches theirs when run the same way
 					prefix := ""
 					if Absolute {
-						if abs, err := filepath.Abs(fp); err == nil {
+						if abs := absFrom(workingDir(), fp); filepath.IsAbs(abs) {
 							fp = abs
 						}
-					} else if !defaultPath {
+					} else if !defaultPath && cleaned {
 						prefix = dotPrefix(f, fp)
 					}
 
@@ -455,7 +454,7 @@ func Process() {
 						continue
 					}
 					if Absolute {
-						if abs, err := filepath.Abs(line); err == nil {
+						if abs := absFrom(workingDir(), line); filepath.IsAbs(abs) {
 							line = abs
 						}
 					}
@@ -872,6 +871,28 @@ func installOutput() error {
 		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
 	}
 	return nil
+}
+
+// cleanPathArg cleans a supplied path, reporting false when cleaning it would name a different
+// file, such as link/.. when link is a symlink, in which case it is resolved by the operating
+// system instead, as files are found by joining names to it which would clean it
+func cleanPathArg(path string) (string, bool) {
+	clean := filepath.Clean(path)
+	if clean == path || !strings.Contains(path, "..") {
+		return clean, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		// reported for the path as supplied, rather than reading what cleaning it names
+		return path, false
+	}
+	if cfi, err := os.Stat(clean); err == nil && os.SameFile(fi, cfi) {
+		return clean, true
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real, false
+	}
+	return path, false
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

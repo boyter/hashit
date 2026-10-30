@@ -453,8 +453,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 
 	// files which exist but could not be read are reported as such rather than as not found. A
 	// record claimed by another file is reported for that file, so the unreadable file is listed
-	// on its own, as it is when it has no record
-	unreadable := map[string]bool{}
+	// on its own, as it is when it has no record or its record was moved to another file
+	unreadable := map[string]string{}
 	var unreadableNew []string
 	var failedList []string
 	failedFiles.Range(func(key, _ any) bool {
@@ -470,13 +470,13 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			ok = err == nil && claimed == 0
 		}
 		if ok {
-			unreadable[filePath] = true
+			unreadable[filePath] = f
 		} else {
 			unreadableNew = append(unreadableNew, f)
 		}
 	}
 	isUnreadable := func(filename string) bool {
-		if unreadable[filename] {
+		if _, ok := unreadable[filename]; ok {
 			return true
 		}
 		for _, base := range bases {
@@ -561,6 +561,9 @@ order by f.filepath`)
 					moved++
 					if Verbose {
 						fmt.Fprintf(stdout, "%v -> %v: File moved\n", record.Filename, newFileCandidates[i].File)
+					}
+					if f, ok := unreadable[record.Filename]; ok {
+						unreadableNew = append(unreadableNew, f)
 					}
 					break
 				}

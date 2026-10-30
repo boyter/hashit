@@ -124,7 +124,7 @@ func walkDirectoryWithIgnore(toWalk string, prefix string, output chan fileJob) 
 		// unreadable rather than missing
 		var pathErr *fs.PathError
 		if errors.As(err, &pathErr) {
-			if abs, aerr := filepath.Abs(pathErr.Path); aerr == nil {
+			if abs := absFrom(workingDir(), pathErr.Path); filepath.IsAbs(abs) {
 				failedDirs.Store(abs, true)
 			}
 		}

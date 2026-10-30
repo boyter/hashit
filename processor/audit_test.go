@@ -206,3 +206,32 @@ func TestIsDirectSpelling(t *testing.T) {
 		}
 	}
 }
+
+func TestOsClean(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows resolves .. by cleaning the path")
+	}
+	dir := realPath(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(dir, "real", "d"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "real", "d"), filepath.Join(dir, "link")); err != nil {
+		t.Skip("symlinks not supported")
+	}
+	cases := map[string]string{
+		"link/../x":     "real/x",
+		"link/../d/a":   "real/d/a",
+		"real/../a":     "a",
+		"real/./d//a":   "real/d/a",
+		"gone/../a":     "a",
+		"link/../../a":  "a",
+		"real/d/../..":  "",
+		"..notes/a":     "..notes/a",
+		"link/a..b/../": "link",
+	}
+	for p, want := range cases {
+		if got := osClean(filepath.Join(dir, "") + "/" + p); got != filepath.Join(dir, want) {
+			t.Errorf("%q: expected %q got %q", p, filepath.Join(dir, want), got)
+		}
+	}
+}

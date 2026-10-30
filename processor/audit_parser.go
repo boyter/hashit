@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // AuditRecord represents a single file entry from an audit file, which can be
@@ -23,6 +25,7 @@ type AuditRecord struct {
 	Hashes   map[string]string // hashit hash name to lowercase hex value
 	Order    int               // position in the audit file, used to report in file order
 	Matched  bool
+	Conflict bool // the audit file lists different values of a hash for the file, so it cannot match
 }
 
 // Auditor parses and holds an audit file which can then be used for audit purposes
@@ -36,6 +39,7 @@ type Auditor struct {
 	primaryBase string                    // directory relative paths were created relative to, empty for the working directory
 	cwd         string                    // working directory, looked up once as it is needed for every path
 	duplicates  int                       // paths listed more than once, reported once parsing is done
+	sumFile     bool                      // a sum file, where every line for a path is checked
 }
 
 type FileStatus int
@@ -156,6 +160,7 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if isHashdeepFormat(input) {
 		err = hdl.parseHashdeepFile(input)
 	} else {
+		hdl.sumFile = true
 		err = hdl.parseSumFile(input, auditFilename)
 	}
 
@@ -167,6 +172,9 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	hdl.removeDuplicates()
 	if hdl.duplicates != 0 {
 		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", hdl.duplicates))
+	}
+	if conflicts := hdl.conflicts(); conflicts != 0 {
+		printWarn(fmt.Sprintf("audit file lists different hashes for the same path, which are reported as modified, paths: %d", conflicts))
 	}
 	if err != nil {
 		return nil, err
@@ -279,6 +287,9 @@ func (hdl *Auditor) GetUnmatched() []*AuditRecord {
 // recordMatches compares every hash the record has, as well as size if known. A record must
 // share at least one hash with the result to be considered a match
 func recordMatches(r *AuditRecord, res Result) bool {
+	if r.Conflict {
+		return false
+	}
 	if r.Size >= 0 && r.Size != res.Bytes {
 		return false
 	}
@@ -303,7 +314,7 @@ func recordMatches(r *AuditRecord, res Result) bool {
 // operating system for the working directory, as it is needed for every record and file
 func absFrom(base string, p string) string {
 	if filepath.IsAbs(p) {
-		return filepath.Clean(p)
+		return osClean(p)
 	}
 	// a Windows path such as D:x is relative to the working directory of that drive
 	if vol := filepath.VolumeName(p); vol != "" {
@@ -319,7 +330,53 @@ func absFrom(base string, p string) string {
 	if filepath.VolumeName(p) == "" && len(p) != 0 && os.IsPathSeparator(p[0]) {
 		return filepath.Join(filepath.VolumeName(base), p)
 	}
-	return filepath.Join(base, p)
+	if base == "" {
+		return osClean(p)
+	}
+	return osClean(base + string(filepath.Separator) + p)
+}
+
+// dotDotResolved caches the directory the operating system resolves each path ending in .. to
+var dotDotResolved sync.Map
+
+// osClean cleans a path, except that a path containing .. has everything up to its last .. resolved
+// by the operating system. After a symlink .. leads to the parent of the directory the link points
+// to, not the directory containing the link, so cleaning a/link/.. to a/ would name a different
+// directory to the one the operating system reads. Windows resolves .. by cleaning the path too
+func osClean(path string) string {
+	clean := filepath.Clean(path)
+	if runtime.GOOS == "windows" || !strings.Contains(path, "..") {
+		return clean
+	}
+
+	// find the end of the last .. component
+	end := -1
+	start := 0
+	for i := 0; i <= len(path); i++ {
+		if i == len(path) || os.IsPathSeparator(path[i]) {
+			if path[start:i] == ".." {
+				end = i
+			}
+			start = i + 1
+		}
+	}
+	if end == -1 {
+		return clean
+	}
+
+	head := path[:end]
+	resolved, ok := dotDotResolved.Load(head)
+	if !ok {
+		dir := ""
+		if real, err := filepath.EvalSymlinks(head); err == nil {
+			dir = physicalAbs(real)
+		}
+		resolved, _ = dotDotResolved.LoadOrStore(head, dir)
+	}
+	if resolved.(string) == "" {
+		return clean
+	}
+	return filepath.Join(resolved.(string), path[end:])
 }
 
 // workingDir returns the working directory, or an empty string when it cannot be found such as
@@ -433,20 +490,28 @@ func (t auditFileTarget) matches(keys []string) bool {
 // removeDuplicates drops records for a path already listed, keeping the first, as otherwise the
 // duplicate is never matched and is reported as missing although the file exists
 func (hdl *Auditor) removeDuplicates() {
-	seen := map[string]bool{}
+	seen := map[string]*AuditRecord{}
 	var records []*AuditRecord
 	for _, r := range hdl.records {
 		// compare the resolved path, so the same file listed by relative and absolute path is a
 		// duplicate too
 		key := hdl.primaryKey(r)
-		if seen[key] {
+		if first, ok := seen[key]; ok {
+			// md5sum -c checks every line, so the hashes of a sum file are merged
+			if hdl.sumFile {
+				for name, value := range r.Hashes {
+					mergeSumHash(first, name, value)
+				}
+			}
 			continue
 		}
-		seen[key] = true
+		seen[key] = r
 		records = append(records, r)
 	}
 	if dupes := len(hdl.records) - len(records); dupes != 0 {
-		hdl.duplicates += dupes
+		if !hdl.sumFile {
+			hdl.duplicates += dupes
+		}
 		hdl.records = nil
 		for _, r := range records {
 			hdl.addRecord(r)
@@ -647,6 +712,27 @@ func scanLinesKeepCR(data []byte, atEOF bool) (int, []byte, error) {
 	return 0, nil, nil
 }
 
+// conflicts counts the records with different values listed for one of their hashes
+func (hdl *Auditor) conflicts() int {
+	n := 0
+	for _, r := range hdl.records {
+		if r.Conflict {
+			n++
+		}
+	}
+	return n
+}
+
+// mergeSumHash adds a hash from a sum file line to the record for its file, a different value
+// for a hash it already has meaning the file can never match
+func mergeSumHash(r *AuditRecord, name string, value string) {
+	if existing, ok := r.Hashes[name]; ok && existing != value {
+		r.Conflict = true
+		return
+	}
+	r.Hashes[name] = value
+}
+
 // parseSumFile parses the output of md5sum, sha256sum and similar tools, including hashit's
 // sum format. Both the GNU "hash  filename" and BSD "MD5 (filename) = hash" styles are accepted
 func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
@@ -655,7 +741,6 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 
 	extHashes := sumExtensions[strings.ToLower(filepath.Ext(auditFilename))]
 	byFile := map[string]*AuditRecord{}
-	duplicateSumLines := 0
 	improper := 0
 
 	for scanner.Scan() {
@@ -683,20 +768,14 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 			byFile[filename] = r
 			hdl.addRecord(r)
 		}
-		// the same path listed again with a different value of the same hash keeps the first, the
-		// same as a path listed twice in a hashdeep file
-		if existing, ok := r.Hashes[name]; ok && existing != value {
-			duplicateSumLines++
-			continue
-		}
-		r.Hashes[name] = value
+		// md5sum -c checks every line, so the same path listed again with a different value of the
+		// same hash can never match
+		mergeSumHash(r, name, value)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-
-	hdl.duplicates += duplicateSumLines
 
 	if improper != 0 {
 		// a file such as text or json output has no valid lines, and is not an audit file at all
