@@ -1033,6 +1033,46 @@ check "every line of a sum file listing a file twice is checked test" "cd '$AUDI
 (cd "$AUDITDIR/r11/s" && md5sum ./plain sub/b > ../both.txt && sha1sum plain >> ../both.txt)
 check "a sum file listing a file with two hashes passes test" "cd '$AUDITDIR/r11/s' && '$HASHIT' -a ../both.txt . | grep -q 'Audit passed'"
 
+# round 12
+mkdir -p "$AUDITDIR/r12/R/T/x" "$AUDITDIR/r12/m"
+echo f > "$AUDITDIR/r12/R/T/f"
+ln -s R "$AUDITDIR/r12/L"
+(cd "$AUDITDIR/r12/L/T/x" && "$HASHIT" -f hashdeep -o ../../../m/up.hd .. > /dev/null && "$HASHIT" -f sqlite -o ../../../m/up.db .. > /dev/null)
+for AUDITFILE in up.hd up.db; do
+    check "manifest made with .. audited with . from a symlinked working directory $AUDITFILE test" \
+        "cd '$AUDITDIR/r12/L/T' && '$HASHIT' -a ../../m/$AUDITFILE . | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r12/g"
+echo f > "$AUDITDIR/r12/g/f"
+ln -s gone "$AUDITDIR/r12/g/link"
+(cd "$AUDITDIR/r12/g" && "$HASHIT" -f hashdeep f | sed 's/,f$/,link\/..\/f/' > ../g.hd && md5sum f | sed 's/  f$/  link\/..\/f/' > ../g.md5)
+for AUDITFILE in g.hd g.md5; do
+    check "record through a dangling symlink and .. does not match another file $AUDITFILE test" \
+        "cd '$AUDITDIR/r12/g' && ! '$HASHIT' -a ../$AUDITFILE f > /dev/null 2>&1 && ! md5sum -c ../g.md5 > /dev/null 2>&1"
+done
+mkdir -p "$AUDITDIR/r11/tgt"
+echo g > "$AUDITDIR/r11/tgt/g"
+ln -s ../tgt "$AUDITDIR/r11/other/ln"
+check "a symlink after .. is walked as supplied test" "cd '$AUDITDIR/r11' && '$HASHIT' -f sum -c md5 t/sl/../ln | grep -q 'other/ln/g\$'"
+mkdir -p "$AUDITDIR/r12/sa/t"
+echo a > "$AUDITDIR/r12/sa/t/a" && echo b > "$AUDITDIR/r12/sa/t/b"
+(cd "$AUDITDIR/r12/sa/t" && md5sum a b ../t/a "$PWD/a" > s.md5)
+check "sum file listing a file twice audited from outside its directory test" "cd '$AUDITDIR/r12/sa' && '$HASHIT' -a t/s.md5 t | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r12/sb/t"
+echo a > "$AUDITDIR/r12/sb/t/a" && echo c > "$AUDITDIR/r12/sb/t/c"
+(cd "$AUDITDIR/r12/sb/t" && { md5sum c | sed 's/  c$/  a/'; md5sum "$PWD/a"; } > s.md5)
+check "conflicting sum lines audited from outside its directory are not a move test" \
+    "cd '$AUDITDIR/r12/sb' && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1 && '$HASHIT' -a t/s.md5 t 2>&1 | grep -q 'different hashes'"
+mkdir -p "$AUDITDIR/r12/u"
+echo u > "$AUDITDIR/r12/u/u"
+(cd "$AUDITDIR/r12/u" && "$HASHIT" -f sqlite -o ../u.db . > /dev/null)
+sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes"
+mkdir -p "$AUDITDIR/r12/u/x"
+chmod 000 "$AUDITDIR/r12/u/u"
+check "every spelling of an unreadable file in a sqlite audit is reported test" \
+    "cd '$AUDITDIR/r12/u' && [ \"\$('$HASHIT' -v -a ../u.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+chmod 644 "$AUDITDIR/r12/u/u"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

@@ -889,8 +889,11 @@ func cleanPathArg(path string) (string, bool) {
 	if cfi, err := os.Stat(clean); err == nil && os.SameFile(fi, cfi) {
 		return clean, true
 	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return real, false
+	// only the part up to the last .. is resolved, so a symlink after it is walked as supplied
+	if end := lastDotDot(path); end != -1 {
+		if real, err := filepath.EvalSymlinks(path[:end]); err == nil {
+			return filepath.Join(real, path[end:]), false
+		}
 	}
 	return path, false
 }

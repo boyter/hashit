@@ -6,19 +6,34 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestAbsFrom(t *testing.T) {
+	dir := realPath(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(dir, "srv", "media", "sub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	srv := filepath.Join(dir, "srv")
 	cases := []struct{ base, p, want string }{
-		{"/srv/media", "a.txt", "/srv/media/a.txt"},
-		{"/srv/media", "./sub/../a.txt", "/srv/media/a.txt"},
-		{"/srv/media", "../other/a.txt", "/srv/other/a.txt"},
-		{"/srv/media", "/abs/./a.txt", "/abs/a.txt"},
+		{srv + "/media", "a.txt", srv + "/media/a.txt"},
+		{srv + "/media", "./sub/../a.txt", srv + "/media/a.txt"},
+		{srv + "/media", "../other/a.txt", srv + "/other/a.txt"},
+		{srv + "/media", "/abs/./a.txt", "/abs/a.txt"},
+		// .. through a directory which does not exist cannot be opened, so is kept as written
+		{srv + "/gone", "../media/a.txt", srv + "/gone/../media/a.txt"},
 	}
 	for _, c := range cases {
-		if got := absFrom(c.base, c.p); got != filepath.FromSlash(c.want) {
-			t.Errorf("%q %q: expected %q got %q", c.base, c.p, c.want, got)
+		if runtime.GOOS == "windows" && c.want[0] == '/' {
+			continue // takes the base's drive, see TestAbsFromWindows
+		}
+		want := filepath.FromSlash(c.want)
+		if runtime.GOOS == "windows" {
+			want = filepath.Clean(want)
+		}
+		if got := absFrom(filepath.FromSlash(c.base), filepath.FromSlash(c.p)); got != want {
+			t.Errorf("%q %q: expected %q got %q", c.base, c.p, want, got)
 		}
 	}
 }
@@ -212,26 +227,41 @@ func TestOsClean(t *testing.T) {
 		t.Skip("windows resolves .. by cleaning the path")
 	}
 	dir := realPath(t.TempDir())
-	if err := os.MkdirAll(filepath.Join(dir, "real", "d"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "real", "d", "a..b"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(dir, "real", "d"), filepath.Join(dir, "link")); err != nil {
 		t.Skip("symlinks not supported")
+	}
+	if err := os.Symlink(dir, filepath.Join(dir, "self")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "gone"), filepath.Join(dir, "dangling")); err != nil {
+		t.Fatal(err)
 	}
 	cases := map[string]string{
 		"link/../x":     "real/x",
 		"link/../d/a":   "real/d/a",
 		"real/../a":     "a",
 		"real/./d//a":   "real/d/a",
-		"gone/../a":     "a",
 		"link/../../a":  "a",
 		"real/d/../..":  "",
 		"..notes/a":     "..notes/a",
 		"link/a..b/../": "link",
+		// a symlink which cleaning names the same directory as the OS reads is kept as written
+		"self/real/../a": "self/a",
+		// what the OS cannot read is kept as written
+		"gone/../a":     "gone/../a",
+		"dangling/../a": "dangling/../a",
 	}
 	for p, want := range cases {
-		if got := osClean(filepath.Join(dir, "") + "/" + p); got != filepath.Join(dir, want) {
-			t.Errorf("%q: expected %q got %q", p, filepath.Join(dir, want), got)
+		path := filepath.Join(dir, "") + "/" + p
+		expected := filepath.Join(dir, want)
+		if strings.Contains(want, "..") {
+			expected = path
+		}
+		if got := osClean(path); got != expected {
+			t.Errorf("%q: expected %q got %q", p, expected, got)
 		}
 	}
 }

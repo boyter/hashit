@@ -455,6 +455,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// record claimed by another file is reported for that file, so the unreadable file is listed
 	// on its own, as it is when it has no record or its record was moved to another file
 	unreadable := map[string]string{}
+	unreadableAbs := map[string]bool{}
 	var unreadableNew []string
 	var failedList []string
 	failedFiles.Range(func(key, _ any) bool {
@@ -463,7 +464,9 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	})
 	sort.Strings(failedList)
 	for _, f := range failedList {
-		filePath, _, ok, err := sqliteLookup(ctx, tx, bases, absFrom(cwd, f))
+		abs := absFrom(cwd, f)
+		unreadableAbs[abs] = true
+		filePath, _, ok, err := sqliteLookup(ctx, tx, bases, abs)
 		if err == nil && ok {
 			var claimed int
 			err = tx.QueryRowContext(ctx, "select count(*) from temp.seen where filepath = ?", filePath).Scan(&claimed)
@@ -479,8 +482,9 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		if _, ok := unreadable[filename]; ok {
 			return true
 		}
+		// another spelling of an unreadable file, which the lookup only returns one record for
 		for _, base := range bases {
-			if isUnderFailedDir(absFrom(base, filename)) {
+			if k := absFrom(base, filename); unreadableAbs[k] || isUnderFailedDir(k) {
 				return true
 			}
 		}
@@ -598,6 +602,7 @@ order by f.filepath`)
 			fmt.Fprintf(stdout, "%v: File new\n", res.File)
 		}
 		// files on disk which are not in the database and could not be read
+		sort.Strings(unreadableNew)
 		for _, f := range unreadableNew {
 			fmt.Fprintf(stdout, "%v: File could not be read\n", f)
 		}

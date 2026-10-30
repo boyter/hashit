@@ -342,14 +342,55 @@ var dotDotResolved sync.Map
 // osClean cleans a path, except that a path containing .. has everything up to its last .. resolved
 // by the operating system. After a symlink .. leads to the parent of the directory the link points
 // to, not the directory containing the link, so cleaning a/link/.. to a/ would name a different
-// directory to the one the operating system reads. Windows resolves .. by cleaning the path too
+// directory to the one the operating system reads. A path whose .. the operating system cannot
+// resolve is returned as written, so it never names an existing file. Windows resolves .. by
+// cleaning the path too
 func osClean(path string) string {
 	clean := filepath.Clean(path)
-	if runtime.GOOS == "windows" || !strings.Contains(path, "..") {
+	if runtime.GOOS == "windows" {
+		return clean
+	}
+	end := lastDotDot(path)
+	if end == -1 {
 		return clean
 	}
 
-	// find the end of the last .. component
+	head := path[:end]
+	resolved, ok := dotDotResolved.Load(head)
+	if !ok {
+		resolved, _ = dotDotResolved.LoadOrStore(head, resolveDotDot(head))
+	}
+	if resolved.(string) == "" {
+		// the OS cannot open it, so it is kept as written rather than cleaned into another path
+		return path
+	}
+	return filepath.Join(resolved.(string), path[end:])
+}
+
+// resolveDotDot returns the directory a path ending in .. names. It is cleaned as text when that
+// names the same directory the OS opens, so paths through a symlinked directory such as the
+// working directory are kept as written, and otherwise is where the OS resolves it to. An empty
+// string is returned when the OS cannot open it
+func resolveDotDot(head string) string {
+	fi, err := os.Stat(head)
+	if err != nil {
+		return ""
+	}
+	clean := filepath.Clean(head)
+	if cfi, err := os.Stat(clean); err == nil && os.SameFile(fi, cfi) {
+		return clean
+	}
+	if real, err := filepath.EvalSymlinks(head); err == nil {
+		return physicalAbs(real)
+	}
+	return ""
+}
+
+// lastDotDot returns the index of the end of the last .. component in the path, or -1
+func lastDotDot(path string) int {
+	if !strings.Contains(path, "..") {
+		return -1
+	}
 	end := -1
 	start := 0
 	for i := 0; i <= len(path); i++ {
@@ -360,23 +401,7 @@ func osClean(path string) string {
 			start = i + 1
 		}
 	}
-	if end == -1 {
-		return clean
-	}
-
-	head := path[:end]
-	resolved, ok := dotDotResolved.Load(head)
-	if !ok {
-		dir := ""
-		if real, err := filepath.EvalSymlinks(head); err == nil {
-			dir = physicalAbs(real)
-		}
-		resolved, _ = dotDotResolved.LoadOrStore(head, dir)
-	}
-	if resolved.(string) == "" {
-		return clean
-	}
-	return filepath.Join(resolved.(string), path[end:])
+	return end
 }
 
 // workingDir returns the working directory, or an empty string when it cannot be found such as
@@ -490,12 +515,17 @@ func (t auditFileTarget) matches(keys []string) bool {
 // removeDuplicates drops records for a path already listed, keeping the first, as otherwise the
 // duplicate is never matched and is reported as missing although the file exists
 func (hdl *Auditor) removeDuplicates() {
+	keyOf := hdl.primaryKey
+	if hdl.sumFile && len(hdl.bases) > 1 {
+		keyOf = hdl.sumDuplicateKeys()
+	}
+
 	seen := map[string]*AuditRecord{}
 	var records []*AuditRecord
 	for _, r := range hdl.records {
 		// compare the resolved path, so the same file listed by relative and absolute path is a
 		// duplicate too
-		key := hdl.primaryKey(r)
+		key := keyOf(r)
 		if first, ok := seen[key]; ok {
 			// md5sum -c checks every line, so the hashes of a sum file are merged
 			if hdl.sumFile {
@@ -516,6 +546,39 @@ func (hdl *Auditor) removeDuplicates() {
 		for _, r := range records {
 			hdl.addRecord(r)
 		}
+	}
+}
+
+// sumDuplicateKeys returns the path each record of a sum file is compared to. A sum file has no
+// directory its paths were created relative to, so two lines can name the same file through the
+// sum file's directory but not through the working directory. Lines naming the same path through
+// any directory are compared by the first of their paths which exists, as that is the file they
+// are checked against, and the rest by their path through the working directory
+func (hdl *Auditor) sumDuplicateKeys() func(*AuditRecord) string {
+	// the records naming each path through each directory, so most records need no lookup on disk
+	counts := make([]map[string]int, len(hdl.bases))
+	for i, base := range hdl.bases {
+		counts[i] = make(map[string]int, len(hdl.records))
+		for _, r := range hdl.records {
+			counts[i][absFrom(base, r.Filename)]++
+		}
+	}
+	return func(r *AuditRecord) string {
+		shared := false
+		for i, base := range hdl.bases {
+			if counts[i][absFrom(base, r.Filename)] > 1 {
+				shared = true
+				break
+			}
+		}
+		if shared {
+			for _, k := range hdl.recordKeys(r) {
+				if _, err := os.Lstat(k); err == nil {
+					return k
+				}
+			}
+		}
+		return hdl.primaryKey(r)
 	}
 }
 
