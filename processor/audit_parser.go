@@ -588,7 +588,8 @@ func auditBases(primary string, auditFile string, cwd string) []string {
 	if real := realPath(auditFile); real != "" {
 		add(filepath.Dir(real))
 	}
-	add(filepath.Dir(auditFile))
+	// resolved before taking its directory, as cleaning link/../m as text names another directory
+	add(filepath.Dir(absFrom(cwd, auditFile)))
 	add(cwd)
 	return bases
 }

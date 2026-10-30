@@ -1250,6 +1250,13 @@ ln -s / "$AUDITDIR/r17/ro/R" && echo X > "$AUDITDIR/r17/ro/d/f"
 for AUDITFILE in ro.db ro.hd; do
     check "working directory through a symlink to / passes $AUDITFILE test" "cd '$AUDITDIR/r17/ro/R${AUDITDIR}/r17/ro' && '$HASHIT' -a ../$AUDITFILE d | grep -q 'Audit passed' && '$HASHIT' -a ../$AUDITFILE '$AUDITDIR/r17/ro/d' | grep -q 'Audit passed'"
 done
+mkdir -p "$AUDITDIR/r17/af/x" "$AUDITDIR/r17/af/y/sub"
+printf A > "$AUDITDIR/r17/af/x/a" && printf A > "$AUDITDIR/r17/af/y/a" && ln -s ../y/sub "$AUDITDIR/r17/af/x/lnk"
+(cd "$AUDITDIR/r17/af/y" && "$HASHIT" -f hashdeep -o m.hd a > /dev/null && "$HASHIT" -f sqlite -o m.db a > /dev/null && sha256sum a > m.sha256)
+rm "$AUDITDIR/r17/af/y/a"
+for AUDITFILE in m.hd m.db m.sha256; do
+    check "audit file given through a symlink and .. is in the directory the OS opens $AUDITFILE test" "cd '$AUDITDIR/r17/af' && ! '$HASHIT' -a x/lnk/../$AUDITFILE x/a > /dev/null 2>&1"
+done
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
