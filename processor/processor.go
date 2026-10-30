@@ -407,7 +407,7 @@ func Process() {
 					// output matches theirs when run the same way
 					prefix := ""
 					if Absolute {
-						if abs := absFrom(workingDir(), fp); filepath.IsAbs(abs) {
+						if abs := absPath(workingDir(), fp); filepath.IsAbs(abs) {
 							fp = abs
 						}
 					} else if !defaultPath && cleaned {
@@ -454,7 +454,7 @@ func Process() {
 						continue
 					}
 					if Absolute {
-						if abs := absFrom(workingDir(), line); filepath.IsAbs(abs) {
+						if abs := absPath(workingDir(), line); filepath.IsAbs(abs) {
 							line = abs
 						}
 					}

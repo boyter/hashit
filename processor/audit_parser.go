@@ -321,10 +321,18 @@ func recordMatches(r *AuditRecord, res Result) bool {
 }
 
 // absFrom returns the absolute path p refers to, a relative path being resolved against the
-// absolute directory base. Paths are only ever compared absolute, as a bare relative path such as
-// x only means the same file when run from the same directory. This is done without asking the
-// operating system for the working directory, as it is needed for every record and file
+// absolute directory base, as it is compared. Paths are only ever compared absolute, as a bare
+// relative path such as x only means the same file when run from the same directory, and through
+// the working directory as it was reached, so the same file found through where a symlinked
+// working directory really is, such as by an absolute path or .., is the same path
 func absFrom(base string, p string) string {
+	return logicalPath(absPath(base, p))
+}
+
+// absPath returns the absolute path p refers to, a relative path being resolved against the
+// absolute directory base. This is done without asking the operating system for the working
+// directory, as it is needed for every record and file
+func absPath(base string, p string) string {
 	if filepath.IsAbs(p) {
 		return osClean(p)
 	}
@@ -445,49 +453,66 @@ func sameOrReal(head string) string {
 	return ""
 }
 
-// logicalPath returns a physical path inside the working directory, or a directory containing it,
-// through the working directory as it was reached, so it matches the paths of files found there
-// when it was reached through a symlink
-func logicalPath(real string) string {
+// logicalPath returns a path inside where the working directory, or a directory containing it,
+// really is through the working directory as it was reached when that was through a symlink, so it
+// matches the paths of files found there
+func logicalPath(path string) string {
 	for _, d := range workingDirAncestors() {
-		if real == d.real {
-			return d.dir
+		// already through it, which matters when it is a symlink to a directory containing it
+		if isUnder(path, d.dir) {
+			return path
 		}
-		if rel, err := filepath.Rel(d.real, real); err == nil && !escapesDir(rel) {
-			return filepath.Join(d.dir, rel)
+		if isUnder(path, d.real) {
+			return filepath.Join(d.dir, path[len(d.real):])
 		}
 	}
-	return real
+	return path
+}
+
+// physicalPath returns a path through a symlinked working directory, or a directory containing it,
+// through where that really is, the reverse of logicalPath
+func physicalPath(path string) string {
+	for _, d := range workingDirAncestors() {
+		if isUnder(path, d.dir) {
+			return filepath.Join(d.real, path[len(d.dir):])
+		}
+	}
+	return path
+}
+
+// isUnder reports if path is the directory dir or inside it, comparing the text
+func isUnder(path string, dir string) bool {
+	if !strings.HasPrefix(path, dir) {
+		return false
+	}
+	return len(path) == len(dir) || strings.HasSuffix(dir, string(filepath.Separator)) || os.IsPathSeparator(path[len(dir)])
 }
 
 type ancestor struct{ dir, real string }
 
-var ancestors struct {
-	sync.Mutex
-	cwd  string
-	list []ancestor
-}
+var (
+	ancestorsOnce sync.Once
+	ancestorList  []ancestor
+)
 
-// workingDirAncestors returns the working directory and every directory containing it, deepest
-// first, with where each really is, looked up once for each working directory
+// workingDirAncestors returns the working directory and every directory containing it which was
+// reached through a symlink, deepest first, with where each really is. It is looked up once, as
+// it is needed for every path compared and the working directory does not change while running
 func workingDirAncestors() []ancestor {
-	cwd := workingDir()
-	ancestors.Lock()
-	defer ancestors.Unlock()
-	if ancestors.list != nil && ancestors.cwd == cwd {
-		return ancestors.list
-	}
-	list := []ancestor{}
-	for dir := cwd; dir != ""; dir = filepath.Dir(dir) {
-		if real := realPath(dir); real != "" {
-			list = append(list, ancestor{dir: dir, real: real})
+	ancestorsOnce.Do(func() {
+		if runtime.GOOS == "windows" {
+			return
 		}
-		if filepath.Dir(dir) == dir {
-			break
+		for dir := workingDir(); dir != ""; dir = filepath.Dir(dir) {
+			if real := realPath(dir); real != "" && real != dir {
+				ancestorList = append(ancestorList, ancestor{dir: dir, real: real})
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
 		}
-	}
-	ancestors.cwd, ancestors.list = cwd, list
-	return list
+	})
+	return ancestorList
 }
 
 // lastDotDot returns the index of the end of the last .. component in the path, or -1
@@ -706,9 +731,14 @@ func (hdl *Auditor) groupSameFile() {
 				values[name] = v
 			}
 		}
-		if conflict {
-			for _, r := range group {
-				r.Conflict = true
+		// every line is checked with every hash listed for the file, as which line is checked
+		// against it decides the others are duplicates
+		for _, r := range group {
+			r.Conflict = r.Conflict || conflict
+			for name, v := range values {
+				if _, ok := r.Hashes[name]; !ok {
+					r.Hashes[name] = v
+				}
 			}
 		}
 	}

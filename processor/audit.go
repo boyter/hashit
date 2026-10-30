@@ -258,23 +258,40 @@ func isDirectSpelling(p string) bool {
 // sqliteLookup finds the record for the absolute path of a file on disk, returning its path in
 // the database and the priority of the directory it matched through, or false if none matches
 func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (string, int, bool, error) {
+	// paths through where a symlinked working directory really is are compared through it, so
+	// the path is also tried as it really is, as the database may hold it either way
+	spellings := []string{abs}
+	if phys := physicalPath(abs); phys != abs {
+		spellings = append(spellings, phys)
+	}
 	for level, base := range bases {
 		var candidates []any
-		if level == 0 {
-			candidates = append(candidates, abs)
+		add := func(p string) {
+			if !containsAny(candidates, p) {
+				candidates = append(candidates, p)
+			}
 		}
-		// the path relative to base is only used when it leads back to the same file, as
-		// relative paths are compared exactly as absFrom resolves them
-		if rel, err := filepath.Rel(base, abs); err == nil && rel != "." && absFrom(base, rel) == abs {
-			candidates = append(candidates, rel, "."+string(filepath.Separator)+rel)
+		for _, p := range spellings {
+			if level == 0 {
+				add(p)
+			}
+			// the path relative to base is only used when it leads back to the same file, as
+			// relative paths are compared exactly as absFrom resolves them
+			for _, b := range []string{base, physicalPath(base)} {
+				if rel, err := filepath.Rel(b, p); err == nil && rel != "." && absFrom(base, rel) == abs {
+					add(rel)
+					add("." + string(filepath.Separator) + rel)
+				}
+			}
 		}
-		for len(candidates) < 3 {
+		if len(candidates) == 0 {
 			candidates = append(candidates, nil)
 		}
+		in := strings.Repeat("?, ", len(candidates)-1) + "?"
 
 		var filePath string
 		err := tx.QueryRowContext(ctx, `select filepath from (
-    select rowid as rid, filepath from file_hashes where filepath in (?, ?, ?)
+    select rowid as rid, filepath from file_hashes where filepath in (`+in+`)
     union all
     select rid, filepath from temp.paths where abs = ? and level = ?
 ) order by rid limit 1`, append(candidates, abs, level)...).Scan(&filePath)
@@ -287,6 +304,15 @@ func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (
 		return filePath, level, true, nil
 	}
 	return "", 0, false, nil
+}
+
+func containsAny(list []any, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // doSqliteAudit performs an audit against a SQLite database, comparing all available hashes.
@@ -455,7 +481,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// record claimed by another file is reported for that file, so the unreadable file is listed
 	// on its own, as it is when it has no record or its record was moved to another file
 	unreadable := map[string]string{}
-	unreadableAbs := map[string]bool{}
+	unreadableAt := map[string]int{} // unreadable file to the directory its record was found through
 	var unreadableNew []string
 	var failedList []string
 	failedFiles.Range(func(key, _ any) bool {
@@ -465,9 +491,9 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	sort.Strings(failedList)
 	for _, f := range failedList {
 		abs := absFrom(cwd, f)
-		unreadableAbs[abs] = true
-		filePath, _, ok, err := sqliteLookup(ctx, tx, bases, abs)
+		filePath, level, ok, err := sqliteLookup(ctx, tx, bases, abs)
 		if err == nil && ok {
+			unreadableAt[abs] = level
 			var claimed int
 			err = tx.QueryRowContext(ctx, "select count(*) from temp.seen where filepath = ?", filePath).Scan(&claimed)
 			ok = err == nil && claimed == 0
@@ -483,15 +509,11 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			return true
 		}
 		// another spelling of an unreadable file, which the lookup only returns one record for,
-		// through the first of the directories which exists, as the directory paths were created
-		// relative to is not where the files are after they are moved, but when it exists a later
-		// directory such as the working directory can hold another record's file
-		for _, base := range bases {
-			if unreadableAbs[absFrom(base, filename)] {
+		// through the directory its record was found through, so a path through another directory
+		// such as the working directory is not taken as another record's unreadable file
+		for level, base := range bases {
+			if at, ok := unreadableAt[absFrom(base, filename)]; ok && at == level {
 				return true
-			}
-			if fi, err := os.Stat(base); err == nil && fi.IsDir() {
-				break
 			}
 		}
 		for _, base := range bases {

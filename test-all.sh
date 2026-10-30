@@ -1161,6 +1161,49 @@ check "every spelling of an unreadable file in a moved sqlite tree is reported t
     "cd '$AUDITDIR/r14/ud/B' && [ \"\$('$HASHIT' -v -a m.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
 chmod 644 "$AUDITDIR/r14/ud/B/f"
 
+# round 15
+mkdir -p "$AUDITDIR/r15/mh/s"
+echo X > "$AUDITDIR/r15/mh/s/a" && ln -s s/a "$AUDITDIR/r15/mh/a"
+(cd "$AUDITDIR/r15/mh" && printf 'MD5 (%s/s/a) = %s\nSHA1 (a) = %s\n' "$(pwd)" "$(md5sum s/a | cut -c1-32)" 0000000000000000000000000000000000000000 > s/s.sum)
+check "sum lines naming the same file with different hashes are all checked test" \
+    "cd '$AUDITDIR/r15/mh' && ! '$HASHIT' -a s/s.sum s > /dev/null 2>&1 && ! '$HASHIT' --allow-moved -a s/s.sum s > /dev/null 2>&1 && ! cksum -c s/s.sum > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r15/mk/s"
+echo X > "$AUDITDIR/r15/mk/s/a" && ln -s s/a "$AUDITDIR/r15/mk/a"
+(cd "$AUDITDIR/r15/mk" && printf 'MD5 (%s/s/a) = %s\nSHA1 (a) = %s\n' "$(pwd)" "$(md5sum s/a | cut -c1-32)" "$(sha1sum s/a | cut -c1-40)" > s/ok.sum)
+check "sum lines naming the same file with different correct hashes pass test" "cd '$AUDITDIR/r15/mk' && '$HASHIT' -a s/ok.sum s | grep -q 'Audit passed' && cksum -c s/ok.sum > /dev/null"
+mkdir -p "$AUDITDIR/r15/uo/A"
+echo one > "$AUDITDIR/r15/uo/A/f" && echo two > "$AUDITDIR/r15/uo/A/g"
+(cd "$AUDITDIR/r15/uo/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+mv "$AUDITDIR/r15/uo/A" "$AUDITDIR/r15/uo/B" && chmod 000 "$AUDITDIR/r15/uo/B/f"
+check "every spelling of an unreadable file in a moved tree with the sqlite file outside it test" \
+    "cd '$AUDITDIR/r15/uo/B' && [ \"\$('$HASHIT' -v -a ../m.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+chmod 644 "$AUDITDIR/r15/uo/B/f"
+mkdir -p "$AUDITDIR/r15/lp/p/sub/d" "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/mx/my"
+ln -s "$AUDITDIR/r15/lp/p" "$AUDITDIR/r15/lp/A" && ln -s "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/p/B" && echo y > "$AUDITDIR/r15/lp/p/sub/y"
+printf '%s  ../p/sub/d/../y\n' "$(md5sum < "$AUDITDIR/r15/lp/p/sub/y" | cut -c1-32)" > "$AUDITDIR/r15/lp/mx/my/M.md5"
+check "same path through a symlinked working directory's ancestor and .. test" "cd '$AUDITDIR/r15/lp/A/B' && '$HASHIT' -a '$AUDITDIR/r15/lp/mx/my/M.md5' ../p/sub/d/.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/ap/R/c" "$AUDITDIR/r15/ap/R/x/e2" "$AUDITDIR/r15/ap/R/d"
+printf e > "$AUDITDIR/r15/ap/R/x/e2/e" && ln -s ../x/e2 "$AUDITDIR/r15/ap/R/d/lx" && ln -s R "$AUDITDIR/r15/ap/S"
+(cd "$AUDITDIR/r15/ap/R/c" && hashdeep -l -r ../d/lx/.. > ../../m.hd)
+check "absolute physical path from a symlinked working directory test" \
+    "cd '$AUDITDIR/r15/ap/R/c' && '$HASHIT' -a ../../m.hd '$AUDITDIR/r15/ap/R/x' | grep -q 'Audit passed' && cd '$AUDITDIR/r15/ap/S/c' && '$HASHIT' -a ../../m.hd '$AUDITDIR/r15/ap/R/x' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/am/real"
+echo a > "$AUDITDIR/r15/am/real/a" && ln -s real "$AUDITDIR/r15/am/L"
+(cd "$AUDITDIR/r15/am/real" && "$HASHIT" -f hashdeep --absolute . > ../abs.hd)
+check "absolute physical manifest audited from a symlinked working directory test" "cd '$AUDITDIR/r15/am/L' && '$HASHIT' -a ../abs.hd . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/sd/r/t/sub"
+echo a > "$AUDITDIR/r15/sd/r/t/a" && echo b > "$AUDITDIR/r15/sd/r/t/sub/b" && ln -s r/t/sub "$AUDITDIR/r15/sd/D"
+(cd "$AUDITDIR/r15/sd/r/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null && "$HASHIT" -f hashdeep -o ../m.hd . > /dev/null)
+for AUDITFILE in m.db m.hd; do
+    check "audit with .. from a working directory which is a symlink into the tree $AUDITFILE test" "cd '$AUDITDIR/r15/sd/D' && '$HASHIT' -a '$AUDITDIR/r15/sd/r/$AUDITFILE' .. | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r15/sl/r/t/sub" "$AUDITDIR/r15/sl/r/m"
+ln -s "$AUDITDIR/r15/sl/r" "$AUDITDIR/r15/sl/L" && echo a > "$AUDITDIR/r15/sl/r/t/a" && echo b > "$AUDITDIR/r15/sl/r/t/sub/b"
+(cd "$AUDITDIR/r15/sl/L/t/sub" && "$HASHIT" -f sqlite -o "$AUDITDIR/r15/sl/L/m/M.db" .. > /dev/null)
+check "sqlite made with .. from a symlinked working directory audits from there test" \
+    "cd '$AUDITDIR/r15/sl/L/t/sub' && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' .. | grep -q 'Audit passed' && cd .. && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' . | grep -q 'Audit passed'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
