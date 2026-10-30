@@ -878,24 +878,24 @@ func installOutput() error {
 // system instead, as files are found by joining names to it which would clean it
 func cleanPathArg(path string) (string, bool) {
 	clean := filepath.Clean(path)
-	if clean == path || !strings.Contains(path, "..") {
+	end := lastDotDot(path)
+	if clean == path || end == -1 {
 		return clean, true
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
+	if _, err := os.Stat(path); err != nil {
 		// reported for the path as supplied, rather than reading what cleaning it names
 		return path, false
 	}
-	if cfi, err := os.Stat(clean); err == nil && os.SameFile(fi, cfi) {
+	// resolved as paths in audit files are, up to the last .., so a symlink after it is walked
+	// as supplied
+	head := resolveDotDot(path[:end])
+	if head == "" {
+		return path, false
+	}
+	if head == filepath.Clean(path[:end]) {
 		return clean, true
 	}
-	// only the part up to the last .. is resolved, so a symlink after it is walked as supplied
-	if end := lastDotDot(path); end != -1 {
-		if real, err := filepath.EvalSymlinks(path[:end]); err == nil {
-			return filepath.Join(real, path[end:]), false
-		}
-	}
-	return path, false
+	return filepath.Join(head, path[end:]), false
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

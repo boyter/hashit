@@ -21,8 +21,8 @@ func TestAbsFrom(t *testing.T) {
 		{srv + "/media", "./sub/../a.txt", srv + "/media/a.txt"},
 		{srv + "/media", "../other/a.txt", srv + "/other/a.txt"},
 		{srv + "/media", "/abs/./a.txt", "/abs/a.txt"},
-		// .. through a directory which does not exist cannot be opened, so is kept as written
-		{srv + "/gone", "../media/a.txt", srv + "/gone/../media/a.txt"},
+		// a directory which no longer exists, such as the one an audit file was created in
+		{srv + "/gone", "../media/a.txt", srv + "/media/a.txt"},
 	}
 	for _, c := range cases {
 		if runtime.GOOS == "windows" && c.want[0] == '/' {
@@ -236,6 +236,9 @@ func TestOsClean(t *testing.T) {
 	if err := os.Symlink(dir, filepath.Join(dir, "self")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "real", "file"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(filepath.Join(dir, "gone"), filepath.Join(dir, "dangling")); err != nil {
 		t.Fatal(err)
 	}
@@ -250,9 +253,17 @@ func TestOsClean(t *testing.T) {
 		"link/a..b/../": "link",
 		// a symlink which cleaning names the same directory as the OS reads is kept as written
 		"self/real/../a": "self/a",
-		// what the OS cannot read is kept as written
-		"gone/../a":     "gone/../a",
-		"dangling/../a": "dangling/../a",
+		// a directory which no longer exists cannot have been a symlink, so is cleaned as text
+		"gone/../a":            "a",
+		"gone/x/../../a":       "a",
+		"real/gone/../../a":    "a",
+		"link/gone/../../a":    "real/a",
+		"real/d/gone/../../..": "",
+		// .. after a symlink or file which cannot be followed is kept as written
+		"dangling/../a":       "dangling/../a",
+		"dangling/x/../../a":  "dangling/x/../../a",
+		"real/file/../a":      "real/file/../a",
+		"real/file/x/../../a": "real/file/x/../../a",
 	}
 	for p, want := range cases {
 		path := filepath.Join(dir, "") + "/" + p

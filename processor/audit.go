@@ -482,9 +482,13 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		if _, ok := unreadable[filename]; ok {
 			return true
 		}
-		// another spelling of an unreadable file, which the lookup only returns one record for
+		// another spelling of an unreadable file, which the lookup only returns one record for,
+		// through the directory paths were created relative to as duplicates are in other formats
+		if unreadableAbs[absFrom(bases[0], filename)] {
+			return true
+		}
 		for _, base := range bases {
-			if k := absFrom(base, filename); unreadableAbs[k] || isUnderFailedDir(k) {
+			if isUnderFailedDir(absFrom(base, filename)) {
 				return true
 			}
 		}

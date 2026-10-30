@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 // AuditRecord represents a single file entry from an audit file, which can be
@@ -370,8 +371,54 @@ func osClean(path string) string {
 // resolveDotDot returns the directory a path ending in .. names. It is cleaned as text when that
 // names the same directory the OS opens, so paths through a symlinked directory such as the
 // working directory are kept as written, and otherwise is where the OS resolves it to. An empty
-// string is returned when the OS cannot open it
+// string is returned when it can never be opened
 func resolveDotDot(head string) string {
+	if _, err := os.Stat(head); err == nil {
+		return sameOrReal(head)
+	}
+
+	// the OS cannot open it, such as when the directory an audit file was created in has since
+	// been deleted or cannot be read. A directory which does not exist cannot be a symlink, so ..
+	// after it is removed as text, as it named when it was written, while .. after a symlink or a
+	// file means the path can never be opened
+	cur := "."
+	if filepath.IsAbs(head) {
+		cur = string(filepath.Separator)
+	}
+	missing := 0
+	for _, c := range strings.Split(head, string(filepath.Separator)) {
+		switch {
+		case c == "" || c == ".":
+		case c == ".." && missing > 0:
+			cur = filepath.Dir(cur)
+			missing--
+		case c == "..":
+			if _, err := os.Stat(cur + string(filepath.Separator) + ".."); err == nil {
+				if cur = sameOrReal(cur + string(filepath.Separator) + ".."); cur == "" {
+					return ""
+				}
+			} else if fi, err := os.Lstat(cur); err == nil && (fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir()) {
+				return ""
+			} else {
+				cur = filepath.Dir(cur)
+			}
+		default:
+			cur = filepath.Join(cur, c)
+			if missing > 0 {
+				missing++
+			} else if _, err := os.Lstat(cur); errors.Is(err, syscall.ENOTDIR) {
+				return ""
+			} else if err != nil {
+				missing = 1
+			}
+		}
+	}
+	return cur
+}
+
+// sameOrReal returns the path ending in .. cleaned as text when that is the same directory the OS
+// opens, and otherwise where the OS resolves it to
+func sameOrReal(head string) string {
 	fi, err := os.Stat(head)
 	if err != nil {
 		return ""
@@ -552,30 +599,28 @@ func (hdl *Auditor) removeDuplicates() {
 // sumDuplicateKeys returns the path each record of a sum file is compared to. A sum file has no
 // directory its paths were created relative to, so two lines can name the same file through the
 // sum file's directory but not through the working directory. Lines naming the same path through
-// any directory are compared by the first of their paths which exists, as that is the file they
+// any directory are compared by the first of their paths which is a file, as that is the file they
 // are checked against, and the rest by their path through the working directory
 func (hdl *Auditor) sumDuplicateKeys() func(*AuditRecord) string {
-	// the records naming each path through each directory, so most records need no lookup on disk
-	counts := make([]map[string]int, len(hdl.bases))
-	for i, base := range hdl.bases {
-		counts[i] = make(map[string]int, len(hdl.records))
-		for _, r := range hdl.records {
-			counts[i][absFrom(base, r.Filename)]++
+	// the records naming each path through any directory, so most records need no lookup on disk
+	counts := make(map[string]int, len(hdl.records)*len(hdl.bases))
+	for _, r := range hdl.records {
+		for _, k := range hdl.recordKeys(r) {
+			counts[k]++
 		}
 	}
 	return func(r *AuditRecord) string {
-		shared := false
-		for i, base := range hdl.bases {
-			if counts[i][absFrom(base, r.Filename)] > 1 {
-				shared = true
-				break
-			}
-		}
-		if shared {
-			for _, k := range hdl.recordKeys(r) {
-				if _, err := os.Lstat(k); err == nil {
-					return k
+		keys := hdl.recordKeys(r)
+		for _, k := range keys {
+			if counts[k] > 1 {
+				// the first file it names, by where it really is, so lines naming it through a
+				// symlinked directory are the same too
+				for _, k := range keys {
+					if fi, err := os.Stat(k); err == nil && fi.Mode().IsRegular() {
+						return realPath(k)
+					}
 				}
+				break
 			}
 		}
 		return hdl.primaryKey(r)

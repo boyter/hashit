@@ -1073,6 +1073,52 @@ check "every spelling of an unreadable file in a sqlite audit is reported test" 
     "cd '$AUDITDIR/r12/u' && [ \"\$('$HASHIT' -v -a ../u.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
 chmod 644 "$AUDITDIR/r12/u/u"
 
+# round 13
+for GONE in rm chmod; do
+    mkdir -p "$AUDITDIR/r13/$GONE/t/sub/deep"
+    echo a > "$AUDITDIR/r13/$GONE/t/a" && echo c > "$AUDITDIR/r13/$GONE/t/sub/deep/c"
+    (cd "$AUDITDIR/r13/$GONE/t/sub/deep" && "$HASHIT" -f hashdeep -o ../../../m.hd ../.. > /dev/null && "$HASHIT" -f sqlite -o ../../../m.db ../.. > /dev/null)
+    if [ $GONE == rm ]; then rm -r "$AUDITDIR/r13/$GONE/t/sub/deep"; else chmod 000 "$AUDITDIR/r13/$GONE/t/sub/deep"; fi
+    for AUDITFILE in m.hd m.db; do
+        check "directory an audit file was created in is $GONE'd $AUDITFILE test" \
+            "cd '$AUDITDIR/r13/$GONE/t' && '$HASHIT' -a ../$AUDITFILE . 2>/dev/null | grep -q 'Files moved: 0' && '$HASHIT' -a ../$AUDITFILE . 2>/dev/null | grep -q 'Files missing: 1'"
+    done
+    chmod 755 "$AUDITDIR/r13/$GONE/t/sub/deep" 2>/dev/null
+done
+mkdir -p "$AUDITDIR/r13/sl/r/d" "$AUDITDIR/r13/sl/r/ext/e2"
+printf e > "$AUDITDIR/r13/sl/r/ext/e2/e"
+ln -s ../ext/e2 "$AUDITDIR/r13/sl/r/d/lx"
+ln -s r "$AUDITDIR/r13/sl/L"
+(cd "$AUDITDIR/r13/sl/L" && hashdeep -l -r d/lx/.. > ../m.hd)
+check "symlink and .. from a symlinked working directory matches hashdeep test" "cd '$AUDITDIR/r13/sl/L' && '$HASHIT' -a ../m.hd d/lx/.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r13/sy/real/data" "$AUDITDIR/r13/sy/real/y"
+printf Y > "$AUDITDIR/r13/sy/real/y/f"
+ln -s real/data "$AUDITDIR/r13/sy/L"
+ln -s real/y "$AUDITDIR/r13/sy/y"
+(cd "$AUDITDIR/r13/sy" && hashdeep -l -r L/../y > m.hd)
+check "symlink after .. which cleaning also reaches matches hashdeep test" "cd '$AUDITDIR/r13/sy' && '$HASHIT' -a m.hd L/../y | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r13/s1/real"
+echo X > "$AUDITDIR/r13/s1/real/a" && echo W > "$AUDITDIR/r13/s1/real/b"
+ln -s real "$AUDITDIR/r13/s1/L"
+(cd "$AUDITDIR/r13/s1" && { md5sum real/b | sed 's/  real\/b$/  a/'; md5sum "$PWD/L/a"; } > real/s.md5)
+check "conflicting sum lines through a symlinked sum file directory test" "cd '$AUDITDIR/r13/s1' && ! '$HASHIT' --allow-moved -a L/s.md5 L > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/s2/s"
+echo X > "$AUDITDIR/r13/s2/s/a" && echo Y > "$AUDITDIR/r13/s2/s/c"
+(cd "$AUDITDIR/r13/s2" && { md5sum s/c | sed 's/  s\/c$/  a/'; md5sum s/a; } > s/s.md5)
+check "conflicting sum lines meeting through different directories test" "cd '$AUDITDIR/r13/s2' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/s3/s" "$AUDITDIR/r13/s3/x"
+echo X > "$AUDITDIR/r13/s3/s/x"
+(cd "$AUDITDIR/r13/s3" && { md5sum s/x | sed 's/  s\/x$/  x/'; md5sum s/x | sed "s#  s/x\$#  $PWD/x#"; } > s/s.md5)
+check "sum line naming a directory is not a file test" "cd '$AUDITDIR/r13/s3' && ! '$HASHIT' -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/uv/A" "$AUDITDIR/r13/uv/C"
+echo f > "$AUDITDIR/r13/uv/A/f" && echo g > "$AUDITDIR/r13/uv/A/g" && echo cf > "$AUDITDIR/r13/uv/C/f"
+(cd "$AUDITDIR/r13/uv/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+rm "$AUDITDIR/r13/uv/A/f" && chmod 000 "$AUDITDIR/r13/uv/C/f"
+check "missing record sharing a path with an unreadable file is not unreadable test" \
+    "cd '$AUDITDIR/r13/uv/C' && '$HASHIT' -v -a ../m.db . 2>/dev/null | grep -q '^./f: File expected but not found'"
+chmod 644 "$AUDITDIR/r13/uv/C/f"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
