@@ -453,31 +453,45 @@ func sameOrReal(head string) string {
 	return ""
 }
 
-// logicalPath returns a path inside where the working directory, or a directory containing it,
-// really is through the working directory as it was reached when that was through a symlink, so it
-// matches the paths of files found there
+// logicalPath returns the path a path is compared as when the working directory, or a directory
+// containing it, was reached through a symlink, so that every spelling of a file through them is
+// the same. The path is first taken through where each of them really is, repeatedly as one can
+// lead into another, then through the deepest of them containing it. The text is joined rather
+// than cleaned, so a path kept as written because it cannot be opened stays as it is
 func logicalPath(path string) string {
-	for _, d := range workingDirAncestors() {
-		// already through it, which matters when it is a symlink to a directory containing it
-		if isUnder(path, d.dir) {
-			return path
+	list := workingDirAncestors()
+	if len(list) == 0 {
+		return path
+	}
+	// bounded, as a symlink to a directory containing it means a path can be spelled with it
+	// repeated any number of times, each step removing one
+	for i := 0; i < 256; i++ {
+		changed := false
+		for _, d := range list {
+			if isUnder(path, d.dir) {
+				path = joinText(d.real, path[len(d.dir):])
+				changed = true
+				break
+			}
 		}
+		if !changed {
+			break
+		}
+	}
+	for _, d := range list {
 		if isUnder(path, d.real) {
-			return filepath.Join(d.dir, path[len(d.real):])
+			return joinText(d.dir, path[len(d.real):])
 		}
 	}
 	return path
 }
 
-// physicalPath returns a path through a symlinked working directory, or a directory containing it,
-// through where that really is, the reverse of logicalPath
-func physicalPath(path string) string {
-	for _, d := range workingDirAncestors() {
-		if isUnder(path, d.dir) {
-			return filepath.Join(d.real, path[len(d.dir):])
-		}
+// joinText joins a directory and the rest of a path starting with a separator without cleaning it
+func joinText(dir string, rest string) string {
+	if strings.HasSuffix(dir, string(filepath.Separator)) {
+		return dir + strings.TrimPrefix(rest, string(filepath.Separator))
 	}
-	return path
+	return dir + rest
 }
 
 // isUnder reports if path is the directory dir or inside it, comparing the text
@@ -503,7 +517,12 @@ func workingDirAncestors() []ancestor {
 		if runtime.GOOS == "windows" {
 			return
 		}
-		for dir := workingDir(); dir != ""; dir = filepath.Dir(dir) {
+		cwd := workingDir()
+		if cwd == "" {
+			return
+		}
+		// the working directory can be given with // or .. in it
+		for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
 			if real := realPath(dir); real != "" && real != dir {
 				ancestorList = append(ancestorList, ancestor{dir: dir, real: real})
 			}
@@ -658,6 +677,7 @@ func (hdl *Auditor) removeDuplicates() {
 		if first, ok := seen[key]; ok {
 			// md5sum -c checks every line, so the hashes of a sum file are merged
 			if hdl.sumFile {
+				first.Conflict = first.Conflict || r.Conflict
 				for name, value := range r.Hashes {
 					mergeSumHash(first, name, value)
 				}
@@ -724,6 +744,7 @@ func (hdl *Auditor) groupSameFile() {
 		values := map[string]string{}
 		conflict := false
 		for _, r := range group {
+			conflict = conflict || r.Conflict
 			for name, v := range r.Hashes {
 				if existing, ok := values[name]; ok && existing != v {
 					conflict = true

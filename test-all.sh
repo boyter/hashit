@@ -1204,6 +1204,38 @@ ln -s "$AUDITDIR/r15/sl/r" "$AUDITDIR/r15/sl/L" && echo a > "$AUDITDIR/r15/sl/r/
 check "sqlite made with .. from a symlinked working directory audits from there test" \
     "cd '$AUDITDIR/r15/sl/L/t/sub' && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' .. | grep -q 'Audit passed' && cd .. && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' . | grep -q 'Audit passed'"
 
+# round 16
+mkdir -p "$AUDITDIR/r16/c1" "$AUDITDIR/r16/c3/s"
+echo A > "$AUDITDIR/r16/c1/a" && echo A > "$AUDITDIR/r16/c3/a"
+(cd "$AUDITDIR/r16/c1" && H=$(md5sum a | cut -c1-32) && printf '%s  ./a\n%s  a\n%s  a\n' $H $H 00000000000000000000000000000000 > s.md5)
+(cd "$AUDITDIR/r16/c3" && H=$(md5sum a | cut -c1-32) && printf '%s  %s\n%s  a\n%s  a\n' $H "$(pwd)/a" $H 00000000000000000000000000000000 > s/s.md5)
+check "conflicting sum line after another spelling of the file is checked test" \
+    "cd '$AUDITDIR/r16/c1' && ! '$HASHIT' -a s.md5 a > /dev/null 2>&1 && cd '$AUDITDIR/r16/c3' && ! '$HASHIT' -a s/s.md5 a > /dev/null 2>&1 && ! md5sum -c s/s.md5 > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r16/ns/p" "$AUDITDIR/r16/ns/q" "$AUDITDIR/r16/ns/m"
+ln -s "$AUDITDIR/r16/ns/p" "$AUDITDIR/r16/ns/A" && ln -s "$AUDITDIR/r16/ns/q" "$AUDITDIR/r16/ns/p/B" && echo f > "$AUDITDIR/r16/ns/q/f"
+(cd "$AUDITDIR/r16/ns/A/B" && "$HASHIT" -f sqlite -o "$AUDITDIR/r16/ns/m/M.db" "$AUDITDIR/r16/ns/p/B" > /dev/null && "$HASHIT" -f hashdeep -o "$AUDITDIR/r16/ns/m/M.hd" "$AUDITDIR/r16/ns/p/B" > /dev/null)
+for AUDITFILE in M.db M.hd; do
+    check "nested symlinked working directory ancestors $AUDITFILE test" \
+        "cd '$AUDITDIR/r16/ns/A/B' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' '$AUDITDIR/r16/ns/p/B' | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' . | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' '$AUDITDIR/r16/ns/q' | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r16/nr/p/x/y" "$AUDITDIR/r16/nr/m"
+ln -s "$AUDITDIR/r16/nr/p" "$AUDITDIR/r16/nr/A" && ln -s "$AUDITDIR/r16/nr/p/x/y" "$AUDITDIR/r16/nr/p/B" && echo y > "$AUDITDIR/r16/nr/p/x/y/f"
+(cd "$AUDITDIR/r16/nr/A/B" && "$HASHIT" -f hashdeep -o "$AUDITDIR/r16/nr/m/M.hd" . > /dev/null)
+check "working directory ancestor really inside another's real directory test" \
+    "cd '$AUDITDIR/r16/nr/A/B' && '$HASHIT' -a '$AUDITDIR/r16/nr/m/M.hd' ../y | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/nr/m/M.hd' '$AUDITDIR/r16/nr/A/x/y' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r16/sl/a"
+ln -s . "$AUDITDIR/r16/sl/a/b" && echo f > "$AUDITDIR/r16/sl/a/f"
+check "working directory through a symlink to itself with // test" \
+    "cd '/$AUDITDIR/r16/sl/a/b' && '$HASHIT' -f hashdeep -o ../../m.hd . > /dev/null && '$HASHIT' -a ../../m.hd . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r16/dp/p" "$AUDITDIR/r16/dp/q"
+ln -s "$AUDITDIR/r16/dp/p" "$AUDITDIR/r16/dp/A" && ln -s "$AUDITDIR/r16/dp/q" "$AUDITDIR/r16/dp/p/B" && echo f > "$AUDITDIR/r16/dp/q/f" && ln -s gone "$AUDITDIR/r16/dp/q/dl"
+printf '%s  %s\n' "$(md5sum < "$AUDITDIR/r16/dp/q/f" | cut -c1-32)" "$AUDITDIR/r16/dp/q/dl/../f" > "$AUDITDIR/r16/dp/s.md5"
+check "dangling symlink and .. through where the working directory really is never matches test" "cd '$AUDITDIR/r16/dp/A/B' && ! '$HASHIT' -a '$AUDITDIR/r16/dp/s.md5' . > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r16/pl/sub"
+echo A > "$AUDITDIR/r16/pl/sub/a" && ln -s . "$AUDITDIR/r16/pl/L"
+(cd "$AUDITDIR/r16/pl/L/sub" && printf '%s  ../L/sub/a\n' "$(md5sum a | cut -c1-32)" > s.md5)
+check "working directory through a symlink to its own parent test" "cd '$AUDITDIR/r16/pl/L/sub' && '$HASHIT' -a s.md5 a | grep -q 'Audit passed' && md5sum -c s.md5 > /dev/null"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

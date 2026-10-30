@@ -214,7 +214,9 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 		if err := rows.Scan(&rid, &filePath); err != nil {
 			return err
 		}
-		if isDirectSpelling(filePath) {
+		// when the working directory was reached through a symlink a path can be compared as
+		// another spelling, so every record is indexed
+		if isDirectSpelling(filePath) && len(workingDirAncestors()) == 0 {
 			continue
 		}
 		var keys []string
@@ -258,31 +260,15 @@ func isDirectSpelling(p string) bool {
 // sqliteLookup finds the record for the absolute path of a file on disk, returning its path in
 // the database and the priority of the directory it matched through, or false if none matches
 func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (string, int, bool, error) {
-	// paths through where a symlinked working directory really is are compared through it, so
-	// the path is also tried as it really is, as the database may hold it either way
-	spellings := []string{abs}
-	if phys := physicalPath(abs); phys != abs {
-		spellings = append(spellings, phys)
-	}
 	for level, base := range bases {
 		var candidates []any
-		add := func(p string) {
-			if !containsAny(candidates, p) {
-				candidates = append(candidates, p)
-			}
+		if level == 0 {
+			candidates = append(candidates, abs)
 		}
-		for _, p := range spellings {
-			if level == 0 {
-				add(p)
-			}
-			// the path relative to base is only used when it leads back to the same file, as
-			// relative paths are compared exactly as absFrom resolves them
-			for _, b := range []string{base, physicalPath(base)} {
-				if rel, err := filepath.Rel(b, p); err == nil && rel != "." && absFrom(base, rel) == abs {
-					add(rel)
-					add("." + string(filepath.Separator) + rel)
-				}
-			}
+		// the path relative to base is only used when it leads back to the same file, as
+		// relative paths are compared exactly as absFrom resolves them
+		if rel, err := filepath.Rel(base, abs); err == nil && rel != "." && absFrom(base, rel) == abs {
+			candidates = append(candidates, rel, "."+string(filepath.Separator)+rel)
 		}
 		if len(candidates) == 0 {
 			candidates = append(candidates, nil)
@@ -304,15 +290,6 @@ func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (
 		return filePath, level, true, nil
 	}
 	return "", 0, false, nil
-}
-
-func containsAny(list []any, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // doSqliteAudit performs an audit against a SQLite database, comparing all available hashes.
