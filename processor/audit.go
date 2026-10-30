@@ -214,9 +214,8 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 		if err := rows.Scan(&rid, &filePath); err != nil {
 			return err
 		}
-		// when the working directory was reached through a symlink a path can be compared as
-		// another spelling, so every record is indexed
-		if isDirectSpelling(filePath) && len(workingDirAncestors()) == 0 {
+		direct := isDirectSpelling(filePath)
+		if direct && len(workingDirAncestors()) == 0 {
 			continue
 		}
 		var keys []string
@@ -226,6 +225,11 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 				continue
 			}
 			keys = append(keys, k)
+			// when the working directory was reached through a symlink a path can be compared
+			// as another spelling, which sqliteLookup does not try, so only those are indexed
+			if direct && k == absPath(base, filePath) {
+				continue
+			}
 			if _, err := insert.ExecContext(ctx, k, filePath, level, rid); err != nil {
 				return err
 			}

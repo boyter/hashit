@@ -288,3 +288,19 @@ func TestOsClean(t *testing.T) {
 		}
 	}
 }
+
+func TestJoinText(t *testing.T) {
+	cases := []struct{ dir, rest, want string }{
+		{"/a/b", "/c", "/a/b/c"},
+		{"/a/b", "c", "/a/b/c"},
+		{"/", "/c", "/c"},
+		{"/", "c", "/c"},
+		{"/a", "", "/a"},
+		{"/a", "/x/../y", "/a/x/../y"},
+	}
+	for _, c := range cases {
+		if got := joinText(filepath.FromSlash(c.dir), filepath.FromSlash(c.rest)); got != filepath.FromSlash(c.want) {
+			t.Errorf("%q %q: expected %q got %q", c.dir, c.rest, c.want, got)
+		}
+	}
+}

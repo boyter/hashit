@@ -1236,6 +1236,21 @@ echo A > "$AUDITDIR/r16/pl/sub/a" && ln -s . "$AUDITDIR/r16/pl/L"
 (cd "$AUDITDIR/r16/pl/L/sub" && printf '%s  ../L/sub/a\n' "$(md5sum a | cut -c1-32)" > s.md5)
 check "working directory through a symlink to its own parent test" "cd '$AUDITDIR/r16/pl/L/sub' && '$HASHIT' -a s.md5 a | grep -q 'Audit passed' && md5sum -c s.md5 > /dev/null"
 
+# round 17
+mkdir -p "$AUDITDIR/r17/rt/d" "$AUDITDIR/r17/rt/m"
+ln -s / "$AUDITDIR/r17/rt/R" && echo X > "$AUDITDIR/r17/rt/d/f"
+P2="$AUDITDIR/r17/rt/R${AUDITDIR#/}/r17/rt/d/f"
+mkdir -p "$(dirname "$P2")" && echo X > "$P2"
+(cd "$AUDITDIR/r17/rt" && "$HASHIT" -f sqlite -o "$AUDITDIR/r17/rt/m/M.db" "$P2" > /dev/null)
+rm "$P2"
+check "working directory through a symlink to / does not match another file test" "cd '$AUDITDIR/r17/rt/R' && ! '$HASHIT' -a '$AUDITDIR/r17/rt/m/M.db' '$AUDITDIR/r17/rt/d' > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r17/ro/d"
+ln -s / "$AUDITDIR/r17/ro/R" && echo X > "$AUDITDIR/r17/ro/d/f"
+(cd "$AUDITDIR/r17/ro/R${AUDITDIR}/r17/ro" && "$HASHIT" -f sqlite -o ../ro.db d > /dev/null && "$HASHIT" -f hashdeep -o ../ro.hd d > /dev/null)
+for AUDITFILE in ro.db ro.hd; do
+    check "working directory through a symlink to / passes $AUDITFILE test" "cd '$AUDITDIR/r17/ro/R${AUDITDIR}/r17/ro' && '$HASHIT' -a ../$AUDITFILE d | grep -q 'Audit passed' && '$HASHIT' -a ../$AUDITFILE '$AUDITDIR/r17/ro/d' | grep -q 'Audit passed'"
+done
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

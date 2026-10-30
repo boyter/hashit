@@ -486,12 +486,18 @@ func logicalPath(path string) string {
 	return path
 }
 
-// joinText joins a directory and the rest of a path starting with a separator without cleaning it
+// joinText joins a directory and the rest of a path inside it without cleaning it. The rest
+// starts with a separator unless the directory is the root, which ends with one
 func joinText(dir string, rest string) string {
-	if strings.HasSuffix(dir, string(filepath.Separator)) {
-		return dir + strings.TrimPrefix(rest, string(filepath.Separator))
+	sep := string(filepath.Separator)
+	rest = strings.TrimPrefix(rest, sep)
+	if rest == "" {
+		return dir
 	}
-	return dir + rest
+	if strings.HasSuffix(dir, sep) {
+		return dir + rest
+	}
+	return dir + sep + rest
 }
 
 // isUnder reports if path is the directory dir or inside it, comparing the text
