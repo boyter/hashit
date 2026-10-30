@@ -483,9 +483,16 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			return true
 		}
 		// another spelling of an unreadable file, which the lookup only returns one record for,
-		// through the directory paths were created relative to as duplicates are in other formats
-		if unreadableAbs[absFrom(bases[0], filename)] {
-			return true
+		// through the first of the directories which exists, as the directory paths were created
+		// relative to is not where the files are after they are moved, but when it exists a later
+		// directory such as the working directory can hold another record's file
+		for _, base := range bases {
+			if unreadableAbs[absFrom(base, filename)] {
+				return true
+			}
+			if fi, err := os.Stat(base); err == nil && fi.IsDir() {
+				break
+			}
 		}
 		for _, base := range bases {
 			if isUnderFailedDir(absFrom(base, filename)) {

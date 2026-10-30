@@ -276,6 +276,12 @@ func doAudit(input chan Result) (string, bool) {
 		}
 	}
 
+	checked := func(r *AuditRecord) (string, FileStatus, bool) {
+		o, ok := outcomes[r]
+		return o.file, o.status, ok
+	}
+	auditor.settleSameFile(checked, false)
+
 	// With every file on disk accounted for, anything new may be a known file which was
 	// moved or renamed, which we identify by matching size and hashes against unmatched records
 	var newFiles []Result
@@ -289,6 +295,7 @@ func doAudit(input chan Result) (string, bool) {
 			newFiles = append(newFiles, res)
 		}
 	}
+	auditor.settleSameFile(checked, true)
 
 	// files which exist but could not be read are reported as such rather than as not found
 	unreadable := map[*AuditRecord]bool{}
@@ -320,6 +327,9 @@ func doAudit(input chan Result) (string, bool) {
 	filesMissing := 0
 	for _, r := range auditor.Records() {
 		o, ok := outcomes[r]
+		if r.Duplicate {
+			continue
+		}
 		if !ok {
 			filesMissing++
 			if Verbose {

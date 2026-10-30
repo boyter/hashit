@@ -239,6 +239,16 @@ func TestOsClean(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "real", "file"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(dir, "locked"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "real", "d"), filepath.Join(dir, "locked", "lk")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "locked"), 0755) })
 	if err := os.Symlink(filepath.Join(dir, "gone"), filepath.Join(dir, "dangling")); err != nil {
 		t.Fatal(err)
 	}
@@ -264,6 +274,8 @@ func TestOsClean(t *testing.T) {
 		"dangling/x/../../a":  "dangling/x/../../a",
 		"real/file/../a":      "real/file/../a",
 		"real/file/x/../../a": "real/file/x/../../a",
+		// a directory which cannot be searched may hold a symlink
+		"locked/lk/../a": "locked/lk/../a",
 	}
 	for p, want := range cases {
 		path := filepath.Join(dir, "") + "/" + p

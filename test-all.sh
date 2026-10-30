@@ -1119,6 +1119,48 @@ check "missing record sharing a path with an unreadable file is not unreadable t
     "cd '$AUDITDIR/r13/uv/C' && '$HASHIT' -v -a ../m.db . 2>/dev/null | grep -q '^./f: File expected but not found'"
 chmod 644 "$AUDITDIR/r13/uv/C/f"
 
+# round 14
+mkdir -p "$AUDITDIR/r14/i1/real"
+echo X > "$AUDITDIR/r14/i1/real/a" && ln -s real/a "$AUDITDIR/r14/i1/a"
+(cd "$AUDITDIR/r14/i1" && md5sum real/a > real/s.md5 && md5sum a >> real/s.md5)
+check "sum lines naming a file and a symlink to it are both checked test" "cd '$AUDITDIR/r14/i1' && '$HASHIT' -a real/s.md5 . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/p2/s"
+echo X > "$AUDITDIR/r14/p2/x" && ln -s x "$AUDITDIR/r14/p2/a" && echo Y > "$AUDITDIR/r14/p2/s/a"
+(cd "$AUDITDIR/r14/p2" && H=$(md5sum s/a | cut -c1-32) && printf '%s  a\n%s  %s\n%s  %s\n' $H $H "$PWD/x" $H "$PWD/a" > s/s.md5)
+check "absolute sum lines are not checked through another file test" "cd '$AUDITDIR/r14/p2' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1 && ! md5sum -c s/s.md5 > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r14/p1/s"
+echo X > "$AUDITDIR/r14/p1/a" && echo Y > "$AUDITDIR/r14/p1/s/a"
+(cd "$AUDITDIR/r14/p1" && H=$(md5sum s/a | cut -c1-32) && printf '%s  a\n%s  %s\n' $H $H "$PWD/a" > s/s.md5)
+check "absolute sum line naming the same path as a relative one is checked test" "cd '$AUDITDIR/r14/p1' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r14/g1/real"
+ln -s real "$AUDITDIR/r14/g1/L" && echo X > "$AUDITDIR/r14/g1/real/a"
+(cd "$AUDITDIR/r14/g1/L" && md5sum a > s.md5 && md5sum ../real/a >> s.md5)
+check "sum lines naming a file through a symlinked directory and its real path test" \
+    "cd '$AUDITDIR/r14/g1/L' && '$HASHIT' -a s.md5 . ../real | grep -q 'Audit passed' && '$HASHIT' -a s.md5 . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/lk/r/t/P" "$AUDITDIR/r14/lk/r/other/x" "$AUDITDIR/r14/lk/m"
+echo y > "$AUDITDIR/r14/lk/r/y" && cp "$AUDITDIR/r14/lk/r/y" "$AUDITDIR/r14/lk/r/t/y"
+ln -s "$AUDITDIR/r14/lk/r/other/x" "$AUDITDIR/r14/lk/r/t/P/lnk"
+(cd "$AUDITDIR/r14/lk/r/t/P/lnk" && "$HASHIT" -f hashdeep -o "$AUDITDIR/r14/lk/m/M.hd" ../../y > /dev/null && "$HASHIT" -f sqlite -o "$AUDITDIR/r14/lk/m/M.db" ../../y > /dev/null)
+echo MODIFIED > "$AUDITDIR/r14/lk/r/y"
+chmod 000 "$AUDITDIR/r14/lk/r/t/P"
+for AUDITFILE in M.hd M.db; do
+    check "symlink in a directory which cannot be searched is not cleaned as text $AUDITFILE test" "cd '$AUDITDIR/r14/lk/r/t' && ! '$HASHIT' -a ../../m/$AUDITFILE y > /dev/null 2>&1"
+done
+chmod 755 "$AUDITDIR/r14/lk/r/t/P"
+mkdir -p "$AUDITDIR/r14/lg/r/t/sub/deep"
+ln -s r "$AUDITDIR/r14/lg/L" && ln -s sub/deep "$AUDITDIR/r14/lg/r/t/lnk" && echo a > "$AUDITDIR/r14/lg/r/t/a"
+(cd "$AUDITDIR/r14/lg/L/t" && "$HASHIT" -f hashdeep -o ../../m.hd . > /dev/null)
+check "symlink and .. leading to the symlinked working directory test" "cd '$AUDITDIR/r14/lg/L/t' && '$HASHIT' -a ../../m.hd lnk/../.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/O"
+echo one > "$AUDITDIR/r14/ud/A/f" && echo two > "$AUDITDIR/r14/ud/A/g"
+(cd "$AUDITDIR/r14/ud/A" && "$HASHIT" -f sqlite -o ../O/m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+mv "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/B" && mv "$AUDITDIR/r14/ud/O/m.db" "$AUDITDIR/r14/ud/B/"
+chmod 000 "$AUDITDIR/r14/ud/B/f"
+check "every spelling of an unreadable file in a moved sqlite tree is reported test" \
+    "cd '$AUDITDIR/r14/ud/B' && [ \"\$('$HASHIT' -v -a m.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+chmod 644 "$AUDITDIR/r14/ud/B/f"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
