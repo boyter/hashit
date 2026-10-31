@@ -136,18 +136,29 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		return nil, errors.New("audit database was created by an older development version of hashit, regenerate it with --format sqlite --overwrite")
 	}
 
-	// each path is looked up as a single row and rows are told apart by rowid, so a table made
-	// some other way could have a path listed twice with only one audited, or a rowid column
-	// hiding the real one
+	// each path is looked up as a single row compared exactly and rows are told apart by rowid, so
+	// a table made some other way could have a path listed twice with only one audited, a path
+	// matching a file differing in case, or a rowid column, which may be generated, hiding the
+	// real one
 	var keyed, shadowed, withoutRowid int
+	var collation sql.NullString
 	if err := db.QueryRow(`select
     (select count(*) = 1 and sum(name = 'filepath') = 1 from pragma_table_info('file_hashes') where pk > 0),
-    (select count(*) from pragma_table_info('file_hashes') where lower(name) in ('rowid', 'oid', '_rowid_')),
+    (select count(*) from pragma_table_xinfo('file_hashes') where lower(name) in ('rowid', 'oid', '_rowid_')),
     (select count(*) from pragma_table_list where name = 'file_hashes' and wr = 1)`).Scan(&keyed, &shadowed, &withoutRowid); err != nil {
 		return nil, err
 	}
-	if keyed != 1 || shadowed != 0 || withoutRowid != 0 {
-		return nil, errors.New("audit database was not created by hashit, its file_hashes table must have filepath as its primary key and a rowid")
+	var index sql.NullString
+	if err := db.QueryRow("select name from pragma_index_list('file_hashes') where origin = 'pk'").Scan(&index); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if index.Valid {
+		if err := db.QueryRow("select coll from pragma_index_xinfo(?) where key = 1", index.String).Scan(&collation); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+	if keyed != 1 || shadowed != 0 || withoutRowid != 0 || !strings.EqualFold(collation.String, "binary") {
+		return nil, errors.New("audit database was not created by hashit, its file_hashes table must have filepath as its primary key, compared exactly, and a rowid")
 	}
 
 	// a database of an empty directory has no records, and passes when audited against one
@@ -383,8 +394,8 @@ select filepath, status, disk_file from (
 // up and is reported as missing although the file exists. Of such rows the earliest is kept when
 // none was checked. A row with other values, or naming another path through that directory such as
 // an absolute path into a tree which was copied elsewhere, is still reported. When no directory was
-// chosen rows naming the same path through any directory are the same, see judgingBases
-func markSqliteDuplicates(ctx context.Context, tx *sql.Tx, bases []string) (int, error) {
+// chosen the directory hashit was invoked from is used, as the database records it
+func markSqliteDuplicates(ctx context.Context, tx *sql.Tx, base string) (int, error) {
 	if _, err := tx.ExecContext(ctx, "create temp table duplicates (rid integer primary key)"); err != nil {
 		return 0, err
 	}
@@ -416,56 +427,27 @@ from temp.repeated r join file_hashes f on f.rowid = r.rid order by r.key, r.rid
 	if err != nil {
 		return 0, err
 	}
-	type row struct {
-		rid     int64
+	type samePath struct {
 		checked bool
-		keys    []string
+		unseen  []int64 // in rowid order
 	}
 	var duplicates []int64
-	var set []row
-	// rows of a set naming the same path through any of the directories are grouped together
+	paths := map[string]*samePath{}
 	settle := func() {
-		group := make([]int, len(set))
-		for i := range group {
-			group[i] = i
-		}
-		find := func(i int) int {
-			for group[i] != i {
-				group[i] = group[group[i]]
-				i = group[i]
+		for _, p := range paths {
+			if !p.checked {
+				p.unseen = p.unseen[1:]
 			}
-			return i
+			duplicates = append(duplicates, p.unseen...)
 		}
-		owner := map[string]int{}
-		for i, r := range set {
-			for _, k := range r.keys {
-				if j, ok := owner[k]; ok {
-					a, b := find(i), find(j)
-					group[max(a, b)] = min(a, b)
-				} else {
-					owner[k] = i
-				}
-			}
-		}
-		checked := map[int]bool{}
-		for i, r := range set {
-			if r.checked {
-				checked[find(i)] = true
-			}
-		}
-		// rows are in rowid order, so the earliest of a group none was checked against is its root
-		for i, r := range set {
-			if g := find(i); !r.checked && (checked[g] || g != i) {
-				duplicates = append(duplicates, r.rid)
-			}
-		}
-		set = set[:0]
+		paths = map[string]*samePath{}
 	}
 	current := ""
 	for rows.Next() {
-		var r row
+		var rid int64
 		var values, filePath string
-		if err := rows.Scan(&r.rid, &values, &filePath, &r.checked); err != nil {
+		var checked bool
+		if err := rows.Scan(&rid, &values, &filePath, &checked); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
@@ -473,10 +455,17 @@ from temp.repeated r join file_hashes f on f.rowid = r.rid order by r.key, r.rid
 			settle()
 			current = values
 		}
-		for _, base := range bases {
-			r.keys = append(r.keys, absFrom(base, filePath))
+		k := absFrom(base, filePath)
+		p := paths[k]
+		if p == nil {
+			p = &samePath{}
+			paths[k] = p
 		}
-		set = append(set, r)
+		if checked {
+			p.checked = true
+		} else {
+			p.unseen = append(p.unseen, rid)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -663,7 +652,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		return false
 	}
 
-	duplicates, err := markSqliteDuplicates(ctx, tx, judgingBases(bases, chosen))
+	duplicates, err := markSqliteDuplicates(ctx, tx, bases[max(chosen, 0)])
 	if err != nil {
 		_ = tx.Rollback()
 		printError(fmt.Sprintf("failed to check audit database for duplicates: %s", err.Error()))

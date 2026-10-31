@@ -1327,6 +1327,18 @@ insert into file_hashes select * from file_hashes;"
 check "sqlite database without filepath as primary key is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../m.db . > /dev/null 2>&1; [ \$? -eq 2 ]"
 sqlite3 "$AUDITDIR/r19/pk/r.db" "alter table file_hashes add column rowid integer;"
 check "sqlite database with a rowid column is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../r.db . 2>&1 | grep -q 'was not created by hashit'"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../g.db --overwrite . > /dev/null && "$HASHIT" -f sqlite -o ../n.db . > /dev/null)
+SCHEMA=$(sqlite3 "$AUDITDIR/r19/pk/g.db" "select sql from sqlite_master where name = 'file_hashes'")
+sqlite3 "$AUDITDIR/r19/pk/g.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/mtime text null/mtime text null, rowid integer generated always as (1) virtual/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database with a generated rowid column is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../g.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/n.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath text primary key collate nocase/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database comparing paths without case is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../n.db . 2>&1 | grep -q 'was not created by hashit'"
+# a relative row is only the same path as an absolute one through the directory hashit was invoked from
+mkdir -p "$AUDITDIR/r21/D" "$AUDITDIR/r21/T" "$AUDITDIR/r21/M"
+printf A > "$AUDITDIR/r21/D/a" && printf A > "$AUDITDIR/r21/T/a"
+(cd "$AUDITDIR/r21/D" && "$HASHIT" -f sqlite -o ../M/m.db a "$AUDITDIR/r21/T/a" > /dev/null)
+rm "$AUDITDIR/r21/D/a"
+check "sqlite relative row is not a duplicate of an absolute row through the working directory test" "cd '$AUDITDIR/r21/T' && ! '$HASHIT' -a ../M/m.db . > /dev/null 2>&1"
 # a sum file listing every file by relative and absolute path passes in place from another directory
 mkdir -p "$AUDITDIR/r20/t/s"
 echo a > "$AUDITDIR/r20/t/a" && echo b > "$AUDITDIR/r20/t/s/b"
