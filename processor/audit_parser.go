@@ -269,9 +269,14 @@ func chooseLevel(votes map[int]int) int {
 	return chosen
 }
 
-// chosenBase returns the directory an audit is matched through, the first when none was chosen
-func (hdl *Auditor) chosenBase(chosen int) string {
-	return hdl.bases[max(chosen, 0)]
+// judgingBases returns the directories through which records are judged to name the same path: the
+// one the audit is matched through, or every directory when none was chosen, as when every file
+// matched an absolute record nothing says which directory the relative records are relative to
+func judgingBases(bases []string, chosen int) []string {
+	if chosen == -1 {
+		return bases
+	}
+	return bases[chosen : chosen+1]
 }
 
 // keepsMatch reports whether a file matched through a directory is kept as matched once the
@@ -756,15 +761,19 @@ type duplicateRecord struct {
 // record it duplicates through the directory the audit is matched through, such as an absolute
 // path into a tree which was copied elsewhere with the audit file, by the path it names there
 func (hdl *Auditor) restoreDuplicates(chosen int) map[string]*AuditRecord {
-	base := hdl.chosenBase(chosen)
+	bases := judgingBases(hdl.bases, chosen)
 	restored := map[string]*AuditRecord{}
 	var kept []duplicateRecord
 	for _, d := range hdl.duplicates {
-		k := absFrom(base, d.record.Filename)
-		if k == absFrom(base, d.first.Filename) {
+		same := false
+		for _, base := range bases {
+			same = same || absFrom(base, d.record.Filename) == absFrom(base, d.first.Filename)
+		}
+		if same {
 			kept = append(kept, d)
 			continue
 		}
+		k := absFrom(bases[0], d.record.Filename)
 		hdl.addRecord(d.record)
 		for name, v := range d.record.Hashes {
 			hdl.hashLookup[name+":"+v] = append(hdl.hashLookup[name+":"+v], d.record)
@@ -851,12 +860,13 @@ func (hdl *Auditor) groupSameFile() {
 // settleSameFile marks the lines of a sum file naming a file which another line naming it was
 // checked against as duplicates, so they are not reported as missing or paired with another file.
 // A line must name the file through the directory the audit is matched through, as a line naming
-// it only through another directory names a file which was not checked, see chooseLevel. Before
+// it only through another directory names a file which was not checked, see chooseLevel, unless
+// none was chosen, see judgingBases. Before
 // moves are found a line must have been checked against the file itself, not a file found through
 // another directory, and after a line moved with the file no longer where it was, when a line
 // must name the path the moved line does
 func (hdl *Auditor) settleSameFile(checked func(*AuditRecord) (string, FileStatus, bool), afterMoves bool, chosen int) {
-	base := hdl.chosenBase(chosen)
+	bases := judgingBases(hdl.bases, chosen)
 	for real, group := range hdl.sameFile {
 		var movedFrom []string
 		settled := false
@@ -864,7 +874,9 @@ func (hdl *Auditor) settleSameFile(checked func(*AuditRecord) (string, FileStatu
 			if _, err := os.Stat(real); err != nil {
 				for _, r := range group {
 					if _, status, ok := checked(r); ok && status == FileMoved {
-						movedFrom = append(movedFrom, absFrom(base, r.Filename))
+						for _, base := range bases {
+							movedFrom = append(movedFrom, absFrom(base, r.Filename))
+						}
 					}
 				}
 			}
@@ -882,10 +894,13 @@ func (hdl *Auditor) settleSameFile(checked func(*AuditRecord) (string, FileStatu
 			if _, _, ok := checked(r); ok {
 				continue
 			}
-			k := absFrom(base, r.Filename)
-			if settled && realPath(k) == real || contains(movedFrom, k) {
-				r.Matched = true
-				r.Duplicate = true
+			for _, base := range bases {
+				k := absFrom(base, r.Filename)
+				if settled && realPath(k) == real || contains(movedFrom, k) {
+					r.Matched = true
+					r.Duplicate = true
+					break
+				}
 			}
 		}
 	}
