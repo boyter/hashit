@@ -1069,8 +1069,9 @@ echo u > "$AUDITDIR/r12/u/u"
 sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes"
 mkdir -p "$AUDITDIR/r12/u/x"
 chmod 000 "$AUDITDIR/r12/u/u"
+# the second row lists the same values for the same file, so is a duplicate as in a hashdeep file
 check "every spelling of an unreadable file in a sqlite audit is reported test" \
-    "cd '$AUDITDIR/r12/u' && [ \"\$('$HASHIT' -v -a ../u.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+    "cd '$AUDITDIR/r12/u' && '$HASHIT' -v -a ../u.db . 2>/dev/null > ../u.out; [ \"\$(grep -c 'File could not be read' ../u.out)\" == 1 ] && ! grep -q 'not found' ../u.out"
 chmod 644 "$AUDITDIR/r12/u/u"
 
 # round 13
@@ -1158,7 +1159,7 @@ sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32,
 mv "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/B" && mv "$AUDITDIR/r14/ud/O/m.db" "$AUDITDIR/r14/ud/B/"
 chmod 000 "$AUDITDIR/r14/ud/B/f"
 check "every spelling of an unreadable file in a moved sqlite tree is reported test" \
-    "cd '$AUDITDIR/r14/ud/B' && [ \"\$('$HASHIT' -v -a m.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+    "cd '$AUDITDIR/r14/ud/B' && '$HASHIT' -v -a m.db . 2>/dev/null > ../ud.out; [ \"\$(grep -c 'File could not be read' ../ud.out)\" == 1 ] && ! grep -q 'not found' ../ud.out"
 chmod 644 "$AUDITDIR/r14/ud/B/f"
 
 # round 15
@@ -1177,7 +1178,7 @@ echo one > "$AUDITDIR/r15/uo/A/f" && echo two > "$AUDITDIR/r15/uo/A/g"
 sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
 mv "$AUDITDIR/r15/uo/A" "$AUDITDIR/r15/uo/B" && chmod 000 "$AUDITDIR/r15/uo/B/f"
 check "every spelling of an unreadable file in a moved tree with the sqlite file outside it test" \
-    "cd '$AUDITDIR/r15/uo/B' && [ \"\$('$HASHIT' -v -a ../m.db . 2>/dev/null | grep -c 'File could not be read')\" == 2 ]"
+    "cd '$AUDITDIR/r15/uo/B' && '$HASHIT' -v -a ../m.db . 2>/dev/null > ../uo.out; [ \"\$(grep -c 'File could not be read' ../uo.out)\" == 1 ] && ! grep -q 'not found' ../uo.out"
 chmod 644 "$AUDITDIR/r15/uo/B/f"
 mkdir -p "$AUDITDIR/r15/lp/p/sub/d" "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/mx/my"
 ln -s "$AUDITDIR/r15/lp/p" "$AUDITDIR/r15/lp/A" && ln -s "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/p/B" && echo y > "$AUDITDIR/r15/lp/p/sub/y"
@@ -1257,6 +1258,21 @@ rm "$AUDITDIR/r17/af/y/a"
 for AUDITFILE in m.hd m.db m.sha256; do
     check "audit file given through a symlink and .. is in the directory the OS opens $AUDITFILE test" "cd '$AUDITDIR/r17/af' && ! '$HASHIT' -a x/lnk/../$AUDITFILE x/a > /dev/null 2>&1"
 done
+
+# a database made from overlapping paths lists a file twice, and the second row is never looked up
+mkdir -p "$AUDITDIR/r18/t/sub"
+echo a > "$AUDITDIR/r18/t/a"
+echo b > "$AUDITDIR/r18/t/sub/b"
+(cd "$AUDITDIR/r18/t" && "$HASHIT" -r -f sqlite -o ../ov.db . sub > /dev/null && "$HASHIT" -f sqlite -o ../same.db a ./a "$AUDITDIR/r18/t/a" > /dev/null)
+check "sqlite rows for the same file from overlapping paths pass test" "cd '$AUDITDIR/r18/t' && '$HASHIT' -r -a ../ov.db . | grep -q 'Audit passed'"
+check "sqlite rows for the same file by different spellings pass test" "cd '$AUDITDIR/r18/t' && '$HASHIT' -a ../same.db a | grep -q 'Audit passed'"
+cp "$AUDITDIR/r18/ov.db" "$AUDITDIR/r18/conflict.db"
+sqlite3 "$AUDITDIR/r18/conflict.db" "update file_hashes set md5 = '00000000000000000000000000000000' where filepath = 'sub/b'"
+check "sqlite rows for the same file with other values fail test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../conflict.db . > /dev/null 2>&1"
+echo z > "$AUDITDIR/r18/t/sub/b"
+check "sqlite rows for the same file from overlapping paths catch a modified file test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../ov.db . > /dev/null 2>&1"
+rm "$AUDITDIR/r18/t/sub/b"
+check "sqlite rows for the same file from overlapping paths catch a deleted file test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../ov.db . > /dev/null 2>&1"
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"

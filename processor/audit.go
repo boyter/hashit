@@ -296,6 +296,111 @@ func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (
 	return "", 0, false, nil
 }
 
+// markSqliteDuplicates records in temp.duplicates the rows no file on disk was checked against
+// which name the same path as an earlier row with the same values, such as from hashing . and
+// ./sub together, as otherwise the row is never looked up and is reported as missing although
+// the file exists. A row with other values is kept, so it is still reported. Rows are read in
+// batches as the lookups need the only connection
+func markSqliteDuplicates(ctx context.Context, tx *sql.Tx, bases []string) (int, error) {
+	if _, err := tx.ExecContext(ctx, "create temp table duplicates (filepath text primary key)"); err != nil {
+		return 0, err
+	}
+	var unseen bool
+	if err := tx.QueryRowContext(ctx, "select exists (select 1 from file_hashes where filepath not in (select filepath from temp.seen))").Scan(&unseen); err != nil || !unseen {
+		return 0, err
+	}
+	// only rows whose name and values are listed more than once can be duplicates, so when many
+	// files are missing they are not all looked up. Values are compared as fileHashToRecord reads
+	// them, and the name is what follows the last separator. A row this misses is still reported
+	path := `replace(filepath, '\', '/')`
+	values := []string{"substr(" + path + ", length(rtrim(" + path + ", replace(" + path + ", '/', ''))) + 1)"}
+	for _, column := range []string{"crc32", "xxhash64", "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512",
+		"blake2b_256", "blake2b_512", "blake3", "sha3_224", "sha3_256", "sha3_384", "sha3_512", "ed2k"} {
+		values = append(values, "lower(ifnull("+column+", ''))")
+	}
+	key := "size || '|' || " + strings.Join(values, " || '|' || ")
+	if _, err := tx.ExecContext(ctx, "create temp table repeated (rid integer primary key)"); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `insert into temp.repeated select f.rowid from file_hashes f
+where `+key+` in (select `+key+` from file_hashes group by 1 having count(*) > 1)`); err != nil {
+		return 0, err
+	}
+	txQueries := database.New(tx)
+	duplicates := 0
+	last := int64(-1 << 63)
+	for {
+		type row struct {
+			rid      int64
+			filePath string
+		}
+		var batch []row
+		rows, err := tx.QueryContext(ctx, `select f.rowid, f.filepath from temp.repeated r join file_hashes f on f.rowid = r.rid
+where r.rid > ? and f.filepath not in (select filepath from temp.seen)
+order by r.rid limit 1000`, last)
+		if err != nil {
+			return 0, err
+		}
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.rid, &r.filePath); err != nil {
+				_ = rows.Close()
+				return 0, err
+			}
+			batch = append(batch, r)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		_ = rows.Close()
+		if len(batch) == 0 {
+			return duplicates, nil
+		}
+		last = batch[len(batch)-1].rid
+
+		for _, r := range batch {
+			// the lookup returns the earliest row for the path, which is this one unless it is a
+			// duplicate
+			first, _, ok, err := sqliteLookup(ctx, tx, bases[:1], absFrom(bases[0], r.filePath))
+			if err != nil {
+				return 0, err
+			}
+			if !ok || first == r.filePath {
+				continue
+			}
+			a, err := txQueries.FileHashByFilePath(ctx, first)
+			if err != nil {
+				return 0, err
+			}
+			b, err := txQueries.FileHashByFilePath(ctx, r.filePath)
+			if err != nil {
+				return 0, err
+			}
+			if !sameRecordValues(fileHashToRecord(a), fileHashToRecord(b)) {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, "insert or ignore into temp.duplicates (filepath) values (?)", r.filePath); err != nil {
+				return 0, err
+			}
+			duplicates++
+		}
+	}
+}
+
+// sameRecordValues reports whether two records list the same size and hashes
+func sameRecordValues(a *AuditRecord, b *AuditRecord) bool {
+	if a.Size != b.Size || len(a.Hashes) != len(b.Hashes) {
+		return false
+	}
+	for name, value := range a.Hashes {
+		if b.Hashes[name] != value {
+			return false
+		}
+	}
+	return true
+}
+
 // doSqliteAudit performs an audit against a SQLite database, comparing all available hashes.
 // To scale to databases larger than available memory, which files have been seen is tracked
 // in a temporary table rather than in memory, and the final report streams over the database
@@ -506,6 +611,15 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	}
 
 	_ = insertSeen.Close()
+	duplicates, err := markSqliteDuplicates(ctx, tx, bases)
+	if err != nil {
+		_ = tx.Rollback()
+		printError(fmt.Sprintf("failed to check audit database for duplicates: %s", err.Error()))
+		return "", false
+	}
+	if duplicates != 0 {
+		printWarn(fmt.Sprintf("audit database lists the same path more than once, only the first is used for each, duplicates: %d", duplicates))
+	}
 	if err := tx.Commit(); err != nil {
 		printError(fmt.Sprintf("failed to commit audit results: %s", err.Error()))
 		return "", false
@@ -530,6 +644,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
     f.blake2b_256, f.blake2b_512, f.blake3, f.sha3_224, f.sha3_256, f.sha3_384, f.sha3_512, f.ed2k, f.size, f.mtime,
     s.status, s.disk_file
 from file_hashes f left join temp.seen s on s.filepath = f.filepath
+where f.filepath not in (select filepath from temp.duplicates)
 order by f.filepath`)
 	if err != nil {
 		printError(fmt.Sprintf("failed to query audit database: %s", err.Error()))
