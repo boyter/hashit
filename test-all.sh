@@ -1291,6 +1291,46 @@ for AUDITFILE in m.hd m.db m.sha256; do
     check "file moved to where the audit file's directory places it passes with allow moved $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' --allow-moved -a d/$AUDITFILE d | grep -q 'Audit passed'"
 done
 
+# round 19
+# a sum line is only a duplicate of another when it names the checked file through the directory
+# the audit is matched through
+mkdir -p "$AUDITDIR/r19/gk/r/a/a"
+touch "$AUDITDIR/r19/gk/r/.gitkeep" "$AUDITDIR/r19/gk/r/a/.gitkeep" "$AUDITDIR/r19/gk/r/a/a/.gitkeep"
+(cd "$AUDITDIR/r19/gk/r" && md5sum .gitkeep a/.gitkeep a/a/.gitkeep > S.md5)
+rm "$AUDITDIR/r19/gk/r/.gitkeep"
+check "deleted file with an identical file of the same name below it is missing test" "cd '$AUDITDIR/r19/gk/r/a' && ! '$HASHIT' -a ../S.md5 .. > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r19/ap/t"
+echo a > "$AUDITDIR/r19/ap/t/a" && echo b > "$AUDITDIR/r19/ap/t/b"
+(cd "$AUDITDIR/r19/ap/t" && md5sum a b > s.md5)
+(cd "$AUDITDIR/r19/ap" && md5sum t/a >> t/s.md5)
+mv "$AUDITDIR/r19/ap/t/b" "$AUDITDIR/r19/ap/b"
+check "sum line through another directory does not hide a moved file test" "cd '$AUDITDIR/r19/ap' && ! '$HASHIT' -a t/s.md5 . > /dev/null 2>&1"
+# a record dropped as a duplicate names another file once the tree is copied elsewhere
+for AUDITFILE in x.hd x.db; do
+    mkdir -p "$AUDITDIR/r19/cp/$AUDITFILE/w" "$AUDITDIR/r19/cp/$AUDITFILE/m"
+    echo A > "$AUDITDIR/r19/cp/$AUDITFILE/w/a" && echo B > "$AUDITDIR/r19/cp/$AUDITFILE/w/b"
+    FORMAT=hashdeep; [ $AUDITFILE = x.db ] && FORMAT=sqlite
+    (cd "$AUDITDIR/r19/cp/$AUDITFILE/w" && "$HASHIT" -r -f $FORMAT -o ../m/$AUDITFILE . "$AUDITDIR/r19/cp/$AUDITFILE/w/a" > /dev/null)
+    check "duplicate absolute record in place passes $AUDITFILE test" "cd '$AUDITDIR/r19/cp/$AUDITFILE/w' && '$HASHIT' -a ../m/$AUDITFILE . | grep -q 'Audit passed'"
+    cp -r "$AUDITDIR/r19/cp/$AUDITFILE/w" "$AUDITDIR/r19/cp/$AUDITFILE/z" && cp "$AUDITDIR/r19/cp/$AUDITFILE/m/$AUDITFILE" "$AUDITDIR/r19/cp/$AUDITFILE/z/"
+    rm -rf "$AUDITDIR/r19/cp/$AUDITFILE/w"
+    check "duplicate absolute record into a tree copied elsewhere is missing $AUDITFILE test" "cd '$AUDITDIR/r19/cp/$AUDITFILE/z' && ! '$HASHIT' -a $AUDITFILE . > /dev/null 2>&1"
+done
+# rows are duplicates by row, so a row with other values sharing the text of a duplicate is reported
+mkdir -p "$AUDITDIR/r19/pk/t"
+printf A > "$AUDITDIR/r19/pk/t/a"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r19/pk/m.db" "create table f2 as select * from file_hashes; drop table file_hashes; alter table f2 rename to file_hashes;
+insert into file_hashes select 'a', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './a';
+insert into file_hashes select 'a', crc32, xxhash64, md4, md5, sha1, sha224, '00', sha384, '00', blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './a';"
+check "sqlite row with other values sharing the path of a duplicate is reported test" "cd '$AUDITDIR/r19/pk/t' && ! '$HASHIT' -a ../m.db . > /dev/null 2>&1"
+# the directory most files match through is used, so the file which moved is the one reported
+mkdir -p "$AUDITDIR/r19/maj/t"
+for F in a b c d e; do echo $F > "$AUDITDIR/r19/maj/t/$F"; done
+(cd "$AUDITDIR/r19/maj/t" && md5sum a b c d e > s.md5)
+mv "$AUDITDIR/r19/maj/t/a" "$AUDITDIR/r19/maj/a"
+check "file moved to where the working directory places it is the one reported test" "cd '$AUDITDIR/r19/maj' && '$HASHIT' -v -a t/s.md5 . | grep -q 'a -> ./a: File moved'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
