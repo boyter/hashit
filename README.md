@@ -65,6 +65,7 @@ Usage:
 Flags:
       --absolute                output absolute paths, which is what hashdeep does without -l
       --allow-moved             allow an audit to pass when known files have moved or been renamed but are unmodified
+      --allow-new               allow an audit to pass when there are files which are not in the audit file
   -a, --audit string            audit against supplied file; accepts hashdeep, sum (md5sum, sha256sum etc...) or hashit sqlite format
       --debug                   enable debug output
       --exclude-dir strings     directories to exclude when walking directories, by name such as node_modules or the end of a path such as vendor/cache
@@ -298,6 +299,8 @@ $ rm -rf /tmp/hashit-audit-test audit.txt
 ```
 
 `hashit` can also detect moved files, distinguishing them from new or missing files. As with `hashdeep`, an audit only passes when every file is exactly where it was, so moved files cause the audit to fail. To check that every known file is still present and unmodified, while allowing files to have been moved or renamed, use `--allow-moved`. New, missing or modified files still fail the audit. Files are matched by path first, so a file renamed onto the path of another known file, such as two files swapping names, is reported as modified rather than moved.
+
+Files which are not in the audit file are reported as new and fail the audit, as with `hashdeep`, such as another audit file created in the same directory. To only verify the files the audit file lists, as `md5sum -c` does, use `--allow-new`. New files are still listed with `-v`, and missing or modified files still fail the audit. A copy of a known file whose original is still present is a new file, so passes with `--allow-new`. The two flags can be combined.
 
 ```shell
 $ mv a.txt archive/a.txt

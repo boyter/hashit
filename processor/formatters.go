@@ -210,7 +210,10 @@ func auditFailed(modified, moved, newFiles, missing int) bool {
 	if moved > 0 && !AllowMoved {
 		return true
 	}
-	return modified > 0 || newFiles > 0 || missing > 0
+	if newFiles > 0 && !AllowNew {
+		return true
+	}
+	return modified > 0 || missing > 0
 }
 
 func doAudit(input chan Result) (string, bool) {

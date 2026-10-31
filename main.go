@@ -105,6 +105,12 @@ func main() {
 		"allow an audit to pass when known files have moved or been renamed but are unmodified",
 	)
 	flags.BoolVar(
+		&processor.AllowNew,
+		"allow-new",
+		false,
+		"allow an audit to pass when there are files which are not in the audit file",
+	)
+	flags.BoolVar(
 		&processor.Absolute,
 		"absolute",
 		false,

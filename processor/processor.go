@@ -59,6 +59,10 @@ var Absolute = false
 // AllowMoved allows an audit to pass when known files have moved, so long as they are unmodified
 var AllowMoved = false
 
+// AllowNew allows an audit to pass when there are files which are not in the audit file, so only
+// the files it lists are verified, as md5sum -c does
+var AllowNew = false
+
 // If data is being piped in using stdin
 var StandardInput = false
 
@@ -291,6 +295,9 @@ func Process() {
 
 	if AllowMoved && AuditFile == "" {
 		printWarn("--allow-moved only applies when auditing with --audit, ignoring flag")
+	}
+	if AllowNew && AuditFile == "" {
+		printWarn("--allow-new only applies when auditing with --audit, ignoring flag")
 	}
 
 	// Interrupting removes any temporary output, and exits with the conventional code for the signal

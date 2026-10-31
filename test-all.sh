@@ -1331,6 +1331,30 @@ for F in a b c d e; do echo $F > "$AUDITDIR/r19/maj/t/$F"; done
 mv "$AUDITDIR/r19/maj/t/a" "$AUDITDIR/r19/maj/a"
 check "file moved to where the working directory places it is the one reported test" "cd '$AUDITDIR/r19/maj' && '$HASHIT' -v -a t/s.md5 . | grep -q 'a -> ./a: File moved'"
 
+# --allow-new passes an audit with files not in the audit file, but fails for anything else
+for AUDITFILE in m.hd m.db m.md5; do
+    mkdir -p "$AUDITDIR/an/$AUDITFILE/t"
+    echo a > "$AUDITDIR/an/$AUDITFILE/t/a" && echo b > "$AUDITDIR/an/$AUDITFILE/t/b"
+    case $AUDITFILE in
+        m.hd) (cd "$AUDITDIR/an/$AUDITFILE/t" && "$HASHIT" -f hashdeep -o ../m.hd . > /dev/null) ;;
+        m.db) (cd "$AUDITDIR/an/$AUDITFILE/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null) ;;
+        m.md5) (cd "$AUDITDIR/an/$AUDITFILE/t" && md5sum a b > ../m.md5) ;;
+    esac
+    echo new > "$AUDITDIR/an/$AUDITFILE/t/new"
+    check "new file fails an audit $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' -a ../$AUDITFILE . > /dev/null 2>&1"
+    check "new file passes with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new -v -a ../$AUDITFILE . > ../out && grep -q 'Audit passed' ../out && grep -q 'new: File new' ../out"
+    cp "$AUDITDIR/an/$AUDITFILE/t/a" "$AUDITDIR/an/$AUDITFILE/t/copy"
+    check "copy of a known file passes with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new -a ../$AUDITFILE . | grep -q 'Audit passed'"
+    mv "$AUDITDIR/an/$AUDITFILE/t/b" "$AUDITDIR/an/$AUDITFILE/t/moved"
+    check "moved file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new -a ../$AUDITFILE . > /dev/null 2>&1"
+    check "moved file passes with allow new and allow moved $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . | grep -q 'Audit passed'"
+    echo changed > "$AUDITDIR/an/$AUDITFILE/t/a"
+    check "modified file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . > /dev/null 2>&1"
+    rm "$AUDITDIR/an/$AUDITFILE/t/a" "$AUDITDIR/an/$AUDITFILE/t/copy"
+    check "missing file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . > /dev/null 2>&1"
+done
+check "allow new outside an audit warns test" "'$HASHIT' --allow-new '$AUDITDIR/an/m.md5/t' 2>&1 >/dev/null | grep -q 'allow-new only applies'"
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"
