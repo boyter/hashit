@@ -230,13 +230,15 @@ func doAudit(input chan Result) (string, bool) {
 
 	// Two files on disk can resolve to the same record, so decide which claims it once every file
 	// has arrived, so the result does not depend on the order files were processed in. A file
-	// matching the record's own path wins over one matching through another directory, then the
-	// first path in sort order
+	// matching through a directory earlier in priority order wins, being the record's own path
+	// before another directory, then the first path in sort order
 	type claim struct {
-		res     Result
-		primary bool
+		res         Result
+		level       int
+		independent bool
 	}
 	claims := map[*AuditRecord]claim{}
+	chosen := -1
 
 	seen := map[string]bool{}
 	for res := range input {
@@ -246,19 +248,20 @@ func doAudit(input chan Result) (string, bool) {
 		}
 		examinedCount++
 
-		r, primary := auditor.LookupPrimary(res.File)
+		r, level, independent := auditor.LookupLevel(res.File)
 		if r == nil {
 			newFileCandidates = append(newFileCandidates, res)
 			continue
 		}
+		chosen = chooseLevel(chosen, level, independent)
 
 		existing, ok := claims[r]
 		if !ok {
-			claims[r] = claim{res: res, primary: primary}
+			claims[r] = claim{res: res, level: level, independent: independent}
 			continue
 		}
-		if primary != existing.primary && primary || primary == existing.primary && res.File < existing.res.File {
-			claims[r] = claim{res: res, primary: primary}
+		if level < existing.level || level == existing.level && res.File < existing.res.File {
+			claims[r] = claim{res: res, level: level, independent: independent}
 			newFileCandidates = append(newFileCandidates, existing.res)
 		} else {
 			newFileCandidates = append(newFileCandidates, res)
@@ -266,6 +269,10 @@ func doAudit(input chan Result) (string, bool) {
 	}
 
 	for r, c := range claims {
+		if !keepsMatch(chosen, c.level, c.independent) {
+			newFileCandidates = append(newFileCandidates, c.res)
+			continue
+		}
 		r.Matched = true
 		if recordMatches(r, c.res) {
 			matched++

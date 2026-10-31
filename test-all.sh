@@ -1274,6 +1274,23 @@ check "sqlite rows for the same file from overlapping paths catch a modified fil
 rm "$AUDITDIR/r18/t/sub/b"
 check "sqlite rows for the same file from overlapping paths catch a deleted file test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../ov.db . > /dev/null 2>&1"
 
+# a file moved to where the audit file's directory places its record is still moved, as an audit
+# is only matched through one directory
+for AUDITFILE in m.hd m.db m.sha256; do
+    mkdir -p "$AUDITDIR/r18/mix/$AUDITFILE/q/d"
+    echo hello > "$AUDITDIR/r18/mix/$AUDITFILE/q/d/a" && echo bb > "$AUDITDIR/r18/mix/$AUDITFILE/q/d/b"
+    case $AUDITFILE in
+        m.hd) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && "$HASHIT" -f hashdeep -o ../m.hd d > /dev/null) ;;
+        m.db) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && "$HASHIT" -f sqlite -o ../m.db d > /dev/null) ;;
+        m.sha256) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && sha256sum d/a d/b > ../m.sha256) ;;
+    esac
+    mv "$AUDITDIR/r18/mix/$AUDITFILE/$AUDITFILE" "$AUDITDIR/r18/mix/$AUDITFILE/q/d/"
+    check "audit file inside the tree passes before a move $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' -a d/$AUDITFILE d | grep -q 'Audit passed'"
+    mkdir "$AUDITDIR/r18/mix/$AUDITFILE/q/d/d" && mv "$AUDITDIR/r18/mix/$AUDITFILE/q/d/a" "$AUDITDIR/r18/mix/$AUDITFILE/q/d/d/a"
+    check "file moved to where the audit file's directory places it is moved $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' -v -a d/$AUDITFILE d | grep -q 'File moved'"
+    check "file moved to where the audit file's directory places it passes with allow moved $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' --allow-moved -a d/$AUDITFILE d | grep -q 'Audit passed'"
+done
+
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
 echo 1 > "$AUDITDIR/ship/orig/tree/one"

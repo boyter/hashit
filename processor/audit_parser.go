@@ -231,14 +231,46 @@ func (hdl *Auditor) Lookup(file string) *AuditRecord {
 	return hdl.pathLookup[absFrom(hdl.cwd, file)]
 }
 
-// LookupPrimary finds the record for a file on disk, and reports whether the file matched the
-// record's own path rather than through another directory such as the audit file's
-func (hdl *Auditor) LookupPrimary(file string) (*AuditRecord, bool) {
+// LookupLevel finds the record for a file on disk, with the priority of the directory it matched
+// through and whether the record names the same file through every directory, see baseLevel
+func (hdl *Auditor) LookupLevel(file string) (*AuditRecord, int, bool) {
 	r := hdl.Lookup(file)
 	if r == nil {
-		return nil, false
+		return nil, 0, false
 	}
-	return r, hdl.primaryKey(r) == absFrom(hdl.cwd, file)
+	level, independent := baseLevel(hdl.bases, r.Filename, absFrom(hdl.cwd, file))
+	return r, level, independent
+}
+
+// baseLevel returns the priority of the first directory through which the path of a record names
+// the absolute path of a file, and whether it is an absolute path, which names the same file
+// through every directory. An audit is only ever matched through one directory, see chooseLevel.
+// A relative path which happens to name the same file through every directory, such as ../y/a
+// through sibling directories, is treated as relative, which can only report a move
+func baseLevel(bases []string, p string, abs string) (int, bool) {
+	for i, base := range bases {
+		if absFrom(base, p) == abs {
+			return i, filepath.IsAbs(p)
+		}
+	}
+	return -1, filepath.IsAbs(p)
+}
+
+// chooseLevel updates the directory an audit is matched through, being the first in priority order
+// through which any file on disk matched a record, as matching each record through whichever
+// directory finds it would let a file moved to where another directory places its record pass. A
+// record naming the same file through every directory does not choose one. Chosen starts as -1
+func chooseLevel(chosen int, level int, independent bool) int {
+	if !independent && (chosen == -1 || level < chosen) {
+		return level
+	}
+	return chosen
+}
+
+// keepsMatch reports whether a file matched through a directory is kept as matched once the
+// directory the audit is matched through has been chosen, otherwise it is treated as new
+func keepsMatch(chosen int, level int, independent bool) bool {
+	return independent || chosen == -1 || level == chosen
 }
 
 // primaryKey is the absolute path a record refers to using the directory paths were created

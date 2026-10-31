@@ -296,6 +296,57 @@ func sqliteLookup(ctx context.Context, tx *sql.Tx, bases []string, abs string) (
 	return "", 0, false, nil
 }
 
+type demotedMatch struct {
+	res    Result
+	status FileStatus
+}
+
+// demoteSqliteMatches removes the files matched through a directory other than the one the audit
+// is matched through from temp.seen, returning them so they are treated as new, see chooseLevel.
+// These matched through a directory after the first, so their result is stored
+func demoteSqliteMatches(ctx context.Context, tx *sql.Tx, chosen int) ([]demotedMatch, error) {
+	if chosen == -1 {
+		return nil, nil
+	}
+	rows, err := tx.QueryContext(ctx, "select status, disk_file, result from temp.seen where independent = 0 and level != ?", chosen)
+	if err != nil {
+		return nil, err
+	}
+	var demoted []demotedMatch
+	for rows.Next() {
+		var status int
+		var diskFile string
+		var result sql.NullString
+		if err := rows.Scan(&status, &diskFile, &result); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		var res Result
+		if !result.Valid {
+			_ = rows.Close()
+			return nil, fmt.Errorf("no result stored for %s", diskFile)
+		}
+		if err := json.Unmarshal([]byte(result.String), &res); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		// JSON replaces bytes which are not UTF-8, so the name is taken from disk_file
+		res.File = diskFile
+		demoted = append(demoted, demotedMatch{res: res, status: FileStatus(status)})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	_ = rows.Close()
+	if len(demoted) != 0 {
+		if _, err := tx.ExecContext(ctx, "delete from temp.seen where independent = 0 and level != ?", chosen); err != nil {
+			return nil, err
+		}
+	}
+	return demoted, nil
+}
+
 // markSqliteDuplicates records in temp.duplicates the rows no file on disk was checked against
 // which name the same path as an earlier row with the same values, such as from hashing . and
 // ./sub together, as otherwise the row is never looked up and is reported as missing although
@@ -428,12 +479,14 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	}
 
 	// result holds the file on disk for a record matched through a directory other than the one
-	// hashit was invoked from, as a file matching the record's own path may later take it over
+	// hashit was invoked from, as a file matching the record's own path may later take it over, or
+	// the audit may be matched through another directory, see chooseLevel
 	_, err = db.Exec(`create temp table seen (
     filepath text primary key,
     status integer not null,
     disk_file text not null,
-    is_primary integer not null,
+    level integer not null,
+    independent integer not null,
     result text
 )`)
 	if err != nil {
@@ -447,7 +500,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		printError(fmt.Sprintf("failed to begin audit transaction: %s", err.Error()))
 		return "", false
 	}
-	insertSeen, err := tx.PrepareContext(ctx, "insert or ignore into temp.seen (filepath, status, disk_file, is_primary, result) values (?, ?, ?, ?, ?)")
+	insertSeen, err := tx.PrepareContext(ctx, "insert or ignore into temp.seen (filepath, status, disk_file, level, independent, result) values (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		_ = tx.Rollback()
 		printError(fmt.Sprintf("failed to prepare audit statement: %s", err.Error()))
@@ -462,19 +515,22 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	// new files are usually few, so are held in memory indexed by hash to identify moves
 	var newFileCandidates []Result
 
-	// lookupRecord finds the record for a file on disk by its absolute path, and whether it matched
-	// through the directory hashit was invoked from
-	lookupRecord := func(file string) (*AuditRecord, bool, error) {
-		filePath, level, ok, err := sqliteLookup(ctx, tx, bases, absFrom(cwd, file))
+	// lookupRecord finds the record for a file on disk by its absolute path, with the priority of
+	// the directory it matched through and whether its path names the file through every directory
+	lookupRecord := func(file string) (*AuditRecord, int, bool, error) {
+		abs := absFrom(cwd, file)
+		filePath, level, ok, err := sqliteLookup(ctx, tx, bases, abs)
 		if err != nil || !ok {
-			return nil, false, err
+			return nil, 0, false, err
 		}
 		row, err := txQueries.FileHashByFilePath(ctx, filePath)
 		if err != nil {
-			return nil, false, err
+			return nil, 0, false, err
 		}
-		return fileHashToRecord(row), level == 0, nil
+		// an absolute path names the same file through every directory, see baseLevel
+		return fileHashToRecord(row), level, filepath.IsAbs(filePath), nil
 	}
+	chosen := -1
 
 	seenFiles := map[string]bool{}
 	for res := range input {
@@ -484,7 +540,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		}
 		examinedCount++
 
-		record, primary, err := lookupRecord(res.File)
+		record, level, independent, err := lookupRecord(res.File)
 		if err != nil {
 			printError(fmt.Sprintf("failed to query audit database for file %s: %s", res.File, err.Error()))
 			continue
@@ -493,6 +549,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			newFileCandidates = append(newFileCandidates, res)
 			continue
 		}
+		chosen = chooseLevel(chosen, level, independent)
 
 		status := FileModified
 		if recordMatches(record, res) {
@@ -500,7 +557,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		}
 
 		var stored sql.NullString
-		if !primary {
+		if level != 0 {
 			b, err := json.Marshal(res)
 			if err != nil {
 				printError(fmt.Sprintf("failed to record audit result for file %s: %s", res.File, err.Error()))
@@ -509,29 +566,29 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			stored = sql.NullString{String: string(b), Valid: true}
 		}
 
-		result, err := insertSeen.ExecContext(ctx, record.Filename, int(status), res.File, primary, stored)
+		result, err := insertSeen.ExecContext(ctx, record.Filename, int(status), res.File, level, independent, stored)
 		if err != nil {
 			printError(fmt.Sprintf("failed to record audit result for file %s: %s", res.File, err.Error()))
 			continue
 		}
 
 		// Two files on disk can resolve to the same record, so which claims it must not depend on
-		// the order files were processed in. A file matching the record's own path wins over one
-		// matching through another directory, then the first path in sort order. The other file
-		// is treated as new
+		// the order files were processed in. A file matching through a directory earlier in
+		// priority order wins, being the record's own path before another directory, then the
+		// first path in sort order. The other file is treated as new
 		if n, _ := result.RowsAffected(); n == 0 {
 			var oldStatus int
 			var oldFile string
-			var oldPrimary bool
+			var oldLevel int
 			var oldResult sql.NullString
-			err := tx.QueryRowContext(ctx, "select status, disk_file, is_primary, result from temp.seen where filepath = ?", record.Filename).Scan(&oldStatus, &oldFile, &oldPrimary, &oldResult)
+			err := tx.QueryRowContext(ctx, "select status, disk_file, level, result from temp.seen where filepath = ?", record.Filename).Scan(&oldStatus, &oldFile, &oldLevel, &oldResult)
 			if err != nil {
 				printError(fmt.Sprintf("failed to read audit result for file %s: %s", res.File, err.Error()))
 				continue
 			}
 
 			var old Result
-			wins := oldResult.Valid && (primary && !oldPrimary || primary == oldPrimary && res.File < oldFile)
+			wins := oldResult.Valid && (level < oldLevel || level == oldLevel && res.File < oldFile)
 			if wins {
 				if err := json.Unmarshal([]byte(oldResult.String), &old); err != nil {
 					wins = false
@@ -544,7 +601,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 				continue
 			}
 
-			if _, err := tx.ExecContext(ctx, "update temp.seen set status = ?, disk_file = ?, is_primary = ?, result = ? where filepath = ?", int(status), res.File, primary, stored, record.Filename); err != nil {
+			if _, err := tx.ExecContext(ctx, "update temp.seen set status = ?, disk_file = ?, level = ?, independent = ?, result = ? where filepath = ?", int(status), res.File, level, independent, stored, record.Filename); err != nil {
 				printError(fmt.Sprintf("failed to record audit result for file %s: %s", res.File, err.Error()))
 				continue
 			}
@@ -561,6 +618,22 @@ func doSqliteAudit(input chan Result) (string, bool) {
 		} else {
 			filesModified++
 		}
+	}
+
+	// files matched through a directory other than the one the audit is matched through are new
+	demoted, err := demoteSqliteMatches(ctx, tx, chosen)
+	if err != nil {
+		_ = tx.Rollback()
+		printError(fmt.Sprintf("failed to read audit results: %s", err.Error()))
+		return "", false
+	}
+	for _, d := range demoted {
+		if d.status == FileMatched {
+			matched--
+		} else {
+			filesModified--
+		}
+		newFileCandidates = append(newFileCandidates, d.res)
 	}
 
 	// files which exist but could not be read are reported as such rather than as not found. A
