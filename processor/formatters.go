@@ -192,10 +192,7 @@ const (
 
 // isDuplicateFile reports if the file has already been seen, recording it if not
 func isDuplicateFile(seen map[string]bool, file string) bool {
-	key, err := filepath.Abs(file)
-	if err != nil {
-		key = filepath.Clean(file)
-	}
+	key := absFrom(workingDir(), file)
 	if seen[key] {
 		return true
 	}
@@ -213,7 +210,10 @@ func auditFailed(modified, moved, newFiles, missing int) bool {
 	if moved > 0 && !AllowMoved {
 		return true
 	}
-	return modified > 0 || newFiles > 0 || missing > 0
+	if newFiles > 0 && !AllowNew {
+		return true
+	}
+	return modified > 0 || missing > 0
 }
 
 func doAudit(input chan Result) (string, bool) {
@@ -231,15 +231,16 @@ func doAudit(input chan Result) (string, bool) {
 	outcomes := map[*AuditRecord]outcome{}
 	var newFileCandidates []Result
 
-	// Two files on disk can resolve to the same record, so decide which claims it once every file
-	// has arrived, so the result does not depend on the order files were processed in. A file
-	// matching the record's own path wins over one matching through another directory, then the
-	// first path in sort order
+	// The directory the audit is matched through is chosen once every file has arrived, see
+	// chooseLevel, so files matching a record are held until then
 	type claim struct {
-		res     Result
-		primary bool
+		res         Result
+		r           *AuditRecord
+		level       int
+		independent bool
 	}
-	claims := map[*AuditRecord]claim{}
+	var found []claim
+	votes := map[int]int{}
 
 	seen := map[string]bool{}
 	for res := range input {
@@ -249,24 +250,56 @@ func doAudit(input chan Result) (string, bool) {
 		}
 		examinedCount++
 
-		r, primary := auditor.LookupPrimary(res.File)
+		r, level, independent := auditor.LookupLevel(res.File)
 		if r == nil {
 			newFileCandidates = append(newFileCandidates, res)
 			continue
 		}
-
-		existing, ok := claims[r]
-		if !ok {
-			claims[r] = claim{res: res, primary: primary}
-			continue
-		}
-		if primary != existing.primary && primary || primary == existing.primary && res.File < existing.res.File {
-			claims[r] = claim{res: res, primary: primary}
-			newFileCandidates = append(newFileCandidates, existing.res)
-		} else {
-			newFileCandidates = append(newFileCandidates, res)
+		found = append(found, claim{res: res, r: r, level: level, independent: independent})
+		if !independent {
+			votes[level]++
 		}
 	}
+	chosen := chooseLevel(votes)
+
+	// Two files on disk can resolve to the same record, so which claims it does not depend on the
+	// order files were processed in. A file matching through a directory earlier in priority order
+	// wins, being the record's own path before another directory, then the first path in sort order
+	claims := map[*AuditRecord]claim{}
+	for _, c := range found {
+		if !keepsMatch(chosen, c.level, c.independent) {
+			newFileCandidates = append(newFileCandidates, c.res)
+			continue
+		}
+		existing, ok := claims[c.r]
+		if !ok {
+			claims[c.r] = c
+			continue
+		}
+		if c.level < existing.level || c.level == existing.level && c.res.File < existing.res.File {
+			claims[c.r] = c
+			newFileCandidates = append(newFileCandidates, existing.res)
+		} else {
+			newFileCandidates = append(newFileCandidates, c.res)
+		}
+	}
+
+	// a record dropped as listing the path of another names another file through the directory the
+	// audit is matched through, so is audited on its own
+	if restored := auditor.restoreDuplicates(chosen); len(restored) != 0 {
+		var remaining []Result
+		for _, res := range newFileCandidates {
+			if r := restored[absFrom(auditor.cwd, res.File)]; r != nil {
+				if _, ok := claims[r]; !ok {
+					claims[r] = claim{res: res, r: r, level: max(chosen, 0)}
+					continue
+				}
+			}
+			remaining = append(remaining, res)
+		}
+		newFileCandidates = remaining
+	}
+	auditor.warnDuplicates()
 
 	for r, c := range claims {
 		r.Matched = true
@@ -278,6 +311,12 @@ func doAudit(input chan Result) (string, bool) {
 			outcomes[r] = outcome{status: FileModified, file: c.res.File}
 		}
 	}
+
+	checked := func(r *AuditRecord) (string, FileStatus, bool) {
+		o, ok := outcomes[r]
+		return o.file, o.status, ok
+	}
+	auditor.settleSameFile(checked, false, chosen)
 
 	// With every file on disk accounted for, anything new may be a known file which was
 	// moved or renamed, which we identify by matching size and hashes against unmatched records
@@ -292,6 +331,7 @@ func doAudit(input chan Result) (string, bool) {
 			newFiles = append(newFiles, res)
 		}
 	}
+	auditor.settleSameFile(checked, true, chosen)
 
 	// files which exist but could not be read are reported as such rather than as not found
 	unreadable := map[*AuditRecord]bool{}
@@ -323,6 +363,9 @@ func doAudit(input chan Result) (string, bool) {
 	filesMissing := 0
 	for _, r := range auditor.Records() {
 		o, ok := outcomes[r]
+		if r.Duplicate {
+			continue
+		}
 		if !ok {
 			filesMissing++
 			if Verbose {
@@ -853,7 +896,7 @@ func contains(list []string, v string) bool {
 
 func connectSqliteDb(pathName string) (*sql.DB, error) {
 	// build a file URI so a path containing ? or # is not taken as the start of parameters
-	abs, err := filepath.Abs(pathName)
+	abs, err := osAbs(pathName)
 	if err != nil {
 		return nil, err
 	}

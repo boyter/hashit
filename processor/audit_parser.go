@@ -4,14 +4,19 @@ package processor
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 )
 
 // AuditRecord represents a single file entry from an audit file, which can be
@@ -22,6 +27,10 @@ type AuditRecord struct {
 	Hashes   map[string]string // hashit hash name to lowercase hex value
 	Order    int               // position in the audit file, used to report in file order
 	Matched  bool
+	Conflict bool // the audit file lists different values of a hash for the file, so it cannot match
+	// Duplicate is a sum file line naming a file another line was checked against, so it is not
+	// reported on its own
+	Duplicate bool
 }
 
 // Auditor parses and holds an audit file which can then be used for audit purposes
@@ -34,7 +43,9 @@ type Auditor struct {
 	bases       []string                  // absolute directories relative paths may be relative to, in priority order
 	primaryBase string                    // directory relative paths were created relative to, empty for the working directory
 	cwd         string                    // working directory, looked up once as it is needed for every path
-	duplicates  int                       // paths listed more than once, reported once parsing is done
+	duplicates  []duplicateRecord         // records dropped as listing the path of another, see restoreDuplicates
+	sumFile     bool                      // a sum file, where every line for a path is checked
+	sameFile    map[string][]*AuditRecord // sum file lines naming the same file through different paths, by its real path
 }
 
 type FileStatus int
@@ -155,6 +166,7 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	if isHashdeepFormat(input) {
 		err = hdl.parseHashdeepFile(input)
 	} else {
+		hdl.sumFile = true
 		err = hdl.parseSumFile(input, auditFilename)
 	}
 
@@ -164,8 +176,8 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	// copied elsewhere, where the invoked from directory no longer applies
 	hdl.bases = auditBases(hdl.primaryBase, auditFilename, hdl.cwd)
 	hdl.removeDuplicates()
-	if hdl.duplicates != 0 {
-		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", hdl.duplicates))
+	if conflicts := hdl.conflicts(); conflicts != 0 {
+		printWarn(fmt.Sprintf("audit file lists different hashes for the same path, which are reported as modified, paths: %d", conflicts))
 	}
 	if err != nil {
 		return nil, err
@@ -197,7 +209,13 @@ func (hdl *Auditor) HashNames() []string {
 }
 
 func (hdl *Auditor) Count() int {
-	return len(hdl.records)
+	n := 0
+	for _, r := range hdl.records {
+		if !r.Duplicate {
+			n++
+		}
+	}
+	return n
 }
 
 // Records returns every record in the order it appeared in the audit file
@@ -210,14 +228,61 @@ func (hdl *Auditor) Lookup(file string) *AuditRecord {
 	return hdl.pathLookup[absFrom(hdl.cwd, file)]
 }
 
-// LookupPrimary finds the record for a file on disk, and reports whether the file matched the
-// record's own path rather than through another directory such as the audit file's
-func (hdl *Auditor) LookupPrimary(file string) (*AuditRecord, bool) {
+// LookupLevel finds the record for a file on disk, with the priority of the directory it matched
+// through and whether the record names the same file through every directory, see baseLevel
+func (hdl *Auditor) LookupLevel(file string) (*AuditRecord, int, bool) {
 	r := hdl.Lookup(file)
 	if r == nil {
-		return nil, false
+		return nil, 0, false
 	}
-	return r, hdl.primaryKey(r) == absFrom(hdl.cwd, file)
+	level, independent := baseLevel(hdl.bases, r.Filename, absFrom(hdl.cwd, file))
+	return r, level, independent
+}
+
+// baseLevel returns the priority of the first directory through which the path of a record names
+// the absolute path of a file, and whether it is an absolute path, which names the same file
+// through every directory. An audit is only ever matched through one directory, see chooseLevel.
+// A relative path which happens to name the same file through every directory, such as ../y/a
+// through sibling directories, is treated as relative, which can only report a move
+func baseLevel(bases []string, p string, abs string) (int, bool) {
+	for i, base := range bases {
+		if absFrom(base, p) == abs {
+			return i, filepath.IsAbs(p)
+		}
+	}
+	return -1, filepath.IsAbs(p)
+}
+
+// chooseLevel returns the directory an audit is matched through from the number of files on disk
+// which matched a record through each, as matching each record through whichever directory finds it
+// would let a file moved to where another directory places its record pass. The directory most
+// files matched through is used, so a single file moved to where another directory places its
+// record is the one reported, then the first in priority order. A record naming the same file
+// through every directory does not count. It is -1 when no file counted
+func chooseLevel(votes map[int]int) int {
+	chosen := -1
+	for level, n := range votes {
+		if chosen == -1 || n > votes[chosen] || n == votes[chosen] && level < chosen {
+			chosen = level
+		}
+	}
+	return chosen
+}
+
+// judgingBases returns the directories through which records are judged to name the same path: the
+// one the audit is matched through, or every directory when none was chosen, as when every file
+// matched an absolute record nothing says which directory the relative records are relative to
+func judgingBases(bases []string, chosen int) []string {
+	if chosen == -1 {
+		return bases
+	}
+	return bases[chosen : chosen+1]
+}
+
+// keepsMatch reports whether a file matched through a directory is kept as matched once the
+// directory the audit is matched through has been chosen, otherwise it is treated as new
+func keepsMatch(chosen int, level int, independent bool) bool {
+	return independent || chosen == -1 || level == chosen
 }
 
 // primaryKey is the absolute path a record refers to using the directory paths were created
@@ -278,6 +343,9 @@ func (hdl *Auditor) GetUnmatched() []*AuditRecord {
 // recordMatches compares every hash the record has, as well as size if known. A record must
 // share at least one hash with the result to be considered a match
 func recordMatches(r *AuditRecord, res Result) bool {
+	if r.Conflict {
+		return false
+	}
 	if r.Size >= 0 && r.Size != res.Bytes {
 		return false
 	}
@@ -297,12 +365,20 @@ func recordMatches(r *AuditRecord, res Result) bool {
 }
 
 // absFrom returns the absolute path p refers to, a relative path being resolved against the
-// absolute directory base. Paths are only ever compared absolute, as a bare relative path such as
-// x only means the same file when run from the same directory. This is done without asking the
-// operating system for the working directory, as it is needed for every record and file
+// absolute directory base, as it is compared. Paths are only ever compared absolute, as a bare
+// relative path such as x only means the same file when run from the same directory, and through
+// the working directory as it was reached, so the same file found through where a symlinked
+// working directory really is, such as by an absolute path or .., is the same path
 func absFrom(base string, p string) string {
+	return logicalPath(absPath(base, p))
+}
+
+// absPath returns the absolute path p refers to, a relative path being resolved against the
+// absolute directory base. This is done without asking the operating system for the working
+// directory, as it is needed for every record and file
+func absPath(base string, p string) string {
 	if filepath.IsAbs(p) {
-		return filepath.Clean(p)
+		return osClean(p)
 	}
 	// a Windows path such as D:x is relative to the working directory of that drive
 	if vol := filepath.VolumeName(p); vol != "" {
@@ -318,7 +394,212 @@ func absFrom(base string, p string) string {
 	if filepath.VolumeName(p) == "" && len(p) != 0 && os.IsPathSeparator(p[0]) {
 		return filepath.Join(filepath.VolumeName(base), p)
 	}
-	return filepath.Join(base, p)
+	if base == "" {
+		return osClean(p)
+	}
+	return osClean(base + string(filepath.Separator) + p)
+}
+
+// dotDotResolved caches the directory the operating system resolves each path ending in .. to
+var dotDotResolved sync.Map
+
+// osClean cleans a path, except that a path containing .. has everything up to its last .. resolved
+// by the operating system. After a symlink .. leads to the parent of the directory the link points
+// to, not the directory containing the link, so cleaning a/link/.. to a/ would name a different
+// directory to the one the operating system reads. A path whose .. the operating system cannot
+// resolve is returned as written, so it never names an existing file. Windows resolves .. by
+// cleaning the path too
+func osClean(path string) string {
+	clean := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		return clean
+	}
+	end := lastDotDot(path)
+	if end == -1 {
+		return clean
+	}
+
+	head := path[:end]
+	resolved, ok := dotDotResolved.Load(head)
+	if !ok {
+		resolved, _ = dotDotResolved.LoadOrStore(head, resolveDotDot(head))
+	}
+	if resolved.(string) == "" {
+		// the OS cannot open it, so it is kept as written rather than cleaned into another path
+		return path
+	}
+	return filepath.Join(resolved.(string), path[end:])
+}
+
+// resolveDotDot returns the directory a path ending in .. names. It is cleaned as text when that
+// names the same directory the OS opens, so paths through a symlinked directory such as the
+// working directory are kept as written, and otherwise is where the OS resolves it to. An empty
+// string is returned when it can never be opened
+func resolveDotDot(head string) string {
+	if _, err := os.Stat(head); err == nil {
+		return sameOrReal(head)
+	}
+
+	// the OS cannot open it, such as when the directory an audit file was created in has since
+	// been deleted. A directory which does not exist cannot be a symlink, so .. after it is removed
+	// as text, as it named when it was written, while .. after a symlink, a file or anything which
+	// cannot be checked means the path can never be opened
+	cur := "."
+	if filepath.IsAbs(head) {
+		cur = string(filepath.Separator)
+	}
+	missing := 0
+	for _, c := range strings.Split(head, string(filepath.Separator)) {
+		switch {
+		case c == "" || c == ".":
+		case c == ".." && missing > 0:
+			cur = filepath.Dir(cur)
+			missing--
+		case c == "..":
+			if _, err := os.Stat(cur + string(filepath.Separator) + ".."); err == nil {
+				if cur = sameOrReal(cur + string(filepath.Separator) + ".."); cur == "" {
+					return ""
+				}
+			} else if fi, err := os.Lstat(cur); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+				return ""
+			} else {
+				cur = filepath.Dir(cur)
+			}
+		default:
+			cur = filepath.Join(cur, c)
+			if missing > 0 {
+				missing++
+			} else if _, err := os.Lstat(cur); errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
+				missing = 1
+			} else if err != nil {
+				// such as a directory which cannot be searched, which may hold a symlink
+				return ""
+			}
+		}
+	}
+	return cur
+}
+
+// sameOrReal returns the path ending in .. cleaned as text when that is the same directory the OS
+// opens, and otherwise where the OS resolves it to
+func sameOrReal(head string) string {
+	fi, err := os.Stat(head)
+	if err != nil {
+		return ""
+	}
+	clean := filepath.Clean(head)
+	if cfi, err := os.Stat(clean); err == nil && os.SameFile(fi, cfi) {
+		return clean
+	}
+	if real, err := filepath.EvalSymlinks(head); err == nil {
+		return logicalPath(physicalAbs(real))
+	}
+	return ""
+}
+
+// logicalPath returns the path a path is compared as when the working directory, or a directory
+// containing it, was reached through a symlink, so that every spelling of a file through them is
+// the same. The path is first taken through where each of them really is, repeatedly as one can
+// lead into another, then through the deepest of them containing it. The text is joined rather
+// than cleaned, so a path kept as written because it cannot be opened stays as it is
+func logicalPath(path string) string {
+	list := workingDirAncestors()
+	if len(list) == 0 {
+		return path
+	}
+	// bounded, as a symlink to a directory containing it means a path can be spelled with it
+	// repeated any number of times, each step removing one
+	for i := 0; i < 256; i++ {
+		changed := false
+		for _, d := range list {
+			if isUnder(path, d.dir) {
+				path = joinText(d.real, path[len(d.dir):])
+				changed = true
+				break
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	for _, d := range list {
+		if isUnder(path, d.real) {
+			return joinText(d.dir, path[len(d.real):])
+		}
+	}
+	return path
+}
+
+// joinText joins a directory and the rest of a path inside it without cleaning it. The rest
+// starts with a separator unless the directory is the root, which ends with one
+func joinText(dir string, rest string) string {
+	sep := string(filepath.Separator)
+	rest = strings.TrimPrefix(rest, sep)
+	if rest == "" {
+		return dir
+	}
+	if strings.HasSuffix(dir, sep) {
+		return dir + rest
+	}
+	return dir + sep + rest
+}
+
+// isUnder reports if path is the directory dir or inside it, comparing the text
+func isUnder(path string, dir string) bool {
+	if !strings.HasPrefix(path, dir) {
+		return false
+	}
+	return len(path) == len(dir) || strings.HasSuffix(dir, string(filepath.Separator)) || os.IsPathSeparator(path[len(dir)])
+}
+
+type ancestor struct{ dir, real string }
+
+var (
+	ancestorsOnce sync.Once
+	ancestorList  []ancestor
+)
+
+// workingDirAncestors returns the working directory and every directory containing it which was
+// reached through a symlink, deepest first, with where each really is. It is looked up once, as
+// it is needed for every path compared and the working directory does not change while running
+func workingDirAncestors() []ancestor {
+	ancestorsOnce.Do(func() {
+		if runtime.GOOS == "windows" {
+			return
+		}
+		cwd := workingDir()
+		if cwd == "" {
+			return
+		}
+		// the working directory can be given with // or .. in it
+		for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
+			if real := realPath(dir); real != "" && real != dir {
+				ancestorList = append(ancestorList, ancestor{dir: dir, real: real})
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	})
+	return ancestorList
+}
+
+// lastDotDot returns the index of the end of the last .. component in the path, or -1
+func lastDotDot(path string) int {
+	if !strings.Contains(path, "..") {
+		return -1
+	}
+	end := -1
+	start := 0
+	for i := 0; i <= len(path); i++ {
+		if i == len(path) || os.IsPathSeparator(path[i]) {
+			if path[start:i] == ".." {
+				end = i
+			}
+			start = i + 1
+		}
+	}
+	return end
 }
 
 // workingDir returns the working directory, or an empty string when it cannot be found such as
@@ -351,7 +632,8 @@ func auditBases(primary string, auditFile string, cwd string) []string {
 	if real := realPath(auditFile); real != "" {
 		add(filepath.Dir(real))
 	}
-	add(filepath.Dir(auditFile))
+	// resolved before taking its directory, as cleaning link/../m as text names another directory
+	add(filepath.Dir(absFrom(cwd, auditFile)))
 	add(cwd)
 	return bases
 }
@@ -432,23 +714,194 @@ func (t auditFileTarget) matches(keys []string) bool {
 // removeDuplicates drops records for a path already listed, keeping the first, as otherwise the
 // duplicate is never matched and is reported as missing although the file exists
 func (hdl *Auditor) removeDuplicates() {
-	seen := map[string]bool{}
+	seen := map[string]*AuditRecord{}
 	var records []*AuditRecord
 	for _, r := range hdl.records {
 		// compare the resolved path, so the same file listed by relative and absolute path is a
 		// duplicate too
 		key := hdl.primaryKey(r)
-		if seen[key] {
+		if hdl.sumFile {
+			// only lines naming the same path through every directory, as a relative line can be
+			// found through the sum file's directory while an absolute one cannot, see groupSameFile
+			key = strings.Join(hdl.recordKeys(r), "\x00")
+		}
+		if first, ok := seen[key]; ok {
+			// md5sum -c checks every line, so the hashes of a sum file are merged
+			if hdl.sumFile {
+				first.Conflict = first.Conflict || r.Conflict
+				for name, value := range r.Hashes {
+					mergeSumHash(first, name, value)
+				}
+			} else {
+				hdl.duplicates = append(hdl.duplicates, duplicateRecord{record: r, first: first})
+			}
 			continue
 		}
-		seen[key] = true
+		seen[key] = r
 		records = append(records, r)
 	}
-	if dupes := len(hdl.records) - len(records); dupes != 0 {
-		hdl.duplicates += dupes
+	if len(records) != len(hdl.records) {
 		hdl.records = nil
 		for _, r := range records {
 			hdl.addRecord(r)
+		}
+	}
+	if hdl.sumFile {
+		hdl.groupSameFile()
+	}
+}
+
+// duplicateRecord is a record dropped as listing the path of the first record listing it
+type duplicateRecord struct {
+	record *AuditRecord
+	first  *AuditRecord
+}
+
+// restoreDuplicates returns to the audit each dropped record which names another path than the
+// record it duplicates through the directory the audit is matched through, such as an absolute
+// path into a tree which was copied elsewhere with the audit file, by the path it names there
+func (hdl *Auditor) restoreDuplicates(chosen int) map[string]*AuditRecord {
+	bases := judgingBases(hdl.bases, chosen)
+	restored := map[string]*AuditRecord{}
+	var kept []duplicateRecord
+	for _, d := range hdl.duplicates {
+		same := false
+		for _, base := range bases {
+			same = same || absFrom(base, d.record.Filename) == absFrom(base, d.first.Filename)
+		}
+		if same {
+			kept = append(kept, d)
+			continue
+		}
+		k := absFrom(bases[0], d.record.Filename)
+		hdl.addRecord(d.record)
+		for name, v := range d.record.Hashes {
+			hdl.hashLookup[name+":"+v] = append(hdl.hashLookup[name+":"+v], d.record)
+		}
+		if restored[k] == nil {
+			restored[k] = d.record
+		}
+	}
+	hdl.duplicates = kept
+	return restored
+}
+
+// warnDuplicates reports the records dropped as listing the path of another
+func (hdl *Auditor) warnDuplicates() {
+	if len(hdl.duplicates) != 0 {
+		printWarn(fmt.Sprintf("audit file lists the same path more than once, only the first is used for each, duplicates: %d", len(hdl.duplicates)))
+	}
+}
+
+// groupSameFile groups the lines of a sum file which name the same file through different paths.
+// A sum file has no directory its paths were created relative to, so lines can name the same file
+// through the sum file's directory but not through the working directory, or through a symlinked
+// directory. Each line is kept, as its own path may be the one which is scanned, and a line is only
+// not reported on its own when another line was checked against the same file. Lines listing
+// different values of a hash for the file can never match
+func (hdl *Auditor) groupSameFile() {
+	// the records naming each path through any directory, so most records need no lookup on disk
+	counts := make(map[string]int, len(hdl.records)*len(hdl.bases))
+	for _, r := range hdl.records {
+		for _, k := range hdl.recordKeys(r) {
+			counts[k]++
+		}
+	}
+
+	groups := map[string][]*AuditRecord{}
+	for _, r := range hdl.records {
+		keys := hdl.recordKeys(r)
+		for _, k := range keys {
+			if counts[k] > 1 {
+				// the first file it names, by where it really is, as that is the file it is checked
+				// against
+				for _, k := range keys {
+					if fi, err := os.Stat(k); err == nil && fi.Mode().IsRegular() {
+						real := realPath(k)
+						groups[real] = append(groups[real], r)
+						break
+					}
+				}
+				break
+			}
+		}
+	}
+
+	hdl.sameFile = map[string][]*AuditRecord{}
+	for real, group := range groups {
+		if len(group) < 2 {
+			continue
+		}
+		hdl.sameFile[real] = group
+		values := map[string]string{}
+		conflict := false
+		for _, r := range group {
+			conflict = conflict || r.Conflict
+			for name, v := range r.Hashes {
+				if existing, ok := values[name]; ok && existing != v {
+					conflict = true
+				}
+				values[name] = v
+			}
+		}
+		// every line is checked with every hash listed for the file, as which line is checked
+		// against it decides the others are duplicates
+		for _, r := range group {
+			r.Conflict = r.Conflict || conflict
+			for name, v := range values {
+				if _, ok := r.Hashes[name]; !ok {
+					r.Hashes[name] = v
+				}
+			}
+		}
+	}
+}
+
+// settleSameFile marks the lines of a sum file naming a file which another line naming it was
+// checked against as duplicates, so they are not reported as missing or paired with another file.
+// A line must name the file through the directory the audit is matched through, as a line naming
+// it only through another directory names a file which was not checked, see chooseLevel, unless
+// none was chosen, see judgingBases. Before
+// moves are found a line must have been checked against the file itself, not a file found through
+// another directory, and after a line moved with the file no longer where it was, when a line
+// must name the path the moved line does
+func (hdl *Auditor) settleSameFile(checked func(*AuditRecord) (string, FileStatus, bool), afterMoves bool, chosen int) {
+	bases := judgingBases(hdl.bases, chosen)
+	for real, group := range hdl.sameFile {
+		var movedFrom []string
+		settled := false
+		if afterMoves {
+			if _, err := os.Stat(real); err != nil {
+				for _, r := range group {
+					if _, status, ok := checked(r); ok && status == FileMoved {
+						for _, base := range bases {
+							movedFrom = append(movedFrom, absFrom(base, r.Filename))
+						}
+					}
+				}
+			}
+		} else {
+			for _, r := range group {
+				if file, _, ok := checked(r); ok && realPath(file) == real {
+					settled = true
+				}
+			}
+		}
+		if !settled && len(movedFrom) == 0 {
+			continue
+		}
+		for _, r := range group {
+			if _, _, ok := checked(r); ok {
+				continue
+			}
+			for _, base := range bases {
+				k := absFrom(base, r.Filename)
+				if settled && realPath(k) == real || contains(movedFrom, k) {
+					r.Matched = true
+					r.Duplicate = true
+					break
+				}
+			}
 		}
 	}
 }
@@ -512,15 +965,26 @@ func (hdl *Auditor) buildLookups() {
 func (hdl *Auditor) parseHashdeepFile(input string) error {
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Split(scanLinesKeepCR)
 
 	var header []string
 	filenameIdx := -1
 	lineNo := 0
 
+	// a filename can end with \r, so one is only removed when the file has windows line endings,
+	// which the HASHDEEP line starting each section shows
+	crlf := false
+
 	for scanner.Scan() {
 		lineNo++
+		line := scanner.Text()
+		if strings.HasPrefix(line, "%%%% HASHDEEP") {
+			crlf = strings.HasSuffix(line, "\r")
+		}
 		// filenames can start or end with spaces so only remove line endings
-		line := strings.TrimRight(scanner.Text(), "\r")
+		if crlf {
+			line = strings.TrimSuffix(line, "\r")
+		}
 
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -550,7 +1014,8 @@ func (hdl *Auditor) parseHashdeepFile(input string) error {
 		// as relative paths in the file are relative to it
 		if strings.HasPrefix(line, "#") {
 			if dir, ok := strings.CutPrefix(line, "## Invoked from: "); ok && hdl.primaryBase == "" {
-				hdl.primaryBase = strings.TrimSpace(dir)
+				// a directory name can start or end with spaces
+				hdl.primaryBase = dir
 			}
 			continue
 		}
@@ -620,6 +1085,41 @@ func splitHashdeepLine(line string, columns int, filenameIdx int) ([]string, err
 	return fields, nil
 }
 
+// scanLinesKeepCR splits lines like bufio.ScanLines, but leaves any \r before the newline in place
+func scanLinesKeepCR(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+// conflicts counts the records with different values listed for one of their hashes
+func (hdl *Auditor) conflicts() int {
+	n := 0
+	for _, r := range hdl.records {
+		if r.Conflict {
+			n++
+		}
+	}
+	return n
+}
+
+// mergeSumHash adds a hash from a sum file line to the record for its file, a different value
+// for a hash it already has meaning the file can never match
+func mergeSumHash(r *AuditRecord, name string, value string) {
+	if existing, ok := r.Hashes[name]; ok && existing != value {
+		r.Conflict = true
+		return
+	}
+	r.Hashes[name] = value
+}
+
 // parseSumFile parses the output of md5sum, sha256sum and similar tools, including hashit's
 // sum format. Both the GNU "hash  filename" and BSD "MD5 (filename) = hash" styles are accepted
 func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
@@ -628,7 +1128,6 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 
 	extHashes := sumExtensions[strings.ToLower(filepath.Ext(auditFilename))]
 	byFile := map[string]*AuditRecord{}
-	duplicateSumLines := 0
 	improper := 0
 
 	for scanner.Scan() {
@@ -656,20 +1155,14 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 			byFile[filename] = r
 			hdl.addRecord(r)
 		}
-		// the same path listed again with a different value of the same hash keeps the first, the
-		// same as a path listed twice in a hashdeep file
-		if existing, ok := r.Hashes[name]; ok && existing != value {
-			duplicateSumLines++
-			continue
-		}
-		r.Hashes[name] = value
+		// md5sum -c checks every line, so the same path listed again with a different value of the
+		// same hash can never match
+		mergeSumHash(r, name, value)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-
-	hdl.duplicates += duplicateSumLines
 
 	if improper != 0 {
 		// a file such as text or json output has no valid lines, and is not an audit file at all

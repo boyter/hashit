@@ -59,6 +59,10 @@ var Absolute = false
 // AllowMoved allows an audit to pass when known files have moved, so long as they are unmodified
 var AllowMoved = false
 
+// AllowNew allows an audit to pass when there are files which are not in the audit file, so only
+// the files it lists are verified, as md5sum -c does
+var AllowNew = false
+
 // If data is being piped in using stdin
 var StandardInput = false
 
@@ -100,8 +104,8 @@ func addSkipFile(path string, byIdentity bool, sqlite bool) {
 		if p == "" {
 			continue
 		}
-		abs, err := filepath.Abs(p)
-		if err != nil {
+		abs := absFrom(workingDir(), p)
+		if !filepath.IsAbs(abs) {
 			continue
 		}
 		for _, suffix := range suffixes {
@@ -155,8 +159,7 @@ func shouldSkipFile(path string) bool {
 	if len(skipFiles) == 0 {
 		return false
 	}
-	abs, err := filepath.Abs(path)
-	if err == nil && skipFiles[abs] {
+	if skipFiles[absFrom(workingDir(), path)] {
 		return true
 	}
 
@@ -293,6 +296,9 @@ func Process() {
 	if AllowMoved && AuditFile == "" {
 		printWarn("--allow-moved only applies when auditing with --audit, ignoring flag")
 	}
+	if AllowNew && AuditFile == "" {
+		printWarn("--allow-new only applies when auditing with --audit, ignoring flag")
+	}
 
 	// Interrupting removes any temporary output, and exits with the conventional code for the signal
 	removeOutputTempOnSignal()
@@ -401,17 +407,17 @@ func Process() {
 			go func() {
 				// Check if the paths or files added exist and inform the user if they don't
 				for _, f := range DirFilePaths {
-					fp := filepath.Clean(f)
+					fp, cleaned := cleanPathArg(f)
 					fi, err := os.Stat(fp)
 
 					// keep a leading ./ the user supplied as hashdeep and md5sum do, so that our
 					// output matches theirs when run the same way
 					prefix := ""
 					if Absolute {
-						if abs, err := filepath.Abs(fp); err == nil {
+						if abs := absPath(workingDir(), fp); filepath.IsAbs(abs) {
 							fp = abs
 						}
-					} else if !defaultPath {
+					} else if !defaultPath && cleaned {
 						prefix = dotPrefix(f, fp)
 					}
 
@@ -455,7 +461,7 @@ func Process() {
 						continue
 					}
 					if Absolute {
-						if abs, err := filepath.Abs(line); err == nil {
+						if abs := absPath(workingDir(), line); filepath.IsAbs(abs) {
 							line = abs
 						}
 					}
@@ -872,6 +878,31 @@ func installOutput() error {
 		return fmt.Errorf("unable to write output file %s: %s", FileOutput, err.Error())
 	}
 	return nil
+}
+
+// cleanPathArg cleans a supplied path, reporting false when cleaning it would name a different
+// file, such as link/.. when link is a symlink, in which case it is resolved by the operating
+// system instead, as files are found by joining names to it which would clean it
+func cleanPathArg(path string) (string, bool) {
+	clean := filepath.Clean(path)
+	end := lastDotDot(path)
+	if clean == path || end == -1 {
+		return clean, true
+	}
+	if _, err := os.Stat(path); err != nil {
+		// reported for the path as supplied, rather than reading what cleaning it names
+		return path, false
+	}
+	// resolved as paths in audit files are, up to the last .., so a symlink after it is walked
+	// as supplied
+	head := resolveDotDot(path[:end])
+	if head == "" {
+		return path, false
+	}
+	if head == filepath.Clean(path[:end]) {
+		return clean, true
+	}
+	return filepath.Join(head, path[end:]), false
 }
 
 // dotPrefix returns "./" when the supplied path started with it, or was the current directory,

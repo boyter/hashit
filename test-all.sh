@@ -867,7 +867,7 @@ check "two files matching one record are not both counted test" \
 mkdir -p "$AUDITDIR/r6/dupsum"
 echo a > "$AUDITDIR/r6/dupsum/a"
 (cd "$AUDITDIR/r6/dupsum" && md5sum a > ../dupsum.md5 && echo "00000000000000000000000000000000  a" >> ../dupsum.md5)
-check "sum file listing a path twice uses the first test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Audit passed'"
+check "sum file listing a path twice with different hashes is modified test" "cd '$AUDITDIR/r6/dupsum' && '$HASHIT' -a ../dupsum.md5 . 2>/dev/null | grep -q 'Files modified: 1' && ! md5sum -c ../dupsum.md5 > /dev/null 2>&1"
 check "format with audit warns test" "'$HASHIT' -f json -a '$AUDITDIR/r6/empty.txt' '$AUDITDIR/r6/empty' 2>&1 >/dev/null | grep -q 'format is ignored'"
 
 # round 7
@@ -987,6 +987,404 @@ if unshare -r -m true 2> /dev/null; then
     for i in $(seq 1 3000); do echo $i > "$AUDITDIR/r9/full/src/$i"; done
     check "sqlite database which cannot be written in full is discarded test" "cd '$AUDITDIR/r9/full' && unshare -r -m sh -c \"mount -t tmpfs -o size=300k tmpfs mnt && ! '$HASHIT' -f sqlite -o mnt/n.db src > out.txt 2>&1 && [ -z \\\"\\\$(ls -A mnt)\\\" ]\" && ! grep -q 'results written' out.txt"
 fi
+
+# round 10
+mkdir -p "$AUDITDIR/r10/q/t/sub/deep"
+echo a > "$AUDITDIR/r10/q/t/a"
+ln -s t/sub/deep "$AUDITDIR/r10/q/j"
+(cd "$AUDITDIR/r10/q/j" && "$HASHIT" -f sqlite -o ../../m.db ../.. > /dev/null)
+check "sqlite output through a symlinked working directory and .. test" "[ \"\$(sqlite3 '$AUDITDIR/r10/q/t/m.db' 'select count(*) from file_hashes')\" == 1 ] && ! ls -a '$AUDITDIR/r10' | grep -q hashit.tmp"
+echo changed > "$AUDITDIR/r10/q/t/a"
+"$HASHIT" -f sqlite -o "$AUDITDIR/r10/m.db" "$AUDITDIR/r10/q/t/a" > /dev/null
+check "sqlite audit through a symlinked working directory and .. opens the right database test" "cd '$AUDITDIR/r10/q/j' && '$HASHIT' -a ../../m.db '$AUDITDIR/r10/q/t' > /dev/null; [ \$? -eq 1 ]"
+mkdir -p "$AUDITDIR/r10/u/sub/deep"
+echo a > "$AUDITDIR/r10/u/a"
+echo b > "$AUDITDIR/r10/u/sub/b"
+(cd "$AUDITDIR/r10/u/sub" && "$HASHIT" -f sqlite -o "$AUDITDIR/r10/u.db" .. > /dev/null)
+check "sqlite database generated with .. audits test" "cd '$AUDITDIR/r10/u/sub' && '$HASHIT' -a '$AUDITDIR/r10/u.db' .. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r10/trail /x"
+echo q > "$AUDITDIR/r10/trail /x/f"
+(cd "$AUDITDIR/r10/trail " && "$HASHIT" -f hashdeep x > ../trail.hd)
+check "hashdeep invoked from a directory ending in a space test" "cd / && '$HASHIT' -a '$AUDITDIR/r10/trail.hd' '$AUDITDIR/r10/trail /x' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r10/cr"
+echo 1 > "$AUDITDIR/r10/cr/$(printf 'cr\r')"
+(cd "$AUDITDIR/r10" && "$HASHIT" -f hashdeep cr > cr.hd)
+check "hashdeep filename ending in a carriage return test" "cd '$AUDITDIR/r10' && '$HASHIT' -a cr.hd cr | grep -q 'Audit passed' && sed 's/\$/\r/' cr.hd > crlf.hd && '$HASHIT' -a crlf.hd cr | grep -q 'Audit passed'"
+
+# round 11
+mkdir -p "$AUDITDIR/r11/FP/real/d" "$AUDITDIR/r11/FP/d" "$AUDITDIR/r11/m"
+printf a > "$AUDITDIR/r11/FP/real/d/a"
+printf a > "$AUDITDIR/r11/FP/d/a"
+ln -s real/d "$AUDITDIR/r11/FP/link"
+(cd "$AUDITDIR/r11/FP" && "$HASHIT" -f hashdeep -o ../m/d.hd d > /dev/null && "$HASHIT" -f sqlite -o ../m/d.db d > /dev/null)
+printf changed > "$AUDITDIR/r11/FP/d/a"
+check ".. from a symlinked working directory audits the directory read test" "cd '$AUDITDIR/r11/FP/link' && ! '$HASHIT' -a ../../m/d.hd ../d > /dev/null && ! '$HASHIT' -a ../../m/d.db ../d > /dev/null"
+check "--absolute with .. from a symlinked working directory test" "cd '$AUDITDIR/r11/FP/link' && '$HASHIT' --absolute -f sum -c md5 ../d | grep -q '/r11/FP/real/d/a\$'"
+mkdir -p "$AUDITDIR/r11/t" "$AUDITDIR/r11/other/x"
+echo a > "$AUDITDIR/r11/t/a"
+echo o > "$AUDITDIR/r11/other/o"
+ln -s ../other/x "$AUDITDIR/r11/t/sl"
+check "a symlink followed by .. hashes the directory the operating system reads test" "cd '$AUDITDIR/r11' && '$HASHIT' -f sum -c md5 t/sl/.. | grep -q 'other/o\$'"
+mkdir -p "$AUDITDIR/r11/s/sub"
+echo a > "$AUDITDIR/r11/s/plain"
+echo b > "$AUDITDIR/r11/s/sub/b"
+(cd "$AUDITDIR/r11/s" && md5sum ./plain sub/b > ../dup.txt && echo "0000000000000000000000000000000000000000  plain" >> ../dup.txt)
+check "every line of a sum file listing a file twice is checked test" "cd '$AUDITDIR/r11/s' && ! '$HASHIT' -a ../dup.txt . > /dev/null 2>&1 && ! sha1sum -c ../dup.txt > /dev/null 2>&1"
+(cd "$AUDITDIR/r11/s" && md5sum ./plain sub/b > ../both.txt && sha1sum plain >> ../both.txt)
+check "a sum file listing a file with two hashes passes test" "cd '$AUDITDIR/r11/s' && '$HASHIT' -a ../both.txt . | grep -q 'Audit passed'"
+
+# round 12
+mkdir -p "$AUDITDIR/r12/R/T/x" "$AUDITDIR/r12/m"
+echo f > "$AUDITDIR/r12/R/T/f"
+ln -s R "$AUDITDIR/r12/L"
+(cd "$AUDITDIR/r12/L/T/x" && "$HASHIT" -f hashdeep -o ../../../m/up.hd .. > /dev/null && "$HASHIT" -f sqlite -o ../../../m/up.db .. > /dev/null)
+for AUDITFILE in up.hd up.db; do
+    check "manifest made with .. audited with . from a symlinked working directory $AUDITFILE test" \
+        "cd '$AUDITDIR/r12/L/T' && '$HASHIT' -a ../../m/$AUDITFILE . | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r12/g"
+echo f > "$AUDITDIR/r12/g/f"
+ln -s gone "$AUDITDIR/r12/g/link"
+(cd "$AUDITDIR/r12/g" && "$HASHIT" -f hashdeep f | sed 's/,f$/,link\/..\/f/' > ../g.hd && md5sum f | sed 's/  f$/  link\/..\/f/' > ../g.md5)
+for AUDITFILE in g.hd g.md5; do
+    check "record through a dangling symlink and .. does not match another file $AUDITFILE test" \
+        "cd '$AUDITDIR/r12/g' && ! '$HASHIT' -a ../$AUDITFILE f > /dev/null 2>&1 && ! md5sum -c ../g.md5 > /dev/null 2>&1"
+done
+mkdir -p "$AUDITDIR/r11/tgt"
+echo g > "$AUDITDIR/r11/tgt/g"
+ln -s ../tgt "$AUDITDIR/r11/other/ln"
+check "a symlink after .. is walked as supplied test" "cd '$AUDITDIR/r11' && '$HASHIT' -f sum -c md5 t/sl/../ln | grep -q 'other/ln/g\$'"
+mkdir -p "$AUDITDIR/r12/sa/t"
+echo a > "$AUDITDIR/r12/sa/t/a" && echo b > "$AUDITDIR/r12/sa/t/b"
+(cd "$AUDITDIR/r12/sa/t" && md5sum a b ../t/a "$PWD/a" > s.md5)
+check "sum file listing a file twice audited from outside its directory test" "cd '$AUDITDIR/r12/sa' && '$HASHIT' -a t/s.md5 t | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r12/sb/t"
+echo a > "$AUDITDIR/r12/sb/t/a" && echo c > "$AUDITDIR/r12/sb/t/c"
+(cd "$AUDITDIR/r12/sb/t" && { md5sum c | sed 's/  c$/  a/'; md5sum "$PWD/a"; } > s.md5)
+check "conflicting sum lines audited from outside its directory are not a move test" \
+    "cd '$AUDITDIR/r12/sb' && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1 && '$HASHIT' -a t/s.md5 t 2>&1 | grep -q 'different hashes'"
+mkdir -p "$AUDITDIR/r12/u"
+echo u > "$AUDITDIR/r12/u/u"
+(cd "$AUDITDIR/r12/u" && "$HASHIT" -f sqlite -o ../u.db . > /dev/null)
+sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes"
+mkdir -p "$AUDITDIR/r12/u/x"
+chmod 000 "$AUDITDIR/r12/u/u"
+# the second row lists the same values for the same file, so is a duplicate as in a hashdeep file
+check "every spelling of an unreadable file in a sqlite audit is reported test" \
+    "cd '$AUDITDIR/r12/u' && '$HASHIT' -v -a ../u.db . 2>/dev/null > ../u.out; [ \"\$(grep -c 'File could not be read' ../u.out)\" == 1 ] && ! grep -q 'not found' ../u.out"
+chmod 644 "$AUDITDIR/r12/u/u"
+
+# round 13
+for GONE in rm chmod; do
+    mkdir -p "$AUDITDIR/r13/$GONE/t/sub/deep"
+    echo a > "$AUDITDIR/r13/$GONE/t/a" && echo c > "$AUDITDIR/r13/$GONE/t/sub/deep/c"
+    (cd "$AUDITDIR/r13/$GONE/t/sub/deep" && "$HASHIT" -f hashdeep -o ../../../m.hd ../.. > /dev/null && "$HASHIT" -f sqlite -o ../../../m.db ../.. > /dev/null)
+    if [ $GONE == rm ]; then rm -r "$AUDITDIR/r13/$GONE/t/sub/deep"; else chmod 000 "$AUDITDIR/r13/$GONE/t/sub/deep"; fi
+    for AUDITFILE in m.hd m.db; do
+        check "directory an audit file was created in is $GONE'd $AUDITFILE test" \
+            "cd '$AUDITDIR/r13/$GONE/t' && '$HASHIT' -a ../$AUDITFILE . 2>/dev/null | grep -q 'Files moved: 0' && '$HASHIT' -a ../$AUDITFILE . 2>/dev/null | grep -q 'Files missing: 1'"
+    done
+    chmod 755 "$AUDITDIR/r13/$GONE/t/sub/deep" 2>/dev/null
+done
+mkdir -p "$AUDITDIR/r13/sl/r/d" "$AUDITDIR/r13/sl/r/ext/e2"
+printf e > "$AUDITDIR/r13/sl/r/ext/e2/e"
+ln -s ../ext/e2 "$AUDITDIR/r13/sl/r/d/lx"
+ln -s r "$AUDITDIR/r13/sl/L"
+(cd "$AUDITDIR/r13/sl/L" && hashdeep -l -r d/lx/.. > ../m.hd)
+check "symlink and .. from a symlinked working directory matches hashdeep test" "cd '$AUDITDIR/r13/sl/L' && '$HASHIT' -a ../m.hd d/lx/.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r13/sy/real/data" "$AUDITDIR/r13/sy/real/y"
+printf Y > "$AUDITDIR/r13/sy/real/y/f"
+ln -s real/data "$AUDITDIR/r13/sy/L"
+ln -s real/y "$AUDITDIR/r13/sy/y"
+(cd "$AUDITDIR/r13/sy" && hashdeep -l -r L/../y > m.hd)
+check "symlink after .. which cleaning also reaches matches hashdeep test" "cd '$AUDITDIR/r13/sy' && '$HASHIT' -a m.hd L/../y | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r13/s1/real"
+echo X > "$AUDITDIR/r13/s1/real/a" && echo W > "$AUDITDIR/r13/s1/real/b"
+ln -s real "$AUDITDIR/r13/s1/L"
+(cd "$AUDITDIR/r13/s1" && { md5sum real/b | sed 's/  real\/b$/  a/'; md5sum "$PWD/L/a"; } > real/s.md5)
+check "conflicting sum lines through a symlinked sum file directory test" "cd '$AUDITDIR/r13/s1' && ! '$HASHIT' --allow-moved -a L/s.md5 L > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/s2/s"
+echo X > "$AUDITDIR/r13/s2/s/a" && echo Y > "$AUDITDIR/r13/s2/s/c"
+(cd "$AUDITDIR/r13/s2" && { md5sum s/c | sed 's/  s\/c$/  a/'; md5sum s/a; } > s/s.md5)
+check "conflicting sum lines meeting through different directories test" "cd '$AUDITDIR/r13/s2' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/s3/s" "$AUDITDIR/r13/s3/x"
+echo X > "$AUDITDIR/r13/s3/s/x"
+(cd "$AUDITDIR/r13/s3" && { md5sum s/x | sed 's/  s\/x$/  x/'; md5sum s/x | sed "s#  s/x\$#  $PWD/x#"; } > s/s.md5)
+check "sum line naming a directory is not a file test" "cd '$AUDITDIR/r13/s3' && ! '$HASHIT' -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r13/uv/A" "$AUDITDIR/r13/uv/C"
+echo f > "$AUDITDIR/r13/uv/A/f" && echo g > "$AUDITDIR/r13/uv/A/g" && echo cf > "$AUDITDIR/r13/uv/C/f"
+(cd "$AUDITDIR/r13/uv/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+rm "$AUDITDIR/r13/uv/A/f" && chmod 000 "$AUDITDIR/r13/uv/C/f"
+check "missing record sharing a path with an unreadable file is not unreadable test" \
+    "cd '$AUDITDIR/r13/uv/C' && '$HASHIT' -v -a ../m.db . 2>/dev/null | grep -q '^./f: File expected but not found'"
+chmod 644 "$AUDITDIR/r13/uv/C/f"
+
+# round 14
+mkdir -p "$AUDITDIR/r14/i1/real"
+echo X > "$AUDITDIR/r14/i1/real/a" && ln -s real/a "$AUDITDIR/r14/i1/a"
+(cd "$AUDITDIR/r14/i1" && md5sum real/a > real/s.md5 && md5sum a >> real/s.md5)
+check "sum lines naming a file and a symlink to it are both checked test" "cd '$AUDITDIR/r14/i1' && '$HASHIT' -a real/s.md5 . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/p2/s"
+echo X > "$AUDITDIR/r14/p2/x" && ln -s x "$AUDITDIR/r14/p2/a" && echo Y > "$AUDITDIR/r14/p2/s/a"
+(cd "$AUDITDIR/r14/p2" && H=$(md5sum s/a | cut -c1-32) && printf '%s  a\n%s  %s\n%s  %s\n' $H $H "$PWD/x" $H "$PWD/a" > s/s.md5)
+check "absolute sum lines are not checked through another file test" "cd '$AUDITDIR/r14/p2' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1 && ! md5sum -c s/s.md5 > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r14/p1/s"
+echo X > "$AUDITDIR/r14/p1/a" && echo Y > "$AUDITDIR/r14/p1/s/a"
+(cd "$AUDITDIR/r14/p1" && H=$(md5sum s/a | cut -c1-32) && printf '%s  a\n%s  %s\n' $H $H "$PWD/a" > s/s.md5)
+check "absolute sum line naming the same path as a relative one is checked test" "cd '$AUDITDIR/r14/p1' && ! '$HASHIT' --allow-moved -a s/s.md5 s > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r14/g1/real"
+ln -s real "$AUDITDIR/r14/g1/L" && echo X > "$AUDITDIR/r14/g1/real/a"
+(cd "$AUDITDIR/r14/g1/L" && md5sum a > s.md5 && md5sum ../real/a >> s.md5)
+check "sum lines naming a file through a symlinked directory and its real path test" \
+    "cd '$AUDITDIR/r14/g1/L' && '$HASHIT' -a s.md5 . ../real | grep -q 'Audit passed' && '$HASHIT' -a s.md5 . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/lk/r/t/P" "$AUDITDIR/r14/lk/r/other/x" "$AUDITDIR/r14/lk/m"
+echo y > "$AUDITDIR/r14/lk/r/y" && cp "$AUDITDIR/r14/lk/r/y" "$AUDITDIR/r14/lk/r/t/y"
+ln -s "$AUDITDIR/r14/lk/r/other/x" "$AUDITDIR/r14/lk/r/t/P/lnk"
+(cd "$AUDITDIR/r14/lk/r/t/P/lnk" && "$HASHIT" -f hashdeep -o "$AUDITDIR/r14/lk/m/M.hd" ../../y > /dev/null && "$HASHIT" -f sqlite -o "$AUDITDIR/r14/lk/m/M.db" ../../y > /dev/null)
+echo MODIFIED > "$AUDITDIR/r14/lk/r/y"
+chmod 000 "$AUDITDIR/r14/lk/r/t/P"
+for AUDITFILE in M.hd M.db; do
+    check "symlink in a directory which cannot be searched is not cleaned as text $AUDITFILE test" "cd '$AUDITDIR/r14/lk/r/t' && ! '$HASHIT' -a ../../m/$AUDITFILE y > /dev/null 2>&1"
+done
+chmod 755 "$AUDITDIR/r14/lk/r/t/P"
+mkdir -p "$AUDITDIR/r14/lg/r/t/sub/deep"
+ln -s r "$AUDITDIR/r14/lg/L" && ln -s sub/deep "$AUDITDIR/r14/lg/r/t/lnk" && echo a > "$AUDITDIR/r14/lg/r/t/a"
+(cd "$AUDITDIR/r14/lg/L/t" && "$HASHIT" -f hashdeep -o ../../m.hd . > /dev/null)
+check "symlink and .. leading to the symlinked working directory test" "cd '$AUDITDIR/r14/lg/L/t' && '$HASHIT' -a ../../m.hd lnk/../.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/O"
+echo one > "$AUDITDIR/r14/ud/A/f" && echo two > "$AUDITDIR/r14/ud/A/g"
+(cd "$AUDITDIR/r14/ud/A" && "$HASHIT" -f sqlite -o ../O/m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+mv "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/B" && mv "$AUDITDIR/r14/ud/O/m.db" "$AUDITDIR/r14/ud/B/"
+chmod 000 "$AUDITDIR/r14/ud/B/f"
+check "every spelling of an unreadable file in a moved sqlite tree is reported test" \
+    "cd '$AUDITDIR/r14/ud/B' && '$HASHIT' -v -a m.db . 2>/dev/null > ../ud.out; [ \"\$(grep -c 'File could not be read' ../ud.out)\" == 1 ] && ! grep -q 'not found' ../ud.out"
+chmod 644 "$AUDITDIR/r14/ud/B/f"
+
+# round 15
+mkdir -p "$AUDITDIR/r15/mh/s"
+echo X > "$AUDITDIR/r15/mh/s/a" && ln -s s/a "$AUDITDIR/r15/mh/a"
+(cd "$AUDITDIR/r15/mh" && printf 'MD5 (%s/s/a) = %s\nSHA1 (a) = %s\n' "$(pwd)" "$(md5sum s/a | cut -c1-32)" 0000000000000000000000000000000000000000 > s/s.sum)
+check "sum lines naming the same file with different hashes are all checked test" \
+    "cd '$AUDITDIR/r15/mh' && ! '$HASHIT' -a s/s.sum s > /dev/null 2>&1 && ! '$HASHIT' --allow-moved -a s/s.sum s > /dev/null 2>&1 && ! cksum -c s/s.sum > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r15/mk/s"
+echo X > "$AUDITDIR/r15/mk/s/a" && ln -s s/a "$AUDITDIR/r15/mk/a"
+(cd "$AUDITDIR/r15/mk" && printf 'MD5 (%s/s/a) = %s\nSHA1 (a) = %s\n' "$(pwd)" "$(md5sum s/a | cut -c1-32)" "$(sha1sum s/a | cut -c1-40)" > s/ok.sum)
+check "sum lines naming the same file with different correct hashes pass test" "cd '$AUDITDIR/r15/mk' && '$HASHIT' -a s/ok.sum s | grep -q 'Audit passed' && cksum -c s/ok.sum > /dev/null"
+mkdir -p "$AUDITDIR/r15/uo/A"
+echo one > "$AUDITDIR/r15/uo/A/f" && echo two > "$AUDITDIR/r15/uo/A/g"
+(cd "$AUDITDIR/r15/uo/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+mv "$AUDITDIR/r15/uo/A" "$AUDITDIR/r15/uo/B" && chmod 000 "$AUDITDIR/r15/uo/B/f"
+check "every spelling of an unreadable file in a moved tree with the sqlite file outside it test" \
+    "cd '$AUDITDIR/r15/uo/B' && '$HASHIT' -v -a ../m.db . 2>/dev/null > ../uo.out; [ \"\$(grep -c 'File could not be read' ../uo.out)\" == 1 ] && ! grep -q 'not found' ../uo.out"
+chmod 644 "$AUDITDIR/r15/uo/B/f"
+mkdir -p "$AUDITDIR/r15/lp/p/sub/d" "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/mx/my"
+ln -s "$AUDITDIR/r15/lp/p" "$AUDITDIR/r15/lp/A" && ln -s "$AUDITDIR/r15/lp/q" "$AUDITDIR/r15/lp/p/B" && echo y > "$AUDITDIR/r15/lp/p/sub/y"
+printf '%s  ../p/sub/d/../y\n' "$(md5sum < "$AUDITDIR/r15/lp/p/sub/y" | cut -c1-32)" > "$AUDITDIR/r15/lp/mx/my/M.md5"
+check "same path through a symlinked working directory's ancestor and .. test" "cd '$AUDITDIR/r15/lp/A/B' && '$HASHIT' -a '$AUDITDIR/r15/lp/mx/my/M.md5' ../p/sub/d/.. | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/ap/R/c" "$AUDITDIR/r15/ap/R/x/e2" "$AUDITDIR/r15/ap/R/d"
+printf e > "$AUDITDIR/r15/ap/R/x/e2/e" && ln -s ../x/e2 "$AUDITDIR/r15/ap/R/d/lx" && ln -s R "$AUDITDIR/r15/ap/S"
+(cd "$AUDITDIR/r15/ap/R/c" && hashdeep -l -r ../d/lx/.. > ../../m.hd)
+check "absolute physical path from a symlinked working directory test" \
+    "cd '$AUDITDIR/r15/ap/R/c' && '$HASHIT' -a ../../m.hd '$AUDITDIR/r15/ap/R/x' | grep -q 'Audit passed' && cd '$AUDITDIR/r15/ap/S/c' && '$HASHIT' -a ../../m.hd '$AUDITDIR/r15/ap/R/x' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/am/real"
+echo a > "$AUDITDIR/r15/am/real/a" && ln -s real "$AUDITDIR/r15/am/L"
+(cd "$AUDITDIR/r15/am/real" && "$HASHIT" -f hashdeep --absolute . > ../abs.hd)
+check "absolute physical manifest audited from a symlinked working directory test" "cd '$AUDITDIR/r15/am/L' && '$HASHIT' -a ../abs.hd . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r15/sd/r/t/sub"
+echo a > "$AUDITDIR/r15/sd/r/t/a" && echo b > "$AUDITDIR/r15/sd/r/t/sub/b" && ln -s r/t/sub "$AUDITDIR/r15/sd/D"
+(cd "$AUDITDIR/r15/sd/r/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null && "$HASHIT" -f hashdeep -o ../m.hd . > /dev/null)
+for AUDITFILE in m.db m.hd; do
+    check "audit with .. from a working directory which is a symlink into the tree $AUDITFILE test" "cd '$AUDITDIR/r15/sd/D' && '$HASHIT' -a '$AUDITDIR/r15/sd/r/$AUDITFILE' .. | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r15/sl/r/t/sub" "$AUDITDIR/r15/sl/r/m"
+ln -s "$AUDITDIR/r15/sl/r" "$AUDITDIR/r15/sl/L" && echo a > "$AUDITDIR/r15/sl/r/t/a" && echo b > "$AUDITDIR/r15/sl/r/t/sub/b"
+(cd "$AUDITDIR/r15/sl/L/t/sub" && "$HASHIT" -f sqlite -o "$AUDITDIR/r15/sl/L/m/M.db" .. > /dev/null)
+check "sqlite made with .. from a symlinked working directory audits from there test" \
+    "cd '$AUDITDIR/r15/sl/L/t/sub' && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' .. | grep -q 'Audit passed' && cd .. && '$HASHIT' -a '$AUDITDIR/r15/sl/L/m/M.db' . | grep -q 'Audit passed'"
+
+# round 16
+mkdir -p "$AUDITDIR/r16/c1" "$AUDITDIR/r16/c3/s"
+echo A > "$AUDITDIR/r16/c1/a" && echo A > "$AUDITDIR/r16/c3/a"
+(cd "$AUDITDIR/r16/c1" && H=$(md5sum a | cut -c1-32) && printf '%s  ./a\n%s  a\n%s  a\n' $H $H 00000000000000000000000000000000 > s.md5)
+(cd "$AUDITDIR/r16/c3" && H=$(md5sum a | cut -c1-32) && printf '%s  %s\n%s  a\n%s  a\n' $H "$(pwd)/a" $H 00000000000000000000000000000000 > s/s.md5)
+check "conflicting sum line after another spelling of the file is checked test" \
+    "cd '$AUDITDIR/r16/c1' && ! '$HASHIT' -a s.md5 a > /dev/null 2>&1 && cd '$AUDITDIR/r16/c3' && ! '$HASHIT' -a s/s.md5 a > /dev/null 2>&1 && ! md5sum -c s/s.md5 > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r16/ns/p" "$AUDITDIR/r16/ns/q" "$AUDITDIR/r16/ns/m"
+ln -s "$AUDITDIR/r16/ns/p" "$AUDITDIR/r16/ns/A" && ln -s "$AUDITDIR/r16/ns/q" "$AUDITDIR/r16/ns/p/B" && echo f > "$AUDITDIR/r16/ns/q/f"
+(cd "$AUDITDIR/r16/ns/A/B" && "$HASHIT" -f sqlite -o "$AUDITDIR/r16/ns/m/M.db" "$AUDITDIR/r16/ns/p/B" > /dev/null && "$HASHIT" -f hashdeep -o "$AUDITDIR/r16/ns/m/M.hd" "$AUDITDIR/r16/ns/p/B" > /dev/null)
+for AUDITFILE in M.db M.hd; do
+    check "nested symlinked working directory ancestors $AUDITFILE test" \
+        "cd '$AUDITDIR/r16/ns/A/B' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' '$AUDITDIR/r16/ns/p/B' | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' . | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/ns/m/$AUDITFILE' '$AUDITDIR/r16/ns/q' | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r16/nr/p/x/y" "$AUDITDIR/r16/nr/m"
+ln -s "$AUDITDIR/r16/nr/p" "$AUDITDIR/r16/nr/A" && ln -s "$AUDITDIR/r16/nr/p/x/y" "$AUDITDIR/r16/nr/p/B" && echo y > "$AUDITDIR/r16/nr/p/x/y/f"
+(cd "$AUDITDIR/r16/nr/A/B" && "$HASHIT" -f hashdeep -o "$AUDITDIR/r16/nr/m/M.hd" . > /dev/null)
+check "working directory ancestor really inside another's real directory test" \
+    "cd '$AUDITDIR/r16/nr/A/B' && '$HASHIT' -a '$AUDITDIR/r16/nr/m/M.hd' ../y | grep -q 'Audit passed' && '$HASHIT' -a '$AUDITDIR/r16/nr/m/M.hd' '$AUDITDIR/r16/nr/A/x/y' | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r16/sl/a"
+ln -s . "$AUDITDIR/r16/sl/a/b" && echo f > "$AUDITDIR/r16/sl/a/f"
+check "working directory through a symlink to itself with // test" \
+    "cd '/$AUDITDIR/r16/sl/a/b' && '$HASHIT' -f hashdeep -o ../../m.hd . > /dev/null && '$HASHIT' -a ../../m.hd . | grep -q 'Audit passed'"
+mkdir -p "$AUDITDIR/r16/dp/p" "$AUDITDIR/r16/dp/q"
+ln -s "$AUDITDIR/r16/dp/p" "$AUDITDIR/r16/dp/A" && ln -s "$AUDITDIR/r16/dp/q" "$AUDITDIR/r16/dp/p/B" && echo f > "$AUDITDIR/r16/dp/q/f" && ln -s gone "$AUDITDIR/r16/dp/q/dl"
+printf '%s  %s\n' "$(md5sum < "$AUDITDIR/r16/dp/q/f" | cut -c1-32)" "$AUDITDIR/r16/dp/q/dl/../f" > "$AUDITDIR/r16/dp/s.md5"
+check "dangling symlink and .. through where the working directory really is never matches test" "cd '$AUDITDIR/r16/dp/A/B' && ! '$HASHIT' -a '$AUDITDIR/r16/dp/s.md5' . > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r16/pl/sub"
+echo A > "$AUDITDIR/r16/pl/sub/a" && ln -s . "$AUDITDIR/r16/pl/L"
+(cd "$AUDITDIR/r16/pl/L/sub" && printf '%s  ../L/sub/a\n' "$(md5sum a | cut -c1-32)" > s.md5)
+check "working directory through a symlink to its own parent test" "cd '$AUDITDIR/r16/pl/L/sub' && '$HASHIT' -a s.md5 a | grep -q 'Audit passed' && md5sum -c s.md5 > /dev/null"
+
+# round 17
+mkdir -p "$AUDITDIR/r17/rt/d" "$AUDITDIR/r17/rt/m"
+ln -s / "$AUDITDIR/r17/rt/R" && echo X > "$AUDITDIR/r17/rt/d/f"
+P2="$AUDITDIR/r17/rt/R${AUDITDIR#/}/r17/rt/d/f"
+mkdir -p "$(dirname "$P2")" && echo X > "$P2"
+(cd "$AUDITDIR/r17/rt" && "$HASHIT" -f sqlite -o "$AUDITDIR/r17/rt/m/M.db" "$P2" > /dev/null)
+rm "$P2"
+check "working directory through a symlink to / does not match another file test" "cd '$AUDITDIR/r17/rt/R' && ! '$HASHIT' -a '$AUDITDIR/r17/rt/m/M.db' '$AUDITDIR/r17/rt/d' > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r17/ro/d"
+ln -s / "$AUDITDIR/r17/ro/R" && echo X > "$AUDITDIR/r17/ro/d/f"
+(cd "$AUDITDIR/r17/ro/R${AUDITDIR}/r17/ro" && "$HASHIT" -f sqlite -o ../ro.db d > /dev/null && "$HASHIT" -f hashdeep -o ../ro.hd d > /dev/null)
+for AUDITFILE in ro.db ro.hd; do
+    check "working directory through a symlink to / passes $AUDITFILE test" "cd '$AUDITDIR/r17/ro/R${AUDITDIR}/r17/ro' && '$HASHIT' -a ../$AUDITFILE d | grep -q 'Audit passed' && '$HASHIT' -a ../$AUDITFILE '$AUDITDIR/r17/ro/d' | grep -q 'Audit passed'"
+done
+mkdir -p "$AUDITDIR/r17/af/x" "$AUDITDIR/r17/af/y/sub"
+printf A > "$AUDITDIR/r17/af/x/a" && printf A > "$AUDITDIR/r17/af/y/a" && ln -s ../y/sub "$AUDITDIR/r17/af/x/lnk"
+(cd "$AUDITDIR/r17/af/y" && "$HASHIT" -f hashdeep -o m.hd a > /dev/null && "$HASHIT" -f sqlite -o m.db a > /dev/null && sha256sum a > m.sha256)
+rm "$AUDITDIR/r17/af/y/a"
+for AUDITFILE in m.hd m.db m.sha256; do
+    check "audit file given through a symlink and .. is in the directory the OS opens $AUDITFILE test" "cd '$AUDITDIR/r17/af' && ! '$HASHIT' -a x/lnk/../$AUDITFILE x/a > /dev/null 2>&1"
+done
+
+# a database made from overlapping paths lists a file twice, and the second row is never looked up
+mkdir -p "$AUDITDIR/r18/t/sub"
+echo a > "$AUDITDIR/r18/t/a"
+echo b > "$AUDITDIR/r18/t/sub/b"
+(cd "$AUDITDIR/r18/t" && "$HASHIT" -r -f sqlite -o ../ov.db . sub > /dev/null && "$HASHIT" -f sqlite -o ../same.db a ./a "$AUDITDIR/r18/t/a" > /dev/null)
+check "sqlite rows for the same file from overlapping paths pass test" "cd '$AUDITDIR/r18/t' && '$HASHIT' -r -a ../ov.db . | grep -q 'Audit passed'"
+check "sqlite rows for the same file by different spellings pass test" "cd '$AUDITDIR/r18/t' && '$HASHIT' -a ../same.db a | grep -q 'Audit passed'"
+cp "$AUDITDIR/r18/ov.db" "$AUDITDIR/r18/conflict.db"
+sqlite3 "$AUDITDIR/r18/conflict.db" "update file_hashes set md5 = '00000000000000000000000000000000' where filepath = 'sub/b'"
+check "sqlite rows for the same file with other values fail test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../conflict.db . > /dev/null 2>&1"
+echo z > "$AUDITDIR/r18/t/sub/b"
+check "sqlite rows for the same file from overlapping paths catch a modified file test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../ov.db . > /dev/null 2>&1"
+rm "$AUDITDIR/r18/t/sub/b"
+check "sqlite rows for the same file from overlapping paths catch a deleted file test" "cd '$AUDITDIR/r18/t' && ! '$HASHIT' -r -a ../ov.db . > /dev/null 2>&1"
+
+# a file moved to where the audit file's directory places its record is still moved, as an audit
+# is only matched through one directory
+for AUDITFILE in m.hd m.db m.sha256; do
+    mkdir -p "$AUDITDIR/r18/mix/$AUDITFILE/q/d"
+    echo hello > "$AUDITDIR/r18/mix/$AUDITFILE/q/d/a" && echo bb > "$AUDITDIR/r18/mix/$AUDITFILE/q/d/b"
+    case $AUDITFILE in
+        m.hd) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && "$HASHIT" -f hashdeep -o ../m.hd d > /dev/null) ;;
+        m.db) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && "$HASHIT" -f sqlite -o ../m.db d > /dev/null) ;;
+        m.sha256) (cd "$AUDITDIR/r18/mix/$AUDITFILE/q" && sha256sum d/a d/b > ../m.sha256) ;;
+    esac
+    mv "$AUDITDIR/r18/mix/$AUDITFILE/$AUDITFILE" "$AUDITDIR/r18/mix/$AUDITFILE/q/d/"
+    check "audit file inside the tree passes before a move $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' -a d/$AUDITFILE d | grep -q 'Audit passed'"
+    mkdir "$AUDITDIR/r18/mix/$AUDITFILE/q/d/d" && mv "$AUDITDIR/r18/mix/$AUDITFILE/q/d/a" "$AUDITDIR/r18/mix/$AUDITFILE/q/d/d/a"
+    check "file moved to where the audit file's directory places it is moved $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' -v -a d/$AUDITFILE d | grep -q 'File moved'"
+    check "file moved to where the audit file's directory places it passes with allow moved $AUDITFILE test" "cd '$AUDITDIR/r18/mix/$AUDITFILE/q' && '$HASHIT' --allow-moved -a d/$AUDITFILE d | grep -q 'Audit passed'"
+done
+
+# round 19
+# a sum line is only a duplicate of another when it names the checked file through the directory
+# the audit is matched through
+mkdir -p "$AUDITDIR/r19/gk/r/a/a"
+touch "$AUDITDIR/r19/gk/r/.gitkeep" "$AUDITDIR/r19/gk/r/a/.gitkeep" "$AUDITDIR/r19/gk/r/a/a/.gitkeep"
+(cd "$AUDITDIR/r19/gk/r" && md5sum .gitkeep a/.gitkeep a/a/.gitkeep > S.md5)
+rm "$AUDITDIR/r19/gk/r/.gitkeep"
+check "deleted file with an identical file of the same name below it is missing test" "cd '$AUDITDIR/r19/gk/r/a' && ! '$HASHIT' -a ../S.md5 .. > /dev/null 2>&1"
+mkdir -p "$AUDITDIR/r19/ap/t"
+echo a > "$AUDITDIR/r19/ap/t/a" && echo b > "$AUDITDIR/r19/ap/t/b"
+(cd "$AUDITDIR/r19/ap/t" && md5sum a b > s.md5)
+(cd "$AUDITDIR/r19/ap" && md5sum t/a >> t/s.md5)
+mv "$AUDITDIR/r19/ap/t/b" "$AUDITDIR/r19/ap/b"
+check "sum line through another directory does not hide a moved file test" "cd '$AUDITDIR/r19/ap' && ! '$HASHIT' -a t/s.md5 . > /dev/null 2>&1"
+# a record dropped as a duplicate names another file once the tree is copied elsewhere
+for AUDITFILE in x.hd x.db; do
+    mkdir -p "$AUDITDIR/r19/cp/$AUDITFILE/w" "$AUDITDIR/r19/cp/$AUDITFILE/m"
+    echo A > "$AUDITDIR/r19/cp/$AUDITFILE/w/a" && echo B > "$AUDITDIR/r19/cp/$AUDITFILE/w/b"
+    FORMAT=hashdeep; [ $AUDITFILE = x.db ] && FORMAT=sqlite
+    (cd "$AUDITDIR/r19/cp/$AUDITFILE/w" && "$HASHIT" -r -f $FORMAT -o ../m/$AUDITFILE . "$AUDITDIR/r19/cp/$AUDITFILE/w/a" > /dev/null)
+    check "duplicate absolute record in place passes $AUDITFILE test" "cd '$AUDITDIR/r19/cp/$AUDITFILE/w' && '$HASHIT' -a ../m/$AUDITFILE . | grep -q 'Audit passed'"
+    cp -r "$AUDITDIR/r19/cp/$AUDITFILE/w" "$AUDITDIR/r19/cp/$AUDITFILE/z" && cp "$AUDITDIR/r19/cp/$AUDITFILE/m/$AUDITFILE" "$AUDITDIR/r19/cp/$AUDITFILE/z/"
+    rm -rf "$AUDITDIR/r19/cp/$AUDITFILE/w"
+    check "duplicate absolute record into a tree copied elsewhere is missing $AUDITFILE test" "cd '$AUDITDIR/r19/cp/$AUDITFILE/z' && ! '$HASHIT' -a $AUDITFILE . > /dev/null 2>&1"
+done
+# a database whose rows are not keyed by path as hashit writes them is refused, as a path listed
+# twice would only be audited once, and a rowid column hides the real one
+mkdir -p "$AUDITDIR/r19/pk/t"
+printf A > "$AUDITDIR/r19/pk/t/a"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
+cp "$AUDITDIR/r19/pk/m.db" "$AUDITDIR/r19/pk/r.db"
+sqlite3 "$AUDITDIR/r19/pk/m.db" "create table f2 as select * from file_hashes; drop table file_hashes; alter table f2 rename to file_hashes;
+insert into file_hashes select * from file_hashes;"
+check "sqlite database without filepath as primary key is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../m.db . > /dev/null 2>&1; [ \$? -eq 2 ]"
+sqlite3 "$AUDITDIR/r19/pk/r.db" "alter table file_hashes add column rowid integer;"
+check "sqlite database with a rowid column is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../r.db . 2>&1 | grep -q 'was not created by hashit'"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../g.db --overwrite . > /dev/null && "$HASHIT" -f sqlite -o ../n.db . > /dev/null)
+SCHEMA=$(sqlite3 "$AUDITDIR/r19/pk/g.db" "select sql from sqlite_master where name = 'file_hashes'")
+sqlite3 "$AUDITDIR/r19/pk/g.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/mtime text null/mtime text null, rowid integer generated always as (1) virtual/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database with a generated rowid column is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../g.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/n.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath text primary key collate nocase/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database comparing paths without case is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../n.db . 2>&1 | grep -q 'was not created by hashit'"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../c.db . > /dev/null && "$HASHIT" -f sqlite -o ../i.db . > /dev/null && "$HASHIT" -f sqlite -o ../z.db . > /dev/null)
+sqlite3 "$AUDITDIR/r19/pk/c.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath text collate nocase/; s/mtime text null/mtime text null, primary key (filepath collate binary)/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database comparing the path column without case is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../c.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/i.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath int primary key/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database with numeric paths is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../i.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/z.db" "insert into file_hashes (filepath, md5, size) values (null, 'x', 1);"
+check "sqlite database with a row without a path is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../z.db . 2>&1 | grep -q 'was not created by hashit'"
+# a relative row is only the same path as an absolute one through the directory hashit was invoked from
+mkdir -p "$AUDITDIR/r21/D" "$AUDITDIR/r21/T" "$AUDITDIR/r21/M"
+printf A > "$AUDITDIR/r21/D/a" && printf A > "$AUDITDIR/r21/T/a"
+(cd "$AUDITDIR/r21/D" && "$HASHIT" -f sqlite -o ../M/m.db a "$AUDITDIR/r21/T/a" > /dev/null)
+rm "$AUDITDIR/r21/D/a"
+check "sqlite relative row is not a duplicate of an absolute row through the working directory test" "cd '$AUDITDIR/r21/T' && ! '$HASHIT' -a ../M/m.db . > /dev/null 2>&1"
+# a sum file listing every file by relative and absolute path passes in place from another directory
+mkdir -p "$AUDITDIR/r20/t/s"
+echo a > "$AUDITDIR/r20/t/a" && echo b > "$AUDITDIR/r20/t/s/b"
+(cd "$AUDITDIR/r20/t" && md5sum a s/b "$AUDITDIR/r20/t/a" "$AUDITDIR/r20/t/s/b" > s.md5)
+check "sum file listing files by relative and absolute path passes from parent test" "cd '$AUDITDIR/r20' && '$HASHIT' -a t/s.md5 t | grep -q 'Audit passed'"
+cp "$AUDITDIR/r20/t/a" "$AUDITDIR/r20/t/extra"
+check "sum file listing files by relative and absolute path fails with a copy allowing moves test" "cd '$AUDITDIR/r20' && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1"
+rm "$AUDITDIR/r20/t/extra" "$AUDITDIR/r20/t/s/b"
+check "sum file listing files by relative and absolute path fails when one is deleted test" "cd '$AUDITDIR/r20' && ! '$HASHIT' -a t/s.md5 t > /dev/null 2>&1"
+# the directory most files match through is used, so the file which moved is the one reported
+mkdir -p "$AUDITDIR/r19/maj/t"
+for F in a b c d e; do echo $F > "$AUDITDIR/r19/maj/t/$F"; done
+(cd "$AUDITDIR/r19/maj/t" && md5sum a b c d e > s.md5)
+mv "$AUDITDIR/r19/maj/t/a" "$AUDITDIR/r19/maj/a"
+check "file moved to where the working directory places it is the one reported test" "cd '$AUDITDIR/r19/maj' && '$HASHIT' -v -a t/s.md5 . | grep -q 'a -> ./a: File moved'"
+
+# --allow-new passes an audit with files not in the audit file, but fails for anything else
+for AUDITFILE in m.hd m.db m.md5; do
+    mkdir -p "$AUDITDIR/an/$AUDITFILE/t"
+    echo a > "$AUDITDIR/an/$AUDITFILE/t/a" && echo b > "$AUDITDIR/an/$AUDITFILE/t/b"
+    case $AUDITFILE in
+        m.hd) (cd "$AUDITDIR/an/$AUDITFILE/t" && "$HASHIT" -f hashdeep -o ../m.hd . > /dev/null) ;;
+        m.db) (cd "$AUDITDIR/an/$AUDITFILE/t" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null) ;;
+        m.md5) (cd "$AUDITDIR/an/$AUDITFILE/t" && md5sum a b > ../m.md5) ;;
+    esac
+    echo new > "$AUDITDIR/an/$AUDITFILE/t/new"
+    check "new file fails an audit $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' -a ../$AUDITFILE . > /dev/null 2>&1"
+    check "new file passes with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new -v -a ../$AUDITFILE . > ../out && grep -q 'Audit passed' ../out && grep -q 'new: File new' ../out"
+    cp "$AUDITDIR/an/$AUDITFILE/t/a" "$AUDITDIR/an/$AUDITFILE/t/copy"
+    check "copy of a known file passes with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new -a ../$AUDITFILE . | grep -q 'Audit passed'"
+    mv "$AUDITDIR/an/$AUDITFILE/t/b" "$AUDITDIR/an/$AUDITFILE/t/moved"
+    check "moved file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new -a ../$AUDITFILE . > /dev/null 2>&1"
+    check "moved file passes with allow new and allow moved $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . | grep -q 'Audit passed'"
+    echo changed > "$AUDITDIR/an/$AUDITFILE/t/a"
+    check "modified file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . > /dev/null 2>&1"
+    rm "$AUDITDIR/an/$AUDITFILE/t/a" "$AUDITDIR/an/$AUDITFILE/t/copy"
+    check "missing file fails with allow new $AUDITFILE test" "cd '$AUDITDIR/an/$AUDITFILE/t' && ! '$HASHIT' --allow-new --allow-moved -a ../$AUDITFILE . > /dev/null 2>&1"
+done
+check "allow new outside an audit warns test" "'$HASHIT' --allow-new '$AUDITDIR/an/m.md5/t' 2>&1 >/dev/null | grep -q 'allow-new only applies'"
 
 # a manifest kept with the files can be audited after they are copied elsewhere
 mkdir -p "$AUDITDIR/ship/orig/tree/sub" "$AUDITDIR/ship/copy"
