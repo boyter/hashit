@@ -136,16 +136,19 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		return nil, errors.New("audit database was created by an older development version of hashit, regenerate it with --format sqlite --overwrite")
 	}
 
-	// each path is looked up as a single row compared exactly and rows are told apart by rowid, so
-	// a table made some other way could have a path listed twice with only one audited, a path
-	// matching a file differing in case, or a rowid column, which may be generated, hiding the
-	// real one
-	var keyed, shadowed, withoutRowid int
+	// each path is looked up as a single row compared exactly as text and rows are told apart by
+	// rowid, so a table made some other way could have a path listed twice with only one audited,
+	// a path matching a file differing in case or spelling of a number, a rowid column, which may
+	// be generated, hiding the real one, or a row without a path
+	var keyed, shadowed, withoutRowid, text, collates, nullPath int
 	var collation sql.NullString
 	if err := db.QueryRow(`select
     (select count(*) = 1 and sum(name = 'filepath') = 1 from pragma_table_info('file_hashes') where pk > 0),
     (select count(*) from pragma_table_xinfo('file_hashes') where lower(name) in ('rowid', 'oid', '_rowid_')),
-    (select count(*) from pragma_table_list where name = 'file_hashes' and wr = 1)`).Scan(&keyed, &shadowed, &withoutRowid); err != nil {
+    (select count(*) from pragma_table_list where name = 'file_hashes' and wr = 1),
+    (select count(*) from pragma_table_info('file_hashes') where name = 'filepath' and lower(type) = 'text'),
+    (select count(*) from sqlite_master where name = 'file_hashes' and lower(sql) like '%collate%'),
+    exists (select 1 from file_hashes where filepath is null)`).Scan(&keyed, &shadowed, &withoutRowid, &text, &collates, &nullPath); err != nil {
 		return nil, err
 	}
 	var index sql.NullString
@@ -157,8 +160,8 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 			return nil, err
 		}
 	}
-	if keyed != 1 || shadowed != 0 || withoutRowid != 0 || !strings.EqualFold(collation.String, "binary") {
-		return nil, errors.New("audit database was not created by hashit, its file_hashes table must have filepath as its primary key, compared exactly, and a rowid")
+	if keyed != 1 || shadowed != 0 || withoutRowid != 0 || text != 1 || collates != 0 || nullPath != 0 || !strings.EqualFold(collation.String, "binary") {
+		return nil, errors.New("audit database was not created by hashit, its file_hashes table must have a text filepath on every row as its primary key, compared exactly, and a rowid")
 	}
 
 	// a database of an empty directory has no records, and passes when audited against one

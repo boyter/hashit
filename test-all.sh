@@ -1333,6 +1333,13 @@ sqlite3 "$AUDITDIR/r19/pk/g.db" "alter table file_hashes rename to old; $(echo "
 check "sqlite database with a generated rowid column is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../g.db . 2>&1 | grep -q 'was not created by hashit'"
 sqlite3 "$AUDITDIR/r19/pk/n.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath text primary key collate nocase/'); insert into file_hashes select * from old; drop table old;"
 check "sqlite database comparing paths without case is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../n.db . 2>&1 | grep -q 'was not created by hashit'"
+(cd "$AUDITDIR/r19/pk/t" && "$HASHIT" -f sqlite -o ../c.db . > /dev/null && "$HASHIT" -f sqlite -o ../i.db . > /dev/null && "$HASHIT" -f sqlite -o ../z.db . > /dev/null)
+sqlite3 "$AUDITDIR/r19/pk/c.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath text collate nocase/; s/mtime text null/mtime text null, primary key (filepath collate binary)/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database comparing the path column without case is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../c.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/i.db" "alter table file_hashes rename to old; $(echo "$SCHEMA" | sed 's/filepath text primary key/filepath int primary key/'); insert into file_hashes select * from old; drop table old;"
+check "sqlite database with numeric paths is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../i.db . 2>&1 | grep -q 'was not created by hashit'"
+sqlite3 "$AUDITDIR/r19/pk/z.db" "insert into file_hashes (filepath, md5, size) values (null, 'x', 1);"
+check "sqlite database with a row without a path is refused test" "cd '$AUDITDIR/r19/pk/t' && '$HASHIT' -a ../z.db . 2>&1 | grep -q 'was not created by hashit'"
 # a relative row is only the same path as an absolute one through the directory hashit was invoked from
 mkdir -p "$AUDITDIR/r21/D" "$AUDITDIR/r21/T" "$AUDITDIR/r21/M"
 printf A > "$AUDITDIR/r21/D/a" && printf A > "$AUDITDIR/r21/T/a"
