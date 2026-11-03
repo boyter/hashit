@@ -19,6 +19,33 @@ GOOS=illumos GOARCH=amd64 go build -o /dev/null . || exit
 GREEN='\033[1;32m'
 RED='\033[0;31m'
 NC='\033[0m'
+YELLOW='\033[0;33m'
+
+# macOS ships BSD md5sum and stat, and no timeout, which differ from the GNU coreutils ones these
+# checks compare against. When md5sum is not GNU, a check using one of them which fails warns
+# rather than stops, so the rest can still run
+GNU_TOOLS=1
+if ! md5sum --version 2> /dev/null | grep -q 'GNU coreutils'; then
+    GNU_TOOLS=0
+    echo -e "${YELLOW}WARN md5sum is not from GNU coreutils, so checks using md5sum, sha*sum, b2sum, stat or timeout warn rather than fail${NC}"
+fi
+NON_GNU_WARNINGS=0
+
+fail_check() {
+    # $1 description, $2 command run, or the tools it used, $3 extra output to show
+    if [ $GNU_TOOLS -eq 0 ] && echo "$2" | grep -qE 'md5sum|sha[0-9]+sum|b2sum|stat -c|timeout '; then
+        echo -e "${YELLOW}WARN $1 failed, but uses a tool which is not GNU coreutils here"
+        NON_GNU_WARNINGS=$((NON_GNU_WARNINGS + 1))
+        return
+    fi
+    echo -e "${RED}======================================================="
+    echo -e "FAILED $1"
+    if [ -n "$3" ]; then
+        echo -e "$3"
+    fi
+    echo -e "======================================================="
+    exit
+}
 
 if ./hashit --not-a-real-option > /dev/null ; then
     echo -e "${RED}================================================="
@@ -482,10 +509,7 @@ audit_test() {
     if (eval "$2") | grep -q -i 'Audit passed'; then
         echo -e "${GREEN}PASSED $1"
     else
-        echo -e "${RED}======================================================="
-        echo -e "FAILED $1"
-        echo -e "======================================================="
-        exit
+        fail_check "$1" "$2"
     fi
 }
 
@@ -511,21 +535,14 @@ audit_test "audit hashit sum file test" \
 if (cd "$AUDITDIR/media" && "$HASHIT" -c md5 -f sum -o ../check.md5 . > /dev/null && md5sum -c --quiet ../check.md5); then
     echo -e "${GREEN}PASSED md5sum can verify sum format test"
 else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED md5sum can verify sum format test"
-    echo -e "======================================================="
-    exit
+    fail_check "md5sum can verify sum format test" "md5sum"
 fi
 
 MTIME_OUTPUT=$(cd "$AUDITDIR/media" && "$HASHIT" -c md5 --mtime -f sum -o ../mtime.md5 . > /dev/null && md5sum -c --quiet ../mtime.md5 2>&1)
 if [ $? -eq 0 ] && grep -q '^# mtime ' "$AUDITDIR/mtime.md5" && ! echo "$MTIME_OUTPUT" | grep -q -i 'improperly'; then
     echo -e "${GREEN}PASSED md5sum can verify sum format with mtime test"
 else
-    echo -e "${RED}======================================================="
-    echo -e "FAILED md5sum can verify sum format with mtime test"
-    echo -e "$MTIME_OUTPUT"
-    echo -e "======================================================="
-    exit
+    fail_check "md5sum can verify sum format with mtime test" "md5sum" "$MTIME_OUTPUT"
 fi
 
 echo "keep me" > "$AUDITDIR/existing.txt"
@@ -646,10 +663,7 @@ check() {
     if (eval "$2"); then
         echo -e "${GREEN}PASSED $1"
     else
-        echo -e "${RED}======================================================="
-        echo -e "FAILED $1"
-        echo -e "======================================================="
-        exit
+        fail_check "$1" "$2"
     fi
 }
 
@@ -1470,3 +1484,6 @@ rm -f /tmp/audit_mismatch.db
 echo -e "${GREEN}================================================="
 echo -e "ALL TESTS PASSED"
 echo -e "================================================="
+if [ $NON_GNU_WARNINGS -gt 0 ]; then
+    echo -e "${YELLOW}$NON_GNU_WARNINGS checks using tools which are not GNU coreutils failed and only warned${NC}"
+fi
