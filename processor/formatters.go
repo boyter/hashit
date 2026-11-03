@@ -232,14 +232,17 @@ func doAudit(input chan Result) (string, bool) {
 	var newFileCandidates []Result
 
 	// The directory the audit is matched through is chosen once every file has arrived, see
-	// chooseLevel, so files matching a record are held until then
+	// chooseLevel, so files matching a record are held until then with every record naming them
 	type claim struct {
-		res         Result
-		r           *AuditRecord
-		level       int
-		independent bool
+		res   Result
+		r     *AuditRecord
+		level int
 	}
-	var found []claim
+	type found struct {
+		res        Result
+		candidates []Candidate
+	}
+	var founds []found
 	votes := map[int]int{}
 
 	seen := map[string]bool{}
@@ -250,27 +253,35 @@ func doAudit(input chan Result) (string, bool) {
 		}
 		examinedCount++
 
-		r, level, independent := auditor.LookupLevel(res.File)
-		if r == nil {
+		candidates := auditor.LookupLevels(res.File)
+		if len(candidates) == 0 {
 			newFileCandidates = append(newFileCandidates, res)
 			continue
 		}
-		found = append(found, claim{res: res, r: r, level: level, independent: independent})
-		if !independent {
+		founds = append(founds, found{res: res, candidates: candidates})
+		// a file votes for every directory a record names it through, as voting only for the
+		// first would let a directory which happens to name some files through other records
+		// outvote the one naming every file
+		for _, level := range voteLevels(candidates) {
 			votes[level]++
 		}
 	}
 	chosen := chooseLevel(votes)
+	auditor.GroupSameFile(chosen, tiedLevels(votes, chosen))
 
 	// Two files on disk can resolve to the same record, so which claims it does not depend on the
 	// order files were processed in. A file matching through a directory earlier in priority order
 	// wins, being the record's own path before another directory, then the first path in sort order
 	claims := map[*AuditRecord]claim{}
-	for _, c := range found {
-		if !keepsMatch(chosen, c.level, c.independent) {
-			newFileCandidates = append(newFileCandidates, c.res)
+	for _, f := range founds {
+		// the record naming the file through the chosen directory, not one naming it through
+		// another directory first
+		candidate, ok := pickCandidate(f.candidates, chosen)
+		if !ok {
+			newFileCandidates = append(newFileCandidates, f.res)
 			continue
 		}
+		c := claim{res: f.res, r: candidate.Record, level: candidate.Level}
 		existing, ok := claims[c.r]
 		if !ok {
 			claims[c.r] = c
@@ -300,6 +311,10 @@ func doAudit(input chan Result) (string, bool) {
 		newFileCandidates = remaining
 	}
 	auditor.warnDuplicates()
+	auditor.settleOwnEntries(chosen, func(r *AuditRecord) bool {
+		_, ok := claims[r]
+		return ok
+	})
 
 	for r, c := range claims {
 		r.Matched = true
@@ -339,9 +354,9 @@ func doAudit(input chan Result) (string, bool) {
 	failedFiles.Range(func(key, _ any) bool {
 		// a record claimed by another file is reported for that file, so the unreadable file is
 		// listed on its own, as it is when it has no record
-		if r := auditor.Lookup(key.(string)); r != nil {
-			if _, claimed := outcomes[r]; !claimed {
-				unreadable[r] = true
+		if c, ok := pickCandidate(auditor.LookupLevels(key.(string)), chosen); ok {
+			if _, claimed := outcomes[c.Record]; !claimed {
+				unreadable[c.Record] = true
 				return true
 			}
 		}

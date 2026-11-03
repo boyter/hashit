@@ -1450,6 +1450,9 @@ fi
 
 rm -rf "$AUDITDIR"
 
+echo -e "${NC}Running audit scenarios..."
+./test-audit.sh < /dev/null || exit
+
 echo -e "${NC}Cleaning up..."
 rm ./hashit
 rm -f ./audit.txt
