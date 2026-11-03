@@ -29,19 +29,19 @@ RED='\033[0;31m'
 NC='\033[0m'
 YELLOW='\033[0;33m'
 
-# macOS ships BSD md5sum and stat, and no timeout, which differ from the GNU coreutils ones these
+# macOS ships BSD md5sum, cksum and stat, and no timeout, which differ from the GNU coreutils ones these
 # checks compare against. When md5sum is not GNU, a check using one of them which fails warns
 # rather than stops, so the rest can still run
 GNU_TOOLS=1
 if ! md5sum --version 2> /dev/null | grep -q 'GNU coreutils'; then
     GNU_TOOLS=0
-    echo -e "${YELLOW}WARN md5sum is not from GNU coreutils, so checks using md5sum, sha*sum, b2sum, stat or timeout warn rather than fail${NC}"
+    echo -e "${YELLOW}WARN md5sum is not from GNU coreutils, so checks using md5sum, sha*sum, b2sum, cksum, stat or timeout warn rather than fail${NC}"
 fi
 NON_GNU_WARNINGS=0
 
 fail_check() {
     # $1 description, $2 command run, or the tools it used, $3 extra output to show
-    if [ $GNU_TOOLS -eq 0 ] && echo "$2" | grep -qE 'md5sum|sha[0-9]+sum|b2sum|stat -c|timeout '; then
+    if [ $GNU_TOOLS -eq 0 ] && echo "$2" | grep -qE 'md5sum|sha[0-9]+sum|b2sum|cksum|stat -c|timeout '; then
         echo -e "${YELLOW}WARN $1 failed, but uses a tool which is not GNU coreutils here"
         NON_GNU_WARNINGS=$((NON_GNU_WARNINGS + 1))
         return
@@ -992,7 +992,8 @@ check "broken pipe exits 141 test" "'$HASHIT' -o '$AUDITDIR/r8/piped.txt' --over
 
 # round 9
 mkdir -p "$AUDITDIR/r9/slow"
-truncate -s 400M "$AUDITDIR/r9/slow/f"
+# a sparse 400 MiB file, made with dd as macOS may have no truncate
+dd if=/dev/zero of="$AUDITDIR/r9/slow/f" bs=1048576 count=0 seek=400 2> /dev/null
 check "signal ignored when started stays ignored test" "sh -c \"trap '' INT HUP; '$HASHIT' -c all -o '$AUDITDIR/r9/ign.txt' '$AUDITDIR/r9/slow' > /dev/null & p=\\\$!; sleep 0.3; kill -INT \\\$p; kill -HUP \\\$p; wait \\\$p\" && [ -s '$AUDITDIR/r9/ign.txt' ]"
 check "output created while running is not replaced test" "('$HASHIT' -c all -o '$AUDITDIR/r9/race.txt' '$AUDITDIR/r9/slow' > /dev/null 2>&1; echo \$? > '$AUDITDIR/r9/race.rc') & sleep 0.3; echo precious > '$AUDITDIR/r9/race.txt'; wait; [ \"\$(cat '$AUDITDIR/r9/race.txt')\" == precious ] && [ \"\$(cat '$AUDITDIR/r9/race.rc')\" == 2 ] && ! ls -a '$AUDITDIR/r9' | grep -q hashit.tmp"
 mkdir -p "$AUDITDIR/r9/tree" "$AUDITDIR/r9/gone"
