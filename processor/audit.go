@@ -258,8 +258,9 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 // earlier in priority order, see Candidate. Records written as hashit writes them, such as
 // sub/a or ./sub/a, are looked up directly by sqliteLookup, so only other spellings such as
 // sub//a are indexed. It is held in a temporary table rather than memory so databases larger
-// than memory can be audited
-func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error {
+// than memory can be audited. It reports if any record is a relative path
+func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) (bool, error) {
+	relative := false
 	if _, err := db.ExecContext(ctx, `create temp table paths (
     abs text not null,
     filepath text not null,
@@ -267,25 +268,25 @@ func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error
     rid integer not null,
     primary key (abs, level)
 )`); err != nil {
-		return err
+		return false, err
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	insert, err := tx.PrepareContext(ctx, `insert into temp.paths (abs, filepath, level, rid) values (?, ?, ?, ?)
 on conflict (abs, level) do nothing`)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer insert.Close()
 
 	rows, err := tx.QueryContext(ctx, "select rowid, filepath from file_hashes order by rowid")
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer rows.Close()
 
@@ -293,8 +294,9 @@ on conflict (abs, level) do nothing`)
 		var rid int64
 		var filePath string
 		if err := rows.Scan(&rid, &filePath); err != nil {
-			return err
+			return false, err
 		}
+		relative = relative || !filepath.IsAbs(filePath)
 		direct := isDirectSpelling(filePath)
 		if direct && len(workingDirAncestors()) == 0 {
 			continue
@@ -307,15 +309,15 @@ on conflict (abs, level) do nothing`)
 				continue
 			}
 			if _, err := insert.ExecContext(ctx, k, filePath, level, rid); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return false, err
 	}
 	_ = rows.Close()
-	return tx.Commit()
+	return relative, tx.Commit()
 }
 
 // isDirectSpelling reports whether sqliteLookup finds a record by its path without the index,
@@ -634,7 +636,8 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	invokedFrom, _ := queries.MetadataGet(ctx, metadataInvokedFrom)
 	bases := auditBases(invokedFrom, AuditFile, cwd)
 
-	if err := buildSqlitePathIndex(ctx, db, bases); err != nil {
+	relative, err := buildSqlitePathIndex(ctx, db, bases)
+	if err != nil {
 		printError(fmt.Sprintf("failed to index audit database: %s", err.Error()))
 		return "", false
 	}
@@ -729,15 +732,17 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	}
 	_ = insertMatch.Close()
 
-	chosen := chooseLevel(votes)
-	tied := tiedLevels(votes, chosen)
+	chosen, tied := judgedLevels(votes, chooseLevel(votes), bases, invokedFrom == "" && relative)
 	if len(tied) == 0 {
 		return judgeSqliteAudit(ctx, db, tx, stmts, bases, cwd, chosen, newFileCandidates, examinedCount)
 	}
-	return judgeTied(AuditFile, bases, chosen, tied, func(first bool, level int) (string, bool) {
-		if first {
-			return judgeSqliteAudit(ctx, db, tx, stmts, bases, cwd, level, slices.Clone(newFileCandidates), examinedCount)
-		}
+	// each judgement has its own transaction, as only one connection is used
+	stmts.close()
+	if err := tx.Commit(); err != nil {
+		printError(fmt.Sprintf("failed to commit audit results: %s", err.Error()))
+		return "", false
+	}
+	return judgeTied(AuditFile, bases, chosen, tied, func(level int) (string, bool) {
 		// the tables of the last judgement, as temp.matches holds every directory
 		for _, table := range []string{"seen", "duplicates", "repeated"} {
 			if _, err := db.ExecContext(ctx, "drop table if exists temp."+table); err != nil {

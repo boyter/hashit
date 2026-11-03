@@ -268,16 +268,18 @@ func doAudit(input chan Result) (string, bool) {
 			votes[level]++
 		}
 	}
-	chosen := chooseLevel(votes)
-	tied := tiedLevels(votes, chosen)
+	chosen, tied := judgedLevels(votes, chooseLevel(votes), auditor.bases, auditor.primaryBase == "" && auditor.hasRelative())
 	if len(tied) == 0 {
-		return judgeAudit(founds, newFileCandidates, len(results), chosen, nil)
+		return judgeAudit(founds, newFileCandidates, len(results), chosen)
 	}
 	original := auditor
 	defer func() { auditor = original }()
-	return judgeTied(original.sourceName, original.bases, chosen, tied, func(first bool, level int) (string, bool) {
-		if first {
-			return judgeAudit(founds, newFileCandidates, len(results), level, tied)
+	// the first judgement uses the audit file as already parsed, and each after it parses it again
+	used := false
+	return judgeTied(original.sourceName, original.bases, chosen, tied, func(level int) (string, bool) {
+		if !used {
+			used = true
+			return judgeAudit(founds, newFileCandidates, len(results), level)
 		}
 		fresh, err := original.reparse()
 		if err != nil {
@@ -286,7 +288,7 @@ func doAudit(input chan Result) (string, bool) {
 		}
 		auditor = fresh
 		founds, newFiles := lookupResults(results)
-		return judgeAudit(founds, newFiles, len(results), level, tied)
+		return judgeAudit(founds, newFiles, len(results), level)
 	})
 }
 
@@ -294,48 +296,56 @@ func doAudit(input chan Result) (string, bool) {
 // chosen, see tiedLevels, as which the paths were written relative to is then not decided by the
 // files on disk. Judged only through the first, a file modified through one directory can match
 // another record through the first, with the record it should have matched reported as moved, so
-// the audit passes only when it passes through every one, reporting the first it fails through.
-// judge is called with each directory in turn, the chosen one first with first set, then again
-// for the one reported with first unset, so it starts again from the audit file
-func judgeTied(auditName string, bases []string, chosen int, tied []int, judge func(first bool, level int) (string, bool)) (string, bool) {
-	levels := []int{chosen}
-	sorted := slices.Clone(tied)
-	slices.Sort(sorted)
-	for _, level := range sorted {
+// the audit passes only when it passes through every one. The chosen directory is reported when it
+// fails, otherwise the first which does. The other directories are judged first with their report
+// and warnings discarded, so no report is held in memory, and when every one passes the chosen
+// directory is judged once, writing its report. Otherwise the one reported is judged again writing
+// it, so its warnings are its own. judge must start from the audit file each time it is called
+func judgeTied(auditName string, bases []string, chosen int, tied []int, judge func(level int) (string, bool)) (string, bool) {
+	var others []int
+	for _, level := range tied {
 		if level != chosen {
-			levels = append(levels, level)
+			others = append(others, level)
 		}
 	}
+	slices.Sort(others)
 
-	// each is judged with its report discarded, so no report is held in memory, then the one
-	// reported is judged again writing it, from the start as judging changes the audit's state
 	out := stdout
 	defer func() { stdout, warningsMuted = out, false }()
-	reported := chosen
-	for i, level := range levels {
-		// warnings were given when judged through the chosen directory
-		warningsMuted = i != 0
-		stdout = &checkedWriter{w: io.Discard}
-		summary, passed := judge(i == 0, level)
+	quietly := func(level int) (string, bool) {
+		stdout, warningsMuted = &checkedWriter{w: io.Discard}, true
+		defer func() { stdout, warningsMuted = out, false }()
+		return judge(level)
+	}
+
+	failing := -1
+	for _, level := range others {
+		summary, passed := quietly(level)
 		if summary == "" {
 			// an error, which was printed
 			return "", false
 		}
 		if !passed {
-			reported = level
+			failing = level
 			break
 		}
 	}
-	stdout, warningsMuted = out, false
-	if reported != chosen {
-		printWarn(fmt.Sprintf("the paths in %s name as many files through %s as through %s, so the audit is checked through each, and fails through %s", auditName, bases[chosen], bases[reported], bases[reported]))
+	reported := chosen
+	if failing != -1 {
+		summary, passed := quietly(chosen)
+		if summary == "" {
+			return "", false
+		}
+		if passed {
+			reported = failing
+			printWarn(fmt.Sprintf("the paths in %s name as many files through %s as through %s, so the audit is checked through each, and fails through %s", auditName, bases[chosen], bases[reported], bases[reported]))
+		}
 	}
-	warningsMuted = true
-	return judge(false, reported)
+	return judge(reported)
 }
 
 // judgeAudit matches files on disk to records through the chosen directory and reports the result
-func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount int, chosen int, tied []int) (string, bool) {
+func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount int, chosen int) (string, bool) {
 	matched := 0
 	filesModified := 0
 	moved := 0
@@ -353,7 +363,17 @@ func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount i
 		r     *AuditRecord
 		level int
 	}
-	auditor.GroupSameFile(chosen, tied)
+	var scanned map[string]bool
+	if auditor.sumFile {
+		scanned = make(map[string]bool, len(founds)+len(newFileCandidates))
+		for _, f := range founds {
+			scanned[absFrom(auditor.cwd, f.res.File)] = true
+		}
+		for _, res := range newFileCandidates {
+			scanned[absFrom(auditor.cwd, res.File)] = true
+		}
+	}
+	auditor.GroupSameFile(chosen, scanned)
 
 	// Two files on disk can resolve to the same record, so which claims it does not depend on the
 	// order files were processed in. A file matching through a directory earlier in priority order

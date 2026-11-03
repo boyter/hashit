@@ -1062,7 +1062,7 @@ mkdir -p "$AUDITDIR/r12/sb/t"
 echo a > "$AUDITDIR/r12/sb/t/a" && echo c > "$AUDITDIR/r12/sb/t/c"
 (cd "$AUDITDIR/r12/sb/t" && { md5sum c | sed 's/  c$/  a/'; md5sum "$PWD/a"; } > s.md5)
 check "conflicting sum lines audited from outside its directory are not a move test" \
-    "cd '$AUDITDIR/r12/sb' && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1 && '$HASHIT' -a t/s.md5 t 2>&1 | grep -q 'different hashes'"
+    "cd '$AUDITDIR/r12/sb' && ! '$HASHIT' -a t/s.md5 t > /dev/null 2>&1 && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1 && '$HASHIT' --allow-moved -a t/s.md5 t 2>&1 | grep -q 'different hashes'"
 mkdir -p "$AUDITDIR/r12/u"
 echo u > "$AUDITDIR/r12/u/u"
 (cd "$AUDITDIR/r12/u" && "$HASHIT" -f sqlite -o ../u.db . > /dev/null)
@@ -1346,15 +1346,18 @@ printf A > "$AUDITDIR/r21/D/a" && printf A > "$AUDITDIR/r21/T/a"
 (cd "$AUDITDIR/r21/D" && "$HASHIT" -f sqlite -o ../M/m.db a "$AUDITDIR/r21/T/a" > /dev/null)
 rm "$AUDITDIR/r21/D/a"
 check "sqlite relative row is not a duplicate of an absolute row through the working directory test" "cd '$AUDITDIR/r21/T' && ! '$HASHIT' -a ../M/m.db . > /dev/null 2>&1"
-# a sum file listing every file by relative and absolute path passes in place from another directory
+# a sum file listing every file by relative and absolute path passes in place, and fails from
+# another directory, as md5sum -c does, as every file matches an absolute line so the relative
+# lines are judged through every directory
 mkdir -p "$AUDITDIR/r20/t/s"
 echo a > "$AUDITDIR/r20/t/a" && echo b > "$AUDITDIR/r20/t/s/b"
 (cd "$AUDITDIR/r20/t" && md5sum a s/b "$AUDITDIR/r20/t/a" "$AUDITDIR/r20/t/s/b" > s.md5)
-check "sum file listing files by relative and absolute path passes from parent test" "cd '$AUDITDIR/r20' && '$HASHIT' -a t/s.md5 t | grep -q 'Audit passed'"
+check "sum file listing files by relative and absolute path passes in place test" "cd '$AUDITDIR/r20/t' && '$HASHIT' -a s.md5 . | grep -q 'Audit passed' && md5sum --quiet -c s.md5"
+check "sum file listing files by relative and absolute path fails from parent test" "cd '$AUDITDIR/r20' && ! '$HASHIT' -a t/s.md5 t > /dev/null 2>&1 && ! md5sum --quiet -c t/s.md5 > /dev/null 2>&1"
 cp "$AUDITDIR/r20/t/a" "$AUDITDIR/r20/t/extra"
-check "sum file listing files by relative and absolute path fails with a copy allowing moves test" "cd '$AUDITDIR/r20' && ! '$HASHIT' --allow-moved -a t/s.md5 t > /dev/null 2>&1"
+check "sum file listing files by relative and absolute path fails with a copy allowing moves test" "cd '$AUDITDIR/r20/t' && ! '$HASHIT' --allow-moved -a s.md5 . > /dev/null 2>&1"
 rm "$AUDITDIR/r20/t/extra" "$AUDITDIR/r20/t/s/b"
-check "sum file listing files by relative and absolute path fails when one is deleted test" "cd '$AUDITDIR/r20' && ! '$HASHIT' -a t/s.md5 t > /dev/null 2>&1"
+check "sum file listing files by relative and absolute path fails when one is deleted test" "cd '$AUDITDIR/r20/t' && ! '$HASHIT' -a s.md5 . > /dev/null 2>&1"
 # the directory most files match through is used, so the file which moved is the one reported
 mkdir -p "$AUDITDIR/r19/maj/t"
 for F in a b c d e; do echo $F > "$AUDITDIR/r19/maj/t/$F"; done

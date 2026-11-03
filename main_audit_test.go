@@ -139,6 +139,11 @@ func newAuditScenario(seed uint64) *auditScenario {
 		if r.Intn(8) == 0 {
 			content = "content 0\n" // identical files
 		}
+		if name == s.manifestName() && r.Intn(3) == 0 {
+			// an empty file of the manifest's name, as a manifest written by a shell redirect lists
+			// itself as an empty file
+			content = ""
+		}
 		s.files[p] = content
 	}
 
@@ -798,6 +803,48 @@ var auditRegressions = []struct {
 		s: &auditScenario{format: "sum", location: "meta", relocation: "copy", auditFrom: "root", allowMoved: true,
 			files:   map[string]string{"README": "top\n", "meta/README": "meta\n"},
 			changes: []string{"rename meta/README meta/README.old", "rename README meta/README"}},
+	},
+	{
+		// through the manifest's directory the line naming the empty file names the manifest, so it
+		// was dropped as the manifest listing itself before the directory was chosen
+		name:   "unchanged empty file of the manifest's name beside it fails, sum",
+		strict: true,
+		s: &auditScenario{format: "sum", location: "out", relocation: "none", auditFrom: "root",
+			files: map[string]string{"hashes.md5": "", "a": "a\n", "sub/b": "b\n"}},
+	},
+	{
+		name: "deleted empty file of the manifest's name beside it passes, sum",
+		s: &auditScenario{format: "sum", location: "out", relocation: "none", auditFrom: "root",
+			files:   map[string]string{"hashes.md5": "", "a": "a\n", "sub/b": "b\n"},
+			changes: []string{"delete hashes.md5"}},
+	},
+	{
+		// through the manifest's directory the line naming the empty file names the manifest, so it
+		// was dropped as the manifest listing itself before the directory was chosen
+		name:   "unchanged empty file of the manifest's name beside it fails, hashdeep",
+		strict: true,
+		s: &auditScenario{format: "hashdeep", location: "out", relocation: "none", auditFrom: "root",
+			files: map[string]string{"m.hd": "", "a": "a\n", "sub/b": "b\n"}},
+	},
+	{
+		name: "deleted empty file of the manifest's name beside it passes, hashdeep",
+		s: &auditScenario{format: "hashdeep", location: "out", relocation: "none", auditFrom: "root",
+			files:   map[string]string{"m.hd": "", "a": "a\n", "sub/b": "b\n"},
+			changes: []string{"delete m.hd"}},
+	},
+	{
+		// through the manifest's directory the line naming the empty file names the manifest, so it
+		// was dropped as the manifest listing itself before the directory was chosen
+		name:   "unchanged empty file of the manifest's name beside it fails, sqlite",
+		strict: true,
+		s: &auditScenario{format: "sqlite", location: "out", relocation: "none", auditFrom: "root",
+			files: map[string]string{"m.db": "", "a": "a\n", "sub/b": "b\n"}},
+	},
+	{
+		name: "deleted empty file of the manifest's name beside it passes, sqlite",
+		s: &auditScenario{format: "sqlite", location: "out", relocation: "none", auditFrom: "root",
+			files:   map[string]string{"m.db": "", "a": "a\n", "sub/b": "b\n"},
+			changes: []string{"delete m.db"}},
 	},
 }
 

@@ -3,6 +3,7 @@
 package processor
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -327,5 +328,47 @@ func TestHasCollateClause(t *testing.T) {
 		if got := hasCollateClause(c.sql); got != c.want {
 			t.Errorf("%q: expected %v got %v", c.sql, c.want, got)
 		}
+	}
+}
+
+func TestJudgeTied(t *testing.T) {
+	bases := []string{"/b0", "/b1", "/b2"}
+	cases := []struct {
+		name     string
+		chosen   int
+		tied     []int
+		fails    map[int]bool
+		reported int
+		calls    int
+	}{
+		{name: "passing two way tie judges each once", chosen: 0, tied: []int{0, 1}, reported: 0, calls: 2},
+		{name: "passing three way tie judges each once", chosen: 1, tied: []int{2, 0, 1}, reported: 1, calls: 3},
+		{name: "chosen failing is reported", chosen: 0, tied: []int{0, 1}, fails: map[int]bool{0: true, 1: true}, reported: 0, calls: 3},
+		{name: "chosen failing alone is reported", chosen: 0, tied: []int{0, 1}, fails: map[int]bool{0: true}, reported: 0, calls: 2},
+		{name: "other failing is reported", chosen: 0, tied: []int{0, 1, 2}, fails: map[int]bool{2: true}, reported: 2, calls: 4},
+		{name: "first other failing is reported", chosen: 2, tied: []int{0, 1, 2}, fails: map[int]bool{0: true, 1: true}, reported: 0, calls: 3},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var calls []int
+			var last int
+			summary, passed := judgeTied("m", bases, c.chosen, c.tied, func(level int) (string, bool) {
+				calls = append(calls, level)
+				last = level
+				return fmt.Sprintf("judged %d", level), !c.fails[level]
+			})
+			if len(calls) != c.calls {
+				t.Errorf("expected %d judgements got %v", c.calls, calls)
+			}
+			if last != c.reported || summary != fmt.Sprintf("judged %d", c.reported) {
+				t.Errorf("expected %d reported got %d %q", c.reported, last, summary)
+			}
+			if passed == (len(c.fails) != 0) {
+				t.Errorf("expected passed %v got %v", len(c.fails) == 0, passed)
+			}
+			if warningsMuted || stdout.w != os.Stdout {
+				t.Errorf("output not restored")
+			}
+		})
 	}
 }
