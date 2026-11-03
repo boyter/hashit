@@ -400,7 +400,17 @@ func runAuditScenario(t *testing.T, s *auditScenario, strict bool) string {
 	if !s.resolvable() {
 		return ""
 	}
-	w := t.TempDir()
+	// removed when the scenario returns, as a sweep runs every seed in one test, where t.TempDir
+	// would keep every tree until the sweep ends
+	w, err := os.MkdirTemp("", "hashit-audit-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.RemoveAll(w); err != nil {
+			t.Errorf("removing scenario directory: %v", err)
+		}
+	}()
 	if real, err := filepath.EvalSymlinks(w); err == nil {
 		w = real
 	}
@@ -487,6 +497,9 @@ func runAuditScenario(t *testing.T, s *auditScenario, strict bool) string {
 	switch {
 	case rc == 2:
 		problem = "audit error"
+	case rc != 0 && rc != 1:
+		// such as -1 when killed by a signal, so the audit never completed
+		problem = fmt.Sprintf("audit error (exit %d)", rc)
 	case rc == 0 && !want:
 		problem = "audit passed but should fail"
 	case rc == 1 && want && (strict || !ambiguous(known, disk)):

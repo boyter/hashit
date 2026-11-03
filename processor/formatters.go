@@ -3,7 +3,6 @@
 package processor
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -296,7 +295,8 @@ func doAudit(input chan Result) (string, bool) {
 // files on disk. Judged only through the first, a file modified through one directory can match
 // another record through the first, with the record it should have matched reported as moved, so
 // the audit passes only when it passes through every one, reporting the first it fails through.
-// judge is called with each directory in turn, the chosen one first
+// judge is called with each directory in turn, the chosen one first with first set, then again
+// for the one reported with first unset, so it starts again from the audit file
 func judgeTied(auditName string, bases []string, chosen int, tied []int, judge func(first bool, level int) (string, bool)) (string, bool) {
 	levels := []int{chosen}
 	sorted := slices.Clone(tied)
@@ -307,31 +307,31 @@ func judgeTied(auditName string, bases []string, chosen int, tied []int, judge f
 		}
 	}
 
+	// each is judged with its report discarded, so no report is held in memory, then the one
+	// reported is judged again writing it, from the start as judging changes the audit's state
 	out := stdout
 	defer func() { stdout, warningsMuted = out, false }()
-	var firstSummary string
-	var firstOutput []byte
+	reported := chosen
 	for i, level := range levels {
 		// warnings were given when judged through the chosen directory
 		warningsMuted = i != 0
-		var output bytes.Buffer
-		stdout = &checkedWriter{w: &output}
+		stdout = &checkedWriter{w: io.Discard}
 		summary, passed := judge(i == 0, level)
-		stdout, warningsMuted = out, false
-		if !passed {
-			if i != 0 {
-				printWarn(fmt.Sprintf("the paths in %s name as many files through %s as through %s, so the audit is checked through each, and fails through %s", auditName, bases[chosen], bases[level], bases[level]))
-			}
-			_, _ = out.Write(output.Bytes())
-			return summary, false
+		if summary == "" {
+			// an error, which was printed
+			return "", false
 		}
-		if i == 0 {
-			firstSummary = summary
-			firstOutput = output.Bytes()
+		if !passed {
+			reported = level
+			break
 		}
 	}
-	_, _ = out.Write(firstOutput)
-	return firstSummary, true
+	stdout, warningsMuted = out, false
+	if reported != chosen {
+		printWarn(fmt.Sprintf("the paths in %s name as many files through %s as through %s, so the audit is checked through each, and fails through %s", auditName, bases[chosen], bases[reported], bases[reported]))
+	}
+	warningsMuted = true
+	return judge(false, reported)
 }
 
 // judgeAudit matches files on disk to records through the chosen directory and reports the result

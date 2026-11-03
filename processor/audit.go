@@ -252,17 +252,20 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 
 // buildSqlitePathIndex fills temp.paths with the absolute path every record may refer to, in the
 // same priority order as other audit files: the directory hashit was invoked from, then the
-// database's directory, then the working directory. A path takes the record from the most
-// preferred directory, then the first record. Records written as hashit writes them, such as
+// database's directory, then the working directory. Each directory has its own entry for a path,
+// taking the first record naming it through that directory, as the record naming a file through
+// the directory the audit is matched through may not be the one naming it through a directory
+// earlier in priority order, see Candidate. Records written as hashit writes them, such as
 // sub/a or ./sub/a, are looked up directly by sqliteLookup, so only other spellings such as
 // sub//a are indexed. It is held in a temporary table rather than memory so databases larger
 // than memory can be audited
 func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error {
 	if _, err := db.ExecContext(ctx, `create temp table paths (
-    abs text primary key,
+    abs text not null,
     filepath text not null,
     level integer not null,
-    rid integer not null
+    rid integer not null,
+    primary key (abs, level)
 )`); err != nil {
 		return err
 	}
@@ -274,7 +277,7 @@ func buildSqlitePathIndex(ctx context.Context, db *sql.DB, bases []string) error
 	defer func() { _ = tx.Rollback() }()
 
 	insert, err := tx.PrepareContext(ctx, `insert into temp.paths (abs, filepath, level, rid) values (?, ?, ?, ?)
-on conflict (abs) do update set filepath = excluded.filepath, level = excluded.level, rid = excluded.rid where excluded.level < paths.level`)
+on conflict (abs, level) do nothing`)
 	if err != nil {
 		return err
 	}
@@ -296,13 +299,8 @@ on conflict (abs) do update set filepath = excluded.filepath, level = excluded.l
 		if direct && len(workingDirAncestors()) == 0 {
 			continue
 		}
-		var keys []string
 		for level, base := range bases {
 			k := absFrom(base, filePath)
-			if contains(keys, k) {
-				continue
-			}
-			keys = append(keys, k)
 			// when the working directory was reached through a symlink a path can be compared
 			// as another spelling, which sqliteLookup does not try, so only those are indexed
 			if direct && k == absPath(base, filePath) {

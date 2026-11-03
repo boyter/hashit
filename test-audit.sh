@@ -121,6 +121,20 @@ done
 expect_rc "hashdeep reports a file moved onto a known path naming as many files test" 1 "cd '$WORK/tie-hashdeep/copy' && hashdeep -r -l -a -k meta/m.hd ."
 expect_rc "md5sum fails a file moved onto a known path naming as many files test" 1 "cd '$WORK/tie-sum/copy' && md5sum --quiet -c meta/m.md5"
 
+# A database not written by hashit with paths such as ././README, which are looked up through an
+# index, kept below the root of a copied tree, where ././README and ././meta/README both name
+# meta/README. Each directory must find its own record
+mkdir -p "$WORK/spelled/orig/meta"
+cd "$WORK/spelled/orig" || exit 1
+echo top > README; echo meta > meta/README; echo w > w; echo x > x
+"$HASHIT" -c md5 -f sqlite -o meta/m.db . > /dev/null
+sqlite3 meta/m.db "update file_hashes set filepath = '././' || substr(filepath, 3)"
+cp -r "$WORK/spelled/orig" "$WORK/spelled/copy"
+cd "$WORK/spelled/copy" || exit 1
+expect_rc "sqlite paths through the index pass in a copy test" 0 "'$HASHIT' -a meta/m.db ."
+cp meta/README meta/README.bak && mv w meta/README
+expect_rc "sqlite paths through the index fail a file moved onto a known path with a backup test" 1 "'$HASHIT' --allow-moved -a meta/m.db ."
+
 # A hashdeep file without an invoked from line audited from a subdirectory, where the working
 # directory names sub/b as record ./b
 mkdir -p "$WORK/noinv/tree/sub"
