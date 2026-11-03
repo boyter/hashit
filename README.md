@@ -616,20 +616,3 @@ For large files you can use `-p` to see the progress of the file to get an idea 
 $ hashit -p --threads 1 large.file
 [==================================>---------------------------------] file: large.file
 ```
-
-
-#### Misc stuff below
-
-Usage of hashdeep
-
-https://linhost.info/2010/05/using-hashdeep-to-ensure-data-integrity/
-
-Issues to address
-
-https://github.com/jessek/hashdeep/issues/4
-https://github.com/jessek/hashdeep/issues/358
-
-Example usage
-
-hashdeep -r vendor > audit.txt
-hashdeep -r -a -k audit.txt vendor
