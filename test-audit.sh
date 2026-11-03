@@ -164,6 +164,50 @@ expect_rc "deleted file of the sum file's name fails test" 1 "'$HASHIT' -a hashe
 expect_rc "md5sum fails a deleted file of the sum file's name test" 1 "md5sum --quiet -c hashes.md5"
 expect_rc "deleted file of the sum file's name fails from the parent test" 1 "cd .. && '$HASHIT' -a data/hashes.md5 data"
 
+# A manifest kept outside the tree it was written from, which holds an empty file of the
+# manifest's name. Through the manifest's directory that line names the manifest itself, but the
+# audit is matched through the tree, where it is another file which must still be audited
+mkdir -p "$WORK/own/sum/t" "$WORK/own/sum/m" "$WORK/own/hd/t" "$WORK/own/hd/m"
+cd "$WORK/own/sum/t" || exit 1
+: > hashes.md5; echo a > a; echo b > b
+md5sum hashes.md5 a b > ../m/hashes.md5
+expect_rc "empty file of the sum file's name kept elsewhere passes test" 0 "'$HASHIT' -a ../m/hashes.md5 ."
+expect_rc "md5sum passes an empty file of the sum file's name kept elsewhere test" 0 "md5sum --quiet -c ../m/hashes.md5"
+echo changed > hashes.md5
+expect_rc "modified empty file of the sum file's name fails with --allow-new test" 1 "'$HASHIT' --allow-new -a ../m/hashes.md5 ."
+rm hashes.md5
+expect_rc "deleted empty file of the sum file's name fails test" 1 "'$HASHIT' -a ../m/hashes.md5 ."
+expect_rc "md5sum fails a deleted empty file of the sum file's name test" 1 "md5sum --quiet -c ../m/hashes.md5"
+cd "$WORK/own/hd/t" || exit 1
+: > m.hd; echo a > a
+"$HASHIT" -c md5 -f hashdeep -o ../m/m.hd . > /dev/null
+expect_rc "empty file of the hashdeep file's name kept elsewhere passes test" 0 "'$HASHIT' -a ../m/m.hd ."
+expect_rc "hashdeep passes an empty file of the hashdeep file's name kept elsewhere test" 0 "hashdeep -l -r -a -k ../m/m.hd ."
+rm m.hd
+expect_rc "deleted empty file of the hashdeep file's name fails test" 1 "'$HASHIT' -a ../m/m.hd ."
+expect_rc "hashdeep fails a deleted empty file of the hashdeep file's name test" 1 "hashdeep -l -r -a -k ../m/m.hd ."
+
+# A manifest listing a relative a and an absolute s/a, identical files. With a deleted, audited
+# from s, the only file matching is named absolutely so no directory is chosen, and a must not be
+# taken as the same file as s/a through the working directory s
+for fmt in sum hashdeep; do
+    mkdir -p "$WORK/nochosen-$fmt/t/s"
+    cd "$WORK/nochosen-$fmt/t" || exit 1
+    echo same > a; echo same > s/a
+    if [ $fmt == sum ]; then
+        M=hashes.md5; { md5sum a; md5sum "$PWD/s/a"; } > $M
+    else
+        M=m.hd; H=$(md5sum < a | cut -c1-32)
+        printf '%%%%%%%% HASHDEEP-1.0\n%%%%%%%% size,md5,filename\n##\n5,%s,./a\n5,%s,%s\n' "$H" "$H" "$PWD/s/a" > $M
+    fi
+    expect_rc "$fmt relative and absolute identical files pass from a subdirectory test" 0 "cd s && '$HASHIT' -a ../$M .."
+    rm a
+    expect_rc "$fmt deleted file with an identical file listed absolutely fails from a subdirectory test" 1 "cd s && '$HASHIT' -a ../$M .."
+    expect_rc "$fmt deleted file with an identical file listed absolutely fails test" 1 "'$HASHIT' -a $M ."
+done
+expect_rc "md5sum fails a deleted file with an identical file listed absolutely test" 1 "cd '$WORK/nochosen-sum/t' && md5sum --quiet -c hashes.md5"
+expect_rc "hashdeep fails a deleted file with an identical file listed absolutely test" 1 "cd '$WORK/nochosen-hashdeep/t' && hashdeep -l -r -a -k m.hd ."
+
 # A sum file at the root of the files it lists, audited from a subdirectory, with a name repeated
 # in the subdirectory
 mkdir -p "$WORK/root-sum/R/sub"
