@@ -78,7 +78,8 @@ func TestOutputDirWindows(t *testing.T) {
 }
 
 func TestAuditBases(t *testing.T) {
-	dir := t.TempDir()
+	// resolved, as the temporary directory may be reached through a symlink, such as /var on macOS
+	dir := realPath(t.TempDir())
 	real := filepath.Join(dir, "real")
 	link := filepath.Join(dir, "link")
 	if err := os.Mkdir(real, 0755); err != nil {
