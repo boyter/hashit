@@ -2,7 +2,7 @@
 
 # Audit scenarios checked against hashdeep and md5sum where they apply. Audits which are known to be
 # wrong are reported as known bugs without failing, and fail once they are right so they can be
-# moved to the scenarios which must pass. Needs hashdeep, md5sum and sqlite3
+# moved to the scenarios which must pass. Needs hashdeep, the coreutils sum tools and sqlite3
 
 GREEN='\033[1;32m'
 RED='\033[0;31m'
@@ -66,6 +66,26 @@ expect_rc "moved file passes with --allow-new and --allow-moved test" 0 "'$HASHI
 rm sub/b2
 expect_rc "missing file fails with --allow-new and --allow-moved test" 1 "'$HASHIT' --allow-new --allow-moved -a hashes.md5 ."
 
+# A sum file of every hash the coreutils tools check is verified by them, and audited by hashit,
+# and fails both once a file is modified
+mkdir -p "$WORK/tools/t/sub"
+cd "$WORK/tools/t" || exit 1
+echo a > a; echo b > sub/b; echo "with space" > "sub/c d"
+for pair in sha1:sha1sum:sha1 sha224:sha224sum:sha224 sha256:sha256sum:sha256 sha384:sha384sum:sha384 \
+    sha512:sha512sum:sha512 blake2b512:b2sum:b2 blake2b256:b2sum:b2; do
+    IFS=: read -r hash tool ext <<< "$pair"
+    "$HASHIT" -c "$hash" -f sum -o "../$hash.$ext" . > /dev/null 2>&1
+    expect_rc "$tool verifies the $hash sum file test" 0 "$tool --quiet -c '../$hash.$ext'"
+    expect_rc "$hash sum file passes test" 0 "'$HASHIT' -a '../$hash.$ext' ."
+done
+echo changed >> "sub/c d"
+for pair in sha1:sha1sum:sha1 sha224:sha224sum:sha224 sha256:sha256sum:sha256 sha384:sha384sum:sha384 \
+    sha512:sha512sum:sha512 blake2b512:b2sum:b2 blake2b256:b2sum:b2; do
+    IFS=: read -r hash tool ext <<< "$pair"
+    expect_rc "$tool fails a modified file in the $hash sum file test" 1 "$tool --quiet -c '../$hash.$ext'"
+    expect_rc "$hash sum file fails a modified file test" 1 "'$HASHIT' -a '../$hash.$ext' ."
+done
+
 # A manifest kept below the root of a tree with a name repeated at the root and beside the manifest.
 # Moving a file onto the path of a known file is a modification, as hashdeep reports
 for fmt in hashdeep sqlite sum; do
@@ -99,6 +119,7 @@ for fmt in hashdeep sqlite sum; do
     expect_rc "$fmt file moved onto a known path naming as many files fails with --allow-moved in a copy test" 1 "'$HASHIT' --allow-moved -a $M ."
 done
 expect_rc "hashdeep reports a file moved onto a known path naming as many files test" 1 "cd '$WORK/tie-hashdeep/copy' && hashdeep -r -l -a -k meta/m.hd ."
+expect_rc "md5sum fails a file moved onto a known path naming as many files test" 1 "cd '$WORK/tie-sum/copy' && md5sum --quiet -c meta/m.md5"
 
 # A hashdeep file without an invoked from line audited from a subdirectory, where the working
 # directory names sub/b as record ./b

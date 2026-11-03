@@ -50,11 +50,11 @@ You don't have to take hashit's word for any of this. Its audit files are standa
 
 An audit only reads. It never changes, overwrites or deletes your files, the audit file or the database.
 
-Run everything with `./test-all.sh < /dev/null`, which needs `hashdeep`, `md5sum` and `sqlite3` installed. It runs:
+Run everything with `./test-all.sh < /dev/null`, which needs `hashdeep`, GNU coreutils and `sqlite3` installed. It runs:
 
 - `go test ./...`: unit tests, plus the parser fuzz tests on their seed inputs and the end-to-end audit tests below.
 - Over 300 command line checks of hashing, output formats, exit codes, symbolic links, unreadable files, and every audit edge case found in review, many of them checked against `hashdeep` and `md5sum`.
-- `./test-audit.sh`: audit scenarios checked against `hashdeep -a` and `md5sum -c`. Audits known to be wrong are reported as known bugs without failing the run, and fail once they are fixed, so they can be moved to the scenarios which must pass.
+- `./test-audit.sh`: audit scenarios checked against `hashdeep -a` and `md5sum -c`, and `sum` files of every hash `sha1sum`, `sha224sum`, `sha256sum`, `sha384sum`, `sha512sum` and `b2sum` check, verified by those tools and failed by them once a file is modified. Audits known to be wrong are reported as known bugs without failing the run, and fail once they are fixed, so they can be moved to the scenarios which must pass.
 
 `./test-hashdeep.sh` separately checks that `hashdeep` and hashit agree on each other's output.
 
