@@ -304,3 +304,28 @@ func TestJoinText(t *testing.T) {
 		}
 	}
 }
+
+func TestHasCollateClause(t *testing.T) {
+	cases := []struct {
+		sql  string
+		want bool
+	}{
+		{"create table file_hashes (filepath text primary key, md5 text)", false},
+		{"create table file_hashes (filepath text collate nocase primary key)", true},
+		{"CREATE TABLE file_hashes (filepath TEXT COLLATE NOCASE PRIMARY KEY)", true},
+		{"create table file_hashes (filepath text primary key, x text collate\tnocase)", true},
+		{"create table file_hashes (filepath text primary key, collateral text)", false},
+		{"create table file_hashes (filepath text primary key, \"collate\" text)", false},
+		{"create table file_hashes (filepath text primary key, [collate] text, `collate` text)", false},
+		{"create table file_hashes (filepath text primary key, note text default 'see collate list')", false},
+		{"create table file_hashes (filepath text primary key, note text default 'it''s collate')", false},
+		{"create table file_hashes (filepath text primary key -- collate nocase\n)", false},
+		{"create table file_hashes (filepath text primary key /* collate */, x text collate binary)", true},
+		{"create table file_hashes (filepath text primary key, \"a\"\"collate\" text) ", false},
+	}
+	for _, c := range cases {
+		if got := hasCollateClause(c.sql); got != c.want {
+			t.Errorf("%q: expected %v got %v", c.sql, c.want, got)
+		}
+	}
+}

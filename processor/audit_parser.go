@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ type AuditRecord struct {
 type Auditor struct {
 	records     []*AuditRecord
 	pathLookup  map[string]*AuditRecord   // every path key a record can be found by
+	levelLookup []map[string]*AuditRecord // for each of bases, the path each record names through it
 	hashLookup  map[string][]*AuditRecord // "hashname:value" to records, used to find moved files
 	hashNames   []string                  // hashes present in the audit file which we are able to calculate
 	bases       []string                  // absolute directories relative paths may be relative to, in priority order
@@ -46,6 +48,11 @@ type Auditor struct {
 	duplicates  []duplicateRecord         // records dropped as listing the path of another, see restoreDuplicates
 	sumFile     bool                      // a sum file, where every line for a path is checked
 	sameFile    map[string][]*AuditRecord // sum file lines naming the same file through different paths, by its real path
+	ownEntries  []*AuditRecord            // records which may be the audit file listing itself, see settleOwnEntries
+	ownTarget   auditFileTarget           // the audit file, see settleOwnEntries
+	source      string                    // the audit file's contents, see reparse
+	sourceName  string                    // the audit file's path, see reparse
+	excluded    []string                  // paths passed to Exclude, see reparse
 }
 
 type FileStatus int
@@ -161,6 +168,8 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 		hashLookup: map[string][]*AuditRecord{},
 	}
 	hdl.cwd = workingDir()
+	hdl.source = input
+	hdl.sourceName = auditFilename
 
 	var err error
 	if isHashdeepFormat(input) {
@@ -176,8 +185,10 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 	// copied elsewhere, where the invoked from directory no longer applies
 	hdl.bases = auditBases(hdl.primaryBase, auditFilename, hdl.cwd)
 	hdl.removeDuplicates()
-	if conflicts := hdl.conflicts(); conflicts != 0 {
-		printWarn(fmt.Sprintf("audit file lists different hashes for the same path, which are reported as modified, paths: %d", conflicts))
+	// lines of a sum file naming the same file are only known once the directory the audit is
+	// matched through is chosen, see GroupSameFile
+	if !hdl.sumFile {
+		hdl.warnConflicts()
 	}
 	if err != nil {
 		return nil, err
@@ -228,29 +239,72 @@ func (hdl *Auditor) Lookup(file string) *AuditRecord {
 	return hdl.pathLookup[absFrom(hdl.cwd, file)]
 }
 
-// LookupLevel finds the record for a file on disk, with the priority of the directory it matched
-// through and whether the record names the same file through every directory, see baseLevel
-func (hdl *Auditor) LookupLevel(file string) (*AuditRecord, int, bool) {
-	r := hdl.Lookup(file)
-	if r == nil {
-		return nil, 0, false
-	}
-	level, independent := baseLevel(hdl.bases, r.Filename, absFrom(hdl.cwd, file))
-	return r, level, independent
+// Candidate is a record which names a file on disk through one of the directories relative paths
+// may be relative to, with the priority of that directory and whether it is an absolute path, which
+// names the same file through every directory. An audit is only ever matched through one directory,
+// see chooseLevel. A relative path which happens to name the same file through every directory,
+// such as ../y/a through sibling directories, is treated as relative, which can only report a move
+type Candidate struct {
+	Record      *AuditRecord
+	Level       int
+	Independent bool
 }
 
-// baseLevel returns the priority of the first directory through which the path of a record names
-// the absolute path of a file, and whether it is an absolute path, which names the same file
-// through every directory. An audit is only ever matched through one directory, see chooseLevel.
-// A relative path which happens to name the same file through every directory, such as ../y/a
-// through sibling directories, is treated as relative, which can only report a move
-func baseLevel(bases []string, p string, abs string) (int, bool) {
-	for i, base := range bases {
-		if absFrom(base, p) == abs {
-			return i, filepath.IsAbs(p)
+// LookupLevels finds every record naming a file on disk, one for each directory through which a
+// record names it, in priority order. Which is used depends on the directory the audit is matched
+// through, see chooseLevel and pickCandidate, as the record naming a file through another
+// directory, such as ./README naming meta/README through a manifest's directory meta, is a
+// different file to the record naming it through the chosen one
+func (hdl *Auditor) LookupLevels(file string) []Candidate {
+	abs := absFrom(hdl.cwd, file)
+	var candidates []Candidate
+	for level, lookup := range hdl.levelLookup {
+		if r := lookup[abs]; r != nil {
+			candidates = append(candidates, Candidate{Record: r, Level: level, Independent: filepath.IsAbs(r.Filename)})
 		}
 	}
-	return -1, filepath.IsAbs(p)
+	return candidates
+}
+
+// reparse returns the audit file parsed again with nothing yet matched, so an audit can be judged
+// through another directory, see judgeTied
+func (hdl *Auditor) reparse() (*Auditor, error) {
+	fresh, err := NewAuditor(hdl.source, hdl.sourceName)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range hdl.excluded {
+		fresh.Exclude(path)
+	}
+	return fresh, nil
+}
+
+// pickCandidate returns the first candidate, in priority order, which is kept once the directory
+// the audit is matched through has been chosen, see keepsMatch
+func pickCandidate(candidates []Candidate, chosen int) (Candidate, bool) {
+	for _, c := range candidates {
+		if keepsMatch(chosen, c.Level, c.Independent) {
+			return c, true
+		}
+	}
+	return Candidate{}, false
+}
+
+// voteLevels returns every directory through which a relative record names a file, see chooseLevel.
+// A file an absolute record names does not vote, as which file it is does not depend on a directory,
+// so a relative record naming it through another directory, such as a in a database invoked from D
+// naming T/a through the working directory T, is not evidence for that directory
+func voteLevels(candidates []Candidate) []int {
+	var levels []int
+	for _, c := range candidates {
+		if c.Independent {
+			return nil
+		}
+		if !slices.Contains(levels, c.Level) {
+			levels = append(levels, c.Level)
+		}
+	}
+	return levels
 }
 
 // chooseLevel returns the directory an audit is matched through from the number of files on disk
@@ -267,6 +321,23 @@ func chooseLevel(votes map[int]int) int {
 		}
 	}
 	return chosen
+}
+
+// tiedLevels returns every directory as many files matched through as the one chosen, see
+// chooseLevel, when there is more than one, as then which the audit is matched through is not
+// decided by the files on disk
+func tiedLevels(votes map[int]int, chosen int) []int {
+	var tied []int
+	for level, n := range votes {
+		if chosen != -1 && n == votes[chosen] {
+			tied = append(tied, level)
+		}
+	}
+	if len(tied) < 2 {
+		return nil
+	}
+	sort.Ints(tied)
+	return tied
 }
 
 // judgingBases returns the directories through which records are judged to name the same path: the
@@ -641,11 +712,20 @@ func auditBases(primary string, auditFile string, cwd string) []string {
 // Exclude removes any record which refers to the supplied path, which is used to remove the
 // audit file itself as it can never match its own hash
 func (hdl *Auditor) Exclude(path string) {
+	hdl.excluded = append(hdl.excluded, path)
 	target := auditFileTarget{abs: absFrom(hdl.cwd, path), real: realPath(path)}
+	hdl.ownTarget = target
 
 	var records []*AuditRecord
 	for _, r := range hdl.records {
-		if !hdl.isOwnEntry(r, target) {
+		switch {
+		case hdl.isOwnEntry(r, target):
+		case hdl.primaryBase == "" && target.matches([]string{hdl.primaryKey(r)}):
+			// without the directory paths were created relative to, the working directory may not
+			// be the directory the audit is matched through, see settleOwnEntries
+			hdl.ownEntries = append(hdl.ownEntries, r)
+			records = append(records, r)
+		default:
 			records = append(records, r)
 		}
 	}
@@ -655,6 +735,7 @@ func (hdl *Auditor) Exclude(path string) {
 
 	hdl.records = nil
 	hdl.pathLookup = map[string]*AuditRecord{}
+	hdl.levelLookup = nil
 	hdl.hashLookup = map[string][]*AuditRecord{}
 	hdl.hashNames = nil
 	for _, r := range records {
@@ -676,16 +757,32 @@ func (hdl *Auditor) recordKeys(r *AuditRecord) []string {
 
 // isOwnEntry reports if the record is the audit file listing itself, which happens when it is
 // written by a shell redirect into the directory being hashed. The record must resolve to the
-// audit file using the directory paths are relative to, being the invoked from directory for
-// hashdeep files or the working directory otherwise. A record which only resolves to it some
-// other way, such as through the audit file's own directory after a tree has been copied, must
-// also describe an empty file, as the audit file was when it was hashed. Otherwise it may be a
-// different file which happens to share the audit file's name, and must still be audited
+// audit file using the invoked from directory of a hashdeep file. A record which only resolves to
+// it some other way, such as through the audit file's own directory after a tree has been copied,
+// must also describe an empty file, as the audit file was when it was hashed. Otherwise it may be
+// a different file which happens to share the audit file's name, and must still be audited. Without
+// an invoked from directory a record resolving to it through the working directory is decided once
+// the directory the audit is matched through is chosen, see settleOwnEntries
 func (hdl *Auditor) isOwnEntry(r *AuditRecord, target auditFileTarget) bool {
-	if target.matches([]string{hdl.primaryKey(r)}) {
+	if hdl.primaryBase != "" && target.matches([]string{hdl.primaryKey(r)}) {
 		return true
 	}
 	return target.matches(hdl.recordKeys(r)) && isEmptyRecord(r)
+}
+
+// settleOwnEntries drops each record which names the audit file through the working directory, when
+// there is no invoked from directory, if it also names the audit file through the directory the
+// audit is matched through and no file on disk was checked against it, as it is the audit file
+// listing itself. Otherwise it names another file, such as data/data/hashes.md5 for a sum file
+// data/hashes.md5 written in data and audited from its parent, which is audited as any other
+func (hdl *Auditor) settleOwnEntries(chosen int, claimed func(*AuditRecord) bool) {
+	base := hdl.bases[max(chosen, 0)]
+	for _, r := range hdl.ownEntries {
+		if !claimed(r) && hdl.ownTarget.matches([]string{absFrom(base, r.Filename)}) {
+			r.Matched = true
+			r.Duplicate = true
+		}
+	}
 }
 
 // auditFileTarget is the audit file being excluded, by absolute and real path, as it may be
@@ -722,7 +819,7 @@ func (hdl *Auditor) removeDuplicates() {
 		key := hdl.primaryKey(r)
 		if hdl.sumFile {
 			// only lines naming the same path through every directory, as a relative line can be
-			// found through the sum file's directory while an absolute one cannot, see groupSameFile
+			// found through the sum file's directory while an absolute one cannot, see GroupSameFile
 			key = strings.Join(hdl.recordKeys(r), "\x00")
 		}
 		if first, ok := seen[key]; ok {
@@ -745,9 +842,6 @@ func (hdl *Auditor) removeDuplicates() {
 		for _, r := range records {
 			hdl.addRecord(r)
 		}
-	}
-	if hdl.sumFile {
-		hdl.groupSameFile()
 	}
 }
 
@@ -786,6 +880,13 @@ func (hdl *Auditor) restoreDuplicates(chosen int) map[string]*AuditRecord {
 	return restored
 }
 
+// warnConflicts reports the paths listed with different hashes, which can never match
+func (hdl *Auditor) warnConflicts() {
+	if conflicts := hdl.conflicts(); conflicts != 0 {
+		printWarn(fmt.Sprintf("audit file lists different hashes for the same path, which are reported as modified, paths: %d", conflicts))
+	}
+}
+
 // warnDuplicates reports the records dropped as listing the path of another
 func (hdl *Auditor) warnDuplicates() {
 	if len(hdl.duplicates) != 0 {
@@ -793,24 +894,49 @@ func (hdl *Auditor) warnDuplicates() {
 	}
 }
 
-// groupSameFile groups the lines of a sum file which name the same file through different paths.
-// A sum file has no directory its paths were created relative to, so lines can name the same file
-// through the sum file's directory but not through the working directory, or through a symlinked
-// directory. Each line is kept, as its own path may be the one which is scanned, and a line is only
-// not reported on its own when another line was checked against the same file. Lines listing
-// different values of a hash for the file can never match
-func (hdl *Auditor) groupSameFile() {
-	// the records naming each path through any directory, so most records need no lookup on disk
-	counts := make(map[string]int, len(hdl.records)*len(hdl.bases))
+// GroupSameFile groups the lines of a sum file which name the same file through different paths,
+// such as ./a, a and its absolute path, through the directory the audit is matched through, or every
+// directory when none was chosen, see judgingBases. Lines naming the same file only through another
+// directory, such as ./README through the working directory sub and ./sub/README through the sum
+// file's directory, name different files. When as many files matched through other directories as
+// through the chosen one, see tiedLevels, lines are grouped through each of them, as either could be
+// the directory the sum file is relative to, so lines naming a file differently through them cannot
+// both be right. Each line is kept, as its own path may be the one which is scanned, and a line is
+// only not reported on its own when another line was checked against the same file. Lines listing
+// different values of a hash for the file can never match, which is warned of once grouped
+func (hdl *Auditor) GroupSameFile(chosen int, tied []int) {
+	if !hdl.sumFile {
+		return
+	}
+	defer hdl.warnConflicts()
+	bases := judgingBases(hdl.bases, chosen)
+	if len(tied) != 0 {
+		bases = nil
+		for _, level := range tied {
+			bases = append(bases, hdl.bases[level])
+		}
+	}
+	keysOf := func(r *AuditRecord) []string {
+		var keys []string
+		for _, base := range bases {
+			if k := absFrom(base, r.Filename); !contains(keys, k) {
+				keys = append(keys, k)
+			}
+		}
+		return keys
+	}
+
+	// the records naming each path, so most records need no lookup on disk
+	counts := make(map[string]int, len(hdl.records)*len(bases))
 	for _, r := range hdl.records {
-		for _, k := range hdl.recordKeys(r) {
+		for _, k := range keysOf(r) {
 			counts[k]++
 		}
 	}
 
 	groups := map[string][]*AuditRecord{}
 	for _, r := range hdl.records {
-		keys := hdl.recordKeys(r)
+		keys := keysOf(r)
 		for _, k := range keys {
 			if counts[k] > 1 {
 				// the first file it names, by where it really is, as that is the file it is checked
@@ -936,13 +1062,21 @@ func (hdl *Auditor) buildLookups() {
 	// Every record's resolution against the directory paths were created relative to takes priority
 	// over any other resolution, then against the next directory, so a record resolved through the
 	// audit file's directory never takes the path of a different record. For each directory the
-	// first record wins
-	for _, base := range hdl.bases {
+	// first record wins. Each directory is also kept on its own, as which is used is only known
+	// once the directory the audit is matched through is chosen, see LookupLevels
+	hdl.levelLookup = make([]map[string]*AuditRecord, len(hdl.bases))
+	for level, base := range hdl.bases {
+		lookup := make(map[string]*AuditRecord, len(hdl.records))
 		for _, r := range hdl.records {
-			if k := absFrom(base, r.Filename); hdl.pathLookup[k] == nil {
+			k := absFrom(base, r.Filename)
+			if lookup[k] == nil {
+				lookup[k] = r
+			}
+			if hdl.pathLookup[k] == nil {
 				hdl.pathLookup[k] = r
 			}
 		}
+		hdl.levelLookup[level] = lookup
 	}
 
 	seen := map[string]bool{}
