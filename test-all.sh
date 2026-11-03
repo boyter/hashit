@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# the checks compare against these, so without them nearly every check would fail
+for TOOL in "hashdeep:brew install md5deep, or apt install hashdeep" "sqlite3:brew install sqlite, or apt install sqlite3"; do
+    if ! command -v "${TOOL%%:*}" > /dev/null; then
+        echo "${TOOL%%:*} is required to run these tests (${TOOL#*:})"
+        exit 1
+    fi
+done
+
 echo "Running go generate..."
 go generate
 
@@ -495,7 +503,9 @@ else
 fi
 
 # Audit edge cases, see https://github.com/boyter/hashit/issues/12
-AUDITDIR=$(mktemp -d)
+# resolved, as on macOS the temporary directory is reached through the /var symlink, and hashdeep
+# writes absolute paths through where it really is
+AUDITDIR=$(cd "$(mktemp -d)" && pwd -P)
 mkdir -p "$AUDITDIR/media/sub"
 echo a > "$AUDITDIR/media/a.txt"
 echo b > "$AUDITDIR/media/b, with comma.txt"
