@@ -95,7 +95,7 @@ Full details can be found in `hashit --help` or `hashit -h`.
 
 ```
 Hash It!
-Version 1.5.0 (beta)
+Version 1.5.0
 Ben Boyter <ben@boyter.org>
 
 Usage:
