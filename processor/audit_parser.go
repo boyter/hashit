@@ -50,6 +50,9 @@ type Auditor struct {
 	sameFile    map[string][]*AuditRecord // sum file lines naming the same file through different paths, by its real path
 	ownEntries  []*AuditRecord            // records which may be the audit file listing itself, see settleOwnEntries
 	ownTarget   auditFileTarget           // the audit file, see settleOwnEntries
+	source      string                    // the audit file's contents, see reparse
+	sourceName  string                    // the audit file's path, see reparse
+	excluded    []string                  // paths passed to Exclude, see reparse
 }
 
 type FileStatus int
@@ -165,6 +168,8 @@ func NewAuditor(input string, auditFilename string) (*Auditor, error) {
 		hashLookup: map[string][]*AuditRecord{},
 	}
 	hdl.cwd = workingDir()
+	hdl.source = input
+	hdl.sourceName = auditFilename
 
 	var err error
 	if isHashdeepFormat(input) {
@@ -259,6 +264,19 @@ func (hdl *Auditor) LookupLevels(file string) []Candidate {
 		}
 	}
 	return candidates
+}
+
+// reparse returns the audit file parsed again with nothing yet matched, so an audit can be judged
+// through another directory, see judgeTied
+func (hdl *Auditor) reparse() (*Auditor, error) {
+	fresh, err := NewAuditor(hdl.source, hdl.sourceName)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range hdl.excluded {
+		fresh.Exclude(path)
+	}
+	return fresh, nil
 }
 
 // pickCandidate returns the first candidate, in priority order, which is kept once the directory
@@ -694,6 +712,7 @@ func auditBases(primary string, auditFile string, cwd string) []string {
 // Exclude removes any record which refers to the supplied path, which is used to remove the
 // audit file itself as it can never match its own hash
 func (hdl *Auditor) Exclude(path string) {
+	hdl.excluded = append(hdl.excluded, path)
 	target := auditFileTarget{abs: absFrom(hdl.cwd, path), real: realPath(path)}
 	hdl.ownTarget = target
 

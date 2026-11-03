@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -731,6 +732,36 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	_ = insertMatch.Close()
 
 	chosen := chooseLevel(votes)
+	tied := tiedLevels(votes, chosen)
+	if len(tied) == 0 {
+		return judgeSqliteAudit(ctx, db, tx, stmts, bases, cwd, chosen, newFileCandidates, examinedCount)
+	}
+	return judgeTied(AuditFile, bases, chosen, tied, func(first bool, level int) (string, bool) {
+		if first {
+			return judgeSqliteAudit(ctx, db, tx, stmts, bases, cwd, level, slices.Clone(newFileCandidates), examinedCount)
+		}
+		// the tables of the last judgement, as temp.matches holds every directory
+		for _, table := range []string{"seen", "duplicates", "repeated"} {
+			if _, err := db.ExecContext(ctx, "drop table if exists temp."+table); err != nil {
+				printError(fmt.Sprintf("failed to clear temporary audit table: %s", err.Error()))
+				return "", false
+			}
+		}
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			printError(fmt.Sprintf("failed to begin audit transaction: %s", err.Error()))
+			return "", false
+		}
+		stmts := &sqliteStatements{tx: tx}
+		defer stmts.close()
+		return judgeSqliteAudit(ctx, db, tx, stmts, bases, cwd, level, slices.Clone(newFileCandidates), examinedCount)
+	})
+}
+
+// judgeSqliteAudit matches files on disk to rows through the chosen directory and reports the
+// result, committing tx
+func judgeSqliteAudit(ctx context.Context, db *sql.DB, tx *sql.Tx, stmts *sqliteStatements, bases []string, cwd string,
+	chosen int, newFileCandidates []Result, examinedCount int) (string, bool) {
 	matched, filesModified, unclaimed, err := claimSqliteMatches(ctx, tx, chosen)
 	if err != nil {
 		_ = tx.Rollback()

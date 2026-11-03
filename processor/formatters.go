@@ -3,6 +3,7 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -66,6 +68,10 @@ func (c *checkedWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// warningsMuted stops printWarn, while an audit is judged again through another directory and
+// would repeat the warnings already given, see judgeTied
+var warningsMuted bool
+
 // stdout is used for all results written to standard output
 var stdout = &checkedWriter{w: os.Stdout}
 
@@ -104,6 +110,9 @@ func exitCode(valid bool) int {
 
 // Used for problems which do not stop processing, such as a flag being ignored
 func printWarn(msg string) {
+	if warningsMuted {
+		return
+	}
 	_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("WARN %s: %s", getFormattedTime(), msg))
 }
 
@@ -216,8 +225,117 @@ func auditFailed(modified, moved, newFiles, missing int) bool {
 	return modified > 0 || missing > 0
 }
 
+// auditFound is a file on disk named by at least one record, with every record naming it
+type auditFound struct {
+	res        Result
+	candidates []Candidate
+}
+
+// lookupResults finds the records naming each file on disk, returning the files with none as new
+func lookupResults(results []Result) ([]auditFound, []Result) {
+	var founds []auditFound
+	var newFiles []Result
+	for _, res := range results {
+		candidates := auditor.LookupLevels(res.File)
+		if len(candidates) == 0 {
+			newFiles = append(newFiles, res)
+			continue
+		}
+		founds = append(founds, auditFound{res: res, candidates: candidates})
+	}
+	return founds, newFiles
+}
+
 func doAudit(input chan Result) (string, bool) {
-	examinedCount := 0
+	var results []Result
+	seen := map[string]bool{}
+	for res := range input {
+		// overlapping paths such as . and ./sub supply the same file twice
+		if isDuplicateFile(seen, res.File) {
+			continue
+		}
+		results = append(results, res)
+	}
+
+	// The directory the audit is matched through is chosen once every file has arrived, see
+	// chooseLevel, so files matching a record are held until then with every record naming them
+	founds, newFileCandidates := lookupResults(results)
+	votes := map[int]int{}
+	for _, f := range founds {
+		// a file votes for every directory a record names it through, as voting only for the
+		// first would let a directory which happens to name some files through other records
+		// outvote the one naming every file
+		for _, level := range voteLevels(f.candidates) {
+			votes[level]++
+		}
+	}
+	chosen := chooseLevel(votes)
+	tied := tiedLevels(votes, chosen)
+	if len(tied) == 0 {
+		return judgeAudit(founds, newFileCandidates, len(results), chosen, nil)
+	}
+	original := auditor
+	defer func() { auditor = original }()
+	return judgeTied(original.sourceName, original.bases, chosen, tied, func(first bool, level int) (string, bool) {
+		if first {
+			return judgeAudit(founds, newFileCandidates, len(results), level, tied)
+		}
+		fresh, err := original.reparse()
+		if err != nil {
+			printError(fmt.Sprintf("unable to parse audit file %s: %s", original.sourceName, err.Error()))
+			return "", false
+		}
+		auditor = fresh
+		founds, newFiles := lookupResults(results)
+		return judgeAudit(founds, newFiles, len(results), level, tied)
+	})
+}
+
+// judgeTied judges an audit through each directory as many files matched through as the one
+// chosen, see tiedLevels, as which the paths were written relative to is then not decided by the
+// files on disk. Judged only through the first, a file modified through one directory can match
+// another record through the first, with the record it should have matched reported as moved, so
+// the audit passes only when it passes through every one, reporting the first it fails through.
+// judge is called with each directory in turn, the chosen one first
+func judgeTied(auditName string, bases []string, chosen int, tied []int, judge func(first bool, level int) (string, bool)) (string, bool) {
+	levels := []int{chosen}
+	sorted := slices.Clone(tied)
+	slices.Sort(sorted)
+	for _, level := range sorted {
+		if level != chosen {
+			levels = append(levels, level)
+		}
+	}
+
+	out := stdout
+	defer func() { stdout, warningsMuted = out, false }()
+	var firstSummary string
+	var firstOutput []byte
+	for i, level := range levels {
+		// warnings were given when judged through the chosen directory
+		warningsMuted = i != 0
+		var output bytes.Buffer
+		stdout = &checkedWriter{w: &output}
+		summary, passed := judge(i == 0, level)
+		stdout, warningsMuted = out, false
+		if !passed {
+			if i != 0 {
+				printWarn(fmt.Sprintf("the paths in %s name as many files through %s as through %s, so the audit is checked through each, and fails through %s", auditName, bases[chosen], bases[level], bases[level]))
+			}
+			_, _ = out.Write(output.Bytes())
+			return summary, false
+		}
+		if i == 0 {
+			firstSummary = summary
+			firstOutput = output.Bytes()
+		}
+	}
+	_, _ = out.Write(firstOutput)
+	return firstSummary, true
+}
+
+// judgeAudit matches files on disk to records through the chosen directory and reports the result
+func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount int, chosen int, tied []int) (string, bool) {
 	matched := 0
 	filesModified := 0
 	moved := 0
@@ -229,45 +347,13 @@ func doAudit(input chan Result) (string, bool) {
 		file   string // file on disk, which differs from the record for moved files
 	}
 	outcomes := map[*AuditRecord]outcome{}
-	var newFileCandidates []Result
 
-	// The directory the audit is matched through is chosen once every file has arrived, see
-	// chooseLevel, so files matching a record are held until then with every record naming them
 	type claim struct {
 		res   Result
 		r     *AuditRecord
 		level int
 	}
-	type found struct {
-		res        Result
-		candidates []Candidate
-	}
-	var founds []found
-	votes := map[int]int{}
-
-	seen := map[string]bool{}
-	for res := range input {
-		// overlapping paths such as . and ./sub supply the same file twice
-		if isDuplicateFile(seen, res.File) {
-			continue
-		}
-		examinedCount++
-
-		candidates := auditor.LookupLevels(res.File)
-		if len(candidates) == 0 {
-			newFileCandidates = append(newFileCandidates, res)
-			continue
-		}
-		founds = append(founds, found{res: res, candidates: candidates})
-		// a file votes for every directory a record names it through, as voting only for the
-		// first would let a directory which happens to name some files through other records
-		// outvote the one naming every file
-		for _, level := range voteLevels(candidates) {
-			votes[level]++
-		}
-	}
-	chosen := chooseLevel(votes)
-	auditor.GroupSameFile(chosen, tiedLevels(votes, chosen))
+	auditor.GroupSameFile(chosen, tied)
 
 	// Two files on disk can resolve to the same record, so which claims it does not depend on the
 	// order files were processed in. A file matching through a directory earlier in priority order

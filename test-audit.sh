@@ -84,6 +84,22 @@ for fmt in hashdeep sqlite sum; do
 done
 expect_rc "hashdeep reports a file moved onto a known path test" 1 "cd '$WORK/meta-hashdeep/copy' && hashdeep -r -l -a -k meta/m.hd ."
 
+# As above with no other files, so the manifest's directory and the working directory each name
+# meta/README, and the audit must fail through either
+for fmt in hashdeep sqlite sum; do
+    case $fmt in hashdeep) M=meta/m.hd ;; sqlite) M=meta/m.db ;; sum) M=meta/m.md5 ;; esac
+    mkdir -p "$WORK/tie-$fmt/orig/meta"
+    cd "$WORK/tie-$fmt/orig" || exit 1
+    echo top > README; echo meta > meta/README
+    "$HASHIT" -c md5 -f $fmt -o $M . > /dev/null
+    cp -r "$WORK/tie-$fmt/orig" "$WORK/tie-$fmt/copy"
+    cd "$WORK/tie-$fmt/copy" || exit 1
+    expect_rc "$fmt manifest below the root naming as many files through either directory passes in a copy test" 0 "'$HASHIT' -a $M ."
+    mv meta/README meta/README.old && mv README meta/README
+    expect_rc "$fmt file moved onto a known path naming as many files fails with --allow-moved in a copy test" 1 "'$HASHIT' --allow-moved -a $M ."
+done
+expect_rc "hashdeep reports a file moved onto a known path naming as many files test" 1 "cd '$WORK/tie-hashdeep/copy' && hashdeep -r -l -a -k meta/m.hd ."
+
 # A hashdeep file without an invoked from line audited from a subdirectory, where the working
 # directory names sub/b as record ./b
 mkdir -p "$WORK/noinv/tree/sub"

@@ -753,6 +753,39 @@ var auditRegressions = []struct {
 		s: &auditScenario{format: "sum", location: "root", relocation: "none", auditFrom: "sub",
 			files: map[string]string{"README": "top\n", "sub/README": "sub\n", "sub/c": "c\n"}},
 	},
+	{
+		// the stale invoked from sub and the working directory each name sub/m.hd, a tie which went
+		// to invoked from, through which sub/m.hd matches ./m.hd and ./sub/m.hd was moved
+		name: "file moved onto a known path passes with a stale invoked from naming as many files",
+		s: &auditScenario{format: "hashdeep", invokedFrom: "sub", location: "meta", relocation: "none", auditFrom: "root",
+			allowNew: true, allowMoved: true,
+			files:   map[string]string{"m.hd": "content 2\n", "sub/m.hd": "content 0\n"},
+			changes: []string{"rename sub/m.hd m.hd.old", "rename m.hd sub/m.hd"}},
+	},
+	{
+		// the manifest's directory and the working directory each name meta/README, a tie which went
+		// to the manifest's directory, through which meta/README matches ./README
+		name: "file moved onto a known path below the manifest passes in a copy naming as many files, hashdeep",
+		s: &auditScenario{format: "hashdeep", location: "meta", relocation: "copy", auditFrom: "root", allowMoved: true,
+			files:   map[string]string{"README": "top\n", "meta/README": "meta\n"},
+			changes: []string{"rename meta/README meta/README.old", "rename README meta/README"}},
+	},
+	{
+		// the manifest's directory and the working directory each name meta/README, a tie which went
+		// to the manifest's directory, through which meta/README matches ./README
+		name: "file moved onto a known path below the manifest passes in a copy naming as many files, sqlite",
+		s: &auditScenario{format: "sqlite", location: "meta", relocation: "copy", auditFrom: "root", allowMoved: true,
+			files:   map[string]string{"README": "top\n", "meta/README": "meta\n"},
+			changes: []string{"rename meta/README meta/README.old", "rename README meta/README"}},
+	},
+	{
+		// the manifest's directory and the working directory each name meta/README, a tie which went
+		// to the manifest's directory, through which meta/README matches ./README
+		name: "file moved onto a known path below the manifest passes in a copy naming as many files, sum",
+		s: &auditScenario{format: "sum", location: "meta", relocation: "copy", auditFrom: "root", allowMoved: true,
+			files:   map[string]string{"README": "top\n", "meta/README": "meta\n"},
+			changes: []string{"rename meta/README meta/README.old", "rename README meta/README"}},
+	},
 }
 
 func TestAuditRegressions(t *testing.T) {
