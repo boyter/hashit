@@ -649,6 +649,47 @@ While `hashit` aims for compatibility, there are some minor differences in the c
 *   **Paths:** `hashit` outputs relative paths by default, the same as `hashdeep -l`, see [Absolute Paths](#absolute-paths). A single directory is recursed without needing `-r`.
 *   **Audit File:** `hashit` skips the audit file when it is inside the directory being audited, and resolves relative paths against the directory containing it, see [Paths in Audit Files](#paths-in-audit-files).
 
+#### Switching from `hashdeep`
+
+The commands most often run with `hashdeep`, and the `hashit` equivalent of each:
+
+| Task | `hashdeep` | `hashit` |
+|---|---|---|
+| Write an audit file | `hashdeep -r -l photos > known.txt` | `hashit -f hashdeep photos > known.txt` |
+| Write one with absolute paths | `hashdeep -r photos > known.txt` | `hashit --absolute -f hashdeep photos > known.txt` |
+| Choose the hashes | `hashdeep -c sha256,tiger -r -l photos` | `hashit -f hashdeep -c sha256,tiger photos` |
+| Audit | `hashdeep -r -l -a -k known.txt photos` | `hashit -a known.txt photos` |
+| Audit, listing what failed | `hashdeep -r -l -a -v -k known.txt photos` | `hashit -v -a known.txt photos` |
+| Audit, listing every file | `hashdeep -r -l -a -vv -k known.txt photos` | `hashit --vv -a known.txt photos` |
+
+Audit files written by either tool can be audited by the other, so a collection does not need hashing again to switch.
+
+Flag by flag, a number of the same letters mean different things, marked **different** below:
+
+| `hashdeep` | Meaning | `hashit` |
+|---|---|---|
+| `-c md5,sha256` | hashes to calculate | `-c`, which also takes the other hashes `hashit --hashes` lists, or `all`. Without `-c` the `hashdeep` format holds MD5 and SHA256 as `hashdeep` does, and other formats SHA512 and SHA1 as well |
+| `-r` | recurse into directories | not needed for a single directory, or when auditing. `-r` recurses directories among several paths |
+| `-l` | relative paths | the default. `--absolute` writes absolute paths, as `hashdeep` does without `-l` |
+| `-a -k file` | audit against a file | `-a file`. Only one audit file can be given, where `hashdeep` takes `-k` more than once |
+| `-v`, `-vv` | verbose audit output | `-v`, and `--vv` or `-vv` |
+| `-f file` | read the paths to hash from a file | **different**: `-i file`. `-f` in `hashit` is the output format |
+| `-o` | only process some types of file | **different**: no equivalent, devices, sockets and FIFOs found while walking are skipped with a warning. `-o` in `hashit` is the output file |
+| `-W file` | write output to a file | `-o file`, which needs `--overwrite` to replace an existing file |
+| `-p size` | piecewise hashing | **different**: no equivalent. `-p` in `hashit` shows progress |
+| `-e` | estimated time remaining | `-p` |
+| `-M`, `-X`, `-m`, `-x`, `-w` | matching modes | **different**: no equivalent. `-M` in `hashit` excludes files by name |
+| `-j num` | threads | `--threads num` |
+| `-d` | DFXML output | no equivalent, `-f json` and `-f sqlite` are the structured formats |
+| `-i`, `-I` | only files below a size | **different**: no equivalent. `-i` in `hashit` reads paths from a file |
+| `-b` | bare file names | no equivalent |
+| `-s` | silent | no equivalent, redirect standard error with `2> /dev/null` |
+| `-E` | case insensitive audit | no equivalent, paths are compared exactly |
+| `-0`, `-u` | NUL line endings, escaped Unicode | no equivalent |
+| `-V` | version | `--version` |
+
+An audit exits with `0` when it passes and `1` when it fails, as `hashdeep` does. Where `hashdeep` exits with `64` for an error, `hashit` exits with `2`, see [Errors and Exit Codes](#errors-and-exit-codes).
+
 Note that you don't have to specify the directory you want to run against. Running `hashit` will assume you want to run against the current directory, unless data is piped or redirected into it from a file, in which case it hashes standard input. Audits and `--input` never read standard input. In scripts and scheduled jobs supply the directory, for example `hashit .`, to avoid this.
 
 If you supply a single argument to `hashit` and it's a file it will process it. If you supply a single argument and it is a directory it will recurse that directory.
