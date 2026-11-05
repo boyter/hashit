@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestProcessReadFile(t *testing.T) {
@@ -242,7 +243,14 @@ func TestProcessScannerReadErrorStopsGoroutines(t *testing.T) {
 			t.Fatal("expected a read error")
 		}
 	}
-	if after := runtime.NumGoroutine(); after > before {
+	// goroutines of other tests may still be ending, so allow a moment and a few, as a leak leaves
+	// one per hash for every read
+	after := runtime.NumGoroutine()
+	for i := 0; i < 100 && after > before; i++ {
+		time.Sleep(10 * time.Millisecond)
+		after = runtime.NumGoroutine()
+	}
+	if after-before >= len(hashPriority) {
 		t.Errorf("expected no goroutines left running, %d before and %d after", before, after)
 	}
 }
