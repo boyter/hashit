@@ -4,6 +4,7 @@ package processor
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -283,6 +284,22 @@ func TestNewAuditorTigerWhirlpool(t *testing.T) {
 		changed.Whirlpool = "00" + whirlpoolHash[2:]
 		if _, status := hdl.Find(changed); status != FileModified {
 			t.Errorf("%s: expected modified got %v", c.name, status)
+		}
+	}
+}
+
+func TestNewAuditorExtensionLengthMismatch(t *testing.T) {
+	// b2sum -l 192 and -l 160 output is 48 and 40 long, which blake2b files never are, so it is not
+	// taken as tiger or sha1 by length
+	for _, value := range []string{strings.Repeat("a", 48), strings.Repeat("a", 40)} {
+		for _, filename := range []string{"m.b2", "m.blake2b", "m.sha256"} {
+			if _, err := NewAuditor(value+"  a.txt\n", filename); err == nil {
+				t.Errorf("%s of length %d: expected the file to be refused", filename, len(value))
+			}
+		}
+		// without an extension naming the hash, the length is used
+		if _, err := NewAuditor(value+"  a.txt\n", "m.txt"); err != nil {
+			t.Errorf("m.txt of length %d: %v", len(value), err)
 		}
 	}
 }

@@ -1403,6 +1403,11 @@ func parseSumLine(line string, extHashes []string) (string, string, string, bool
 				break
 			}
 		}
+		// a file whose extension names its hashes is not guessed at by length, as b2sum -l 192 output
+		// named .b2 would be taken as tiger, and every file reported modified
+		if name == "" && len(extHashes) != 0 {
+			return "", "", "", false
+		}
 		if name == "" {
 			n, ok := sumLengths[len(value)]
 			if !ok {
