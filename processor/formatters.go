@@ -800,6 +800,9 @@ func toJSON(input chan Result) string {
 	return string(jsonString) + "\n"
 }
 
+// hashdeepFormatHashes are the hashes hashdeep calculates, in the order it writes them
+var hashdeepFormatHashes = []string{HashNames.MD5, HashNames.SHA1, HashNames.SHA256, HashNames.Tiger, HashNames.Whirlpool}
+
 func toHashDeep(input chan Result) string {
 	var str strings.Builder
 
@@ -810,15 +813,16 @@ func toHashDeep(input chan Result) string {
 	}
 
 	str.WriteString("%%%% HASHDEEP-1.0\n")
-	if !contains(Hash, "sha256") && !contains(Hash, "all") {
-		str.WriteString("%%%% size,md5,filename")
-	} else if contains(Hash, "sha256") && !contains(Hash, "all") && !contains(Hash, "md5") {
-		str.WriteString("%%%% size,sha256,filename")
-	} else {
-		str.WriteString("%%%% size,md5,sha256,filename")
+	var columns []string
+	for _, h := range hashdeepFormatHashes {
+		if hasHash(h) {
+			columns = append(columns, h)
+		}
 	}
-
-	str.WriteString("\n")
+	if len(columns) == 0 {
+		columns = []string{HashNames.MD5, HashNames.SHA256}
+	}
+	str.WriteString("%%%% size," + strings.Join(columns, ",") + ",filename\n")
 
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
@@ -828,13 +832,9 @@ func toHashDeep(input chan Result) string {
 		// Bytes first, always the same.
 		str.WriteString(fmt.Sprintf("%d,", res.Bytes))
 
-		// Follows the same logic as the headers.
-		if !contains(Hash, "sha256") && !contains(Hash, "all") {
-			str.WriteString(fmt.Sprintf("%s,", res.MD5))
-		} else if contains(Hash, "sha256") && !contains(Hash, "all") && !contains(Hash, "md5") {
-			str.WriteString(fmt.Sprintf("%s,", res.SHA256))
-		} else {
-			str.WriteString(fmt.Sprintf("%s,%s,", res.MD5, res.SHA256))
+		for _, h := range columns {
+			str.WriteString(res.hashValue(h))
+			str.WriteString(",")
 		}
 
 		// Finish with filename and newline.

@@ -382,10 +382,29 @@ func Process() {
 	// If format is set to hashdeep
 	// an audit uses the hashes chosen for it above and ignores --format
 	if strings.ToLower(Format) == "hashdeep" && AuditFile == "" {
-		// if hashdeep, we need to ensure md5 is set or sha256, or both, and if neither are set both
-		if !hasHash("md5") && !hasHash("sha256") {
-			printWarn("hashdeep format without supported hash - setting md5 and sha256")
-			Hash = []string{"md5", "sha256"}
+		// hashdeep files hold only the hashes hashdeep calculates, and without -c it writes md5 and sha256
+		var kept, dropped []string
+		for _, h := range hashdeepFormatHashes {
+			if hasHash(h) {
+				kept = append(kept, h)
+			}
+		}
+		for _, h := range Hash {
+			if h != "all" && !contains(hashdeepFormatHashes, h) {
+				dropped = append(dropped, h)
+			}
+		}
+		switch {
+		case !HashSupplied:
+			Hash = []string{HashNames.MD5, HashNames.SHA256}
+		case len(kept) == 0:
+			printWarn("hashdeep format holds only md5, sha1, sha256, tiger and whirlpool - setting md5 and sha256")
+			Hash = []string{HashNames.MD5, HashNames.SHA256}
+		default:
+			if len(dropped) != 0 {
+				printWarn(fmt.Sprintf("hashdeep format holds only md5, sha1, sha256, tiger and whirlpool - leaving out %s", strings.Join(dropped, ", ")))
+			}
+			Hash = kept
 		}
 	}
 
