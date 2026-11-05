@@ -27,6 +27,8 @@ type FileHash struct {
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
 	Ed2k       sql.NullString
+	Tiger      sql.NullString
+	Whirlpool  sql.NullString
 	Size       int64
 	Mtime      interface{}
 }

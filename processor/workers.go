@@ -23,8 +23,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/boyter/hashit/processor/tiger"
 	"github.com/cespare/xxhash/v2"
 	"github.com/djherbis/times"
+	"github.com/jzelinskie/whirlpool"
 	"github.com/minio/blake2b-simd"
 	"github.com/zeebo/blake3"
 	"go.felesatra.moe/hash/ed2k"
@@ -251,6 +253,8 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
 	ed2k_d := ed2k.New()
+	tiger_d := tiger.New()
+	whirlpool_d := whirlpool.New()
 
 	chanSize := 50 // 50 in tests has less backpressure than 10 but isn't so large as to cause issues
 
@@ -271,6 +275,8 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 	sha3_384_c := make(chan []byte, chanSize)
 	sha3_512_c := make(chan []byte, chanSize)
 	ed2k_c := make(chan []byte, chanSize)
+	tiger_c := make(chan []byte, chanSize)
+	whirlpool_c := make(chan []byte, chanSize)
 
 	var wg sync.WaitGroup
 
@@ -440,6 +446,46 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 			wg.Done()
 		}()
 	}
+	if hasHash(HashNames.Tiger) {
+		wg.Add(1)
+		go func() {
+			for b := range tiger_c {
+				_, _ = tiger_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(HashNames.Whirlpool) {
+		wg.Add(1)
+		go func() {
+			for b := range whirlpool_c {
+				_, _ = whirlpool_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+
+	closeAll := func() {
+		close(crc32c)
+		close(xxhash64c)
+		close(md4c)
+		close(md5c)
+		close(sha1c)
+		close(sha224c)
+		close(sha256c)
+		close(sha384c)
+		close(sha512c)
+		close(blake2b_256_c)
+		close(blake2b_512_c)
+		close(blake3c)
+		close(sha3_224_c)
+		close(sha3_256_c)
+		close(sha3_384_c)
+		close(sha3_512_c)
+		close(ed2k_c)
+		close(tiger_c)
+		close(whirlpool_c)
+	}
 
 	sum := 0
 	data := make([]byte, 4_194_304)
@@ -447,6 +493,9 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
 			fileFailed(filename, fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+			// the hashing goroutines would otherwise wait on their channels forever
+			closeAll()
+			wg.Wait()
 			return Result{}, err
 		}
 
@@ -519,30 +568,19 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 		if hasHash(HashNames.Ed2k) {
 			ed2k_c <- tmp[:n]
 		}
+		if hasHash(HashNames.Tiger) {
+			tiger_c <- tmp[:n]
+		}
+		if hasHash(HashNames.Whirlpool) {
+			whirlpool_c <- tmp[:n]
+		}
 
 		if err == io.EOF {
 			break
 		}
 	}
 
-	close(crc32c)
-	close(xxhash64c)
-	close(md4c)
-	close(md5c)
-	close(sha1c)
-	close(sha224c)
-	close(sha256c)
-	close(sha384c)
-	close(sha512c)
-	close(blake2b_256_c)
-	close(blake2b_512_c)
-	close(blake3c)
-	close(sha3_224_c)
-	close(sha3_256_c)
-	close(sha3_384_c)
-	close(sha3_512_c)
-	close(ed2k_c)
-
+	closeAll()
 	wg.Wait()
 
 	return Result{
@@ -565,6 +603,8 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
 		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
 		Ed2k:       encodeIfHashEnabled(ed2k_d, HashNames.Ed2k),
+		Tiger:      encodeIfHashEnabled(tiger_d, HashNames.Tiger),
+		Whirlpool:  encodeIfHashEnabled(whirlpool_d, HashNames.Whirlpool),
 	}, nil
 }
 
@@ -590,6 +630,8 @@ func processStandardInput(output chan Result) {
 	sha3_384_d := sha3.New384()
 	sha3_512_d := sha3.New512()
 	ed2k_d := ed2k.New()
+	tiger_d := tiger.New()
+	whirlpool_d := whirlpool.New()
 
 	crc32c := make(chan []byte, 10)
 	xxhash64c := make(chan []byte, 10)
@@ -608,6 +650,8 @@ func processStandardInput(output chan Result) {
 	sha3_384_c := make(chan []byte, 10)
 	sha3_512_c := make(chan []byte, 10)
 	ed2k_c := make(chan []byte, 10)
+	tiger_c := make(chan []byte, 10)
+	whirlpool_c := make(chan []byte, 10)
 
 	var wg sync.WaitGroup
 
@@ -776,6 +820,24 @@ func processStandardInput(output chan Result) {
 			wg.Done()
 		}()
 	}
+	if hasHash(HashNames.Tiger) {
+		wg.Add(1)
+		go func() {
+			for b := range tiger_c {
+				_, _ = tiger_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
+	if hasHash(HashNames.Whirlpool) {
+		wg.Add(1)
+		go func() {
+			for b := range whirlpool_c {
+				_, _ = whirlpool_d.Write(b)
+			}
+			wg.Done()
+		}()
+	}
 
 	for {
 		n, err := r.Read(buf[:cap(buf)])
@@ -853,6 +915,12 @@ func processStandardInput(output chan Result) {
 		if hasHash(HashNames.Ed2k) {
 			ed2k_c <- chunk
 		}
+		if hasHash(HashNames.Tiger) {
+			tiger_c <- chunk
+		}
+		if hasHash(HashNames.Whirlpool) {
+			whirlpool_c <- chunk
+		}
 
 		if err != nil && err != io.EOF {
 			printError(fmt.Sprintf("reading standard input: %s", err.Error()))
@@ -877,6 +945,8 @@ func processStandardInput(output chan Result) {
 	close(sha3_384_c)
 	close(sha3_512_c)
 	close(ed2k_c)
+	close(tiger_c)
+	close(whirlpool_c)
 
 	wg.Wait()
 
@@ -900,6 +970,8 @@ func processStandardInput(output chan Result) {
 		Sha3384:    encodeIfHashEnabled(sha3_384_d, HashNames.Sha3384),
 		Sha3512:    encodeIfHashEnabled(sha3_512_d, HashNames.Sha3512),
 		Ed2k:       encodeIfHashEnabled(ed2k_d, HashNames.Ed2k),
+		Tiger:      encodeIfHashEnabled(tiger_d, HashNames.Tiger),
+		Whirlpool:  encodeIfHashEnabled(whirlpool_d, HashNames.Whirlpool),
 	}
 
 	close(output)
@@ -1168,6 +1240,36 @@ func processReadFileParallel(filename string, content *[]byte) (Result, error) {
 		}()
 	}
 
+	if hasHash(HashNames.Tiger) {
+		wg.Add(1)
+		go func() {
+			startTime := makeTimestampNano()
+			d := tiger.New()
+			_, _ = d.Write(*content)
+			result.Tiger = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing tiger: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
+	if hasHash(HashNames.Whirlpool) {
+		wg.Add(1)
+		go func() {
+			startTime := makeTimestampNano()
+			d := whirlpool.New()
+			_, _ = d.Write(*content)
+			result.Whirlpool = hex.EncodeToString(d.Sum(nil))
+
+			if Trace {
+				printTrace(fmt.Sprintf("nanoseconds processing whirlpool: %s: %d", filename, makeTimestampNano()-startTime))
+			}
+			wg.Done()
+		}()
+	}
+
 	wg.Wait()
 	return result, nil
 }
@@ -1360,6 +1462,28 @@ func processReadFile(filename string, content *[]byte) (Result, error) {
 
 		if Trace {
 			printTrace(fmt.Sprintf("nanoseconds processing ed2k: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Tiger) {
+		startTime := makeTimestampNano()
+		d := tiger.New()
+		_, _ = d.Write(*content)
+		result.Tiger = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing tiger: %s: %d", filename, makeTimestampNano()-startTime))
+		}
+	}
+
+	if hasHash(HashNames.Whirlpool) {
+		startTime := makeTimestampNano()
+		d := whirlpool.New()
+		_, _ = d.Write(*content)
+		result.Whirlpool = hex.EncodeToString(d.Sum(nil))
+
+		if Trace {
+			printTrace(fmt.Sprintf("nanoseconds processing whirlpool: %s: %d", filename, makeTimestampNano()-startTime))
 		}
 	}
 

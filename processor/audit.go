@@ -108,6 +108,8 @@ func fileHashToRecord(f database.FileHash) *AuditRecord {
 	add(HashNames.Sha3384, f.Sha3384)
 	add(HashNames.Sha3512, f.Sha3512)
 	add(HashNames.Ed2k, f.Ed2k)
+	add(HashNames.Tiger, f.Tiger)
+	add(HashNames.Whirlpool, f.Whirlpool)
 	return r
 }
 
@@ -212,6 +214,14 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 	}
 	if keyed != 1 || shadowed != 0 || withoutRowid != 0 || text != 1 || hasCollateClause(tableSQL.String) || nullPath != 0 || !strings.EqualFold(collation.String, "binary") {
 		return nil, errors.New("audit database was not created by hashit, its file_hashes table must have a text filepath on every row as its primary key, compared exactly, and a rowid")
+	}
+	// databases written before tiger and whirlpool were added, such as by 1.5.0, lack their columns
+	var current int
+	if err := db.QueryRow("select count(*) from pragma_table_info('file_hashes') where name in ('tiger', 'whirlpool')").Scan(&current); err != nil {
+		return nil, err
+	}
+	if current != 2 {
+		return nil, errors.New("audit database was written by an older version of hashit, which this version cannot read, so create it again with this version")
 	}
 
 	// a database of an empty directory has no records, and passes when audited against one
@@ -542,7 +552,7 @@ func markSqliteDuplicates(ctx context.Context, tx *sql.Tx, base string) (int, er
 	path := `replace(filepath, '\', '/')`
 	values := []string{"substr(" + path + ", length(rtrim(" + path + ", replace(" + path + ", '/', ''))) + 1)"}
 	for _, column := range []string{"crc32", "xxhash64", "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512",
-		"blake2b_256", "blake2b_512", "blake3", "sha3_224", "sha3_256", "sha3_384", "sha3_512", "ed2k"} {
+		"blake2b_256", "blake2b_512", "blake3", "sha3_224", "sha3_256", "sha3_384", "sha3_512", "ed2k", "tiger", "whirlpool"} {
 		values = append(values, "lower(ifnull("+column+", ''))")
 	}
 	key := "size || '|' || " + strings.Join(values, " || '|' || ")
@@ -851,7 +861,7 @@ func judgeSqliteAudit(ctx context.Context, db *sql.DB, tx *sql.Tx, stmts *sqlite
 
 	// stream every record in path order joined against what we saw, reporting as we go
 	rows, err := db.QueryContext(ctx, `select f.filepath, f.crc32, f.xxhash64, f.md4, f.md5, f.sha1, f.sha224, f.sha256, f.sha384, f.sha512,
-    f.blake2b_256, f.blake2b_512, f.blake3, f.sha3_224, f.sha3_256, f.sha3_384, f.sha3_512, f.ed2k, f.size, f.mtime,
+    f.blake2b_256, f.blake2b_512, f.blake3, f.sha3_224, f.sha3_256, f.sha3_384, f.sha3_512, f.ed2k, f.tiger, f.whirlpool, f.size, f.mtime,
     s.status, s.disk_file
 from file_hashes f left join temp.seen s on s.filepath = f.filepath
 where f.rowid not in (select rid from temp.duplicates)
@@ -871,7 +881,7 @@ order by f.filepath`)
 		var status sql.NullInt64
 		var diskFile sql.NullString
 		err := rows.Scan(&f.Filepath, &f.Crc32, &f.Xxhash64, &f.Md4, &f.Md5, &f.Sha1, &f.Sha224, &f.Sha256, &f.Sha384, &f.Sha512,
-			&f.Blake2b256, &f.Blake2b512, &f.Blake3, &f.Sha3224, &f.Sha3256, &f.Sha3384, &f.Sha3512, &f.Ed2k,
+			&f.Blake2b256, &f.Blake2b512, &f.Blake3, &f.Sha3224, &f.Sha3256, &f.Sha3384, &f.Sha3512, &f.Ed2k, &f.Tiger, &f.Whirlpool,
 			&f.Size, &f.Mtime, &status, &diskFile)
 		if err != nil {
 			printError(fmt.Sprintf("failed to read audit database: %s", err.Error()))

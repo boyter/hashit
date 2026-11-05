@@ -85,7 +85,7 @@ Why use `hashit`?
  - You can get multiple hashes "for free" on any CPU with multiple cores
  - Works very well across multiple platforms without slowdown (Windows, Linux, macOS)
  - Builds on illumos and Solaris, without the `sqlite` format, auditing SQLite databases or `--progress`, as the libraries they use do not support those platforms
- - Supports many hashes `hashit --hashes` CRC32, xxHash64, MD4, MD5, SHA1, SHA224, SHA256, SHA384, SHA512, Blake2b-256, Blake2b-512, Blake3, SHA3-224, SHA3-256, SHA3-384, SHA3-512, ed2k. Select them with `--hash` using the lowercase names shown in brackets by `hashit --hashes`, such as `sha3256` or `blake2b256`, or `--hash all`. The `ed2k` hash of a file which is an exact multiple of 9,728,000 bytes uses the variant without an extra empty chunk, so differs from tools such as `rhash` for those sizes
+ - Supports many hashes `hashit --hashes` CRC32, xxHash64, MD4, MD5, SHA1, SHA224, SHA256, SHA384, SHA512, Blake2b-256, Blake2b-512, Blake3, SHA3-224, SHA3-256, SHA3-384, SHA3-512, ed2k, Tiger, Whirlpool. Select them with `--hash` using the lowercase names shown in brackets by `hashit --hashes`, such as `sha3256` or `blake2b256`, or `--hash all`. Whirlpool is about ten times slower than SHA512, so `--hash all` takes much longer on large files than it did without it. The `ed2k` hash of a file which is an exact multiple of 9,728,000 bytes uses the variant without an extra empty chunk, so differs from tools such as `rhash` for those sizes
  - Output is compatible with `hashdeep`, and audits can be verified by either tool (see [Absolute Paths](#absolute-paths))
 
 ### Usage
@@ -162,6 +162,8 @@ Blake2b-512 ad692390b5e680f24490d5f4676f279f84e802c79b98ef36369404b88d8ced237dbd
    SHA3-384 8301eb66f20215a14a77aa6e977a9d08524caf31fa09a9fd97e7b3c4c3e9266159d9c35c661960024654ff36f5131302
    SHA3-512 1024928532bccfe9feb0b3f9fe54eda6fb05685fb3236eb09cb3765f0d1face3ea5f5dc681aaeec44134cd89691348a03cc6a2abfe1eae55d8eb274a51f97e3d
        ed2k a4961e3d704e28a40debbf1f1e4a62cd
+      Tiger 8461dc5bd991619db31c3fb2b6a1dd451cf64086ad12ce68
+  Whirlpool 3166f9a5ecf7ff1992e792c39cd7ad52a1b5079447a96e96d506a964bb4be956ee78d98d85948296967de031913399ad2d7e821f3a9fd478bf7ee659918949f2
 
 $ mkdir -p example/sub && echo hello > example/a.txt && echo world > example/sub/b.txt
 $ hashit --hash md5 example
@@ -189,7 +191,7 @@ Files are processed in parallel, so the order of the output may vary between run
 `--format` (`-f`) selects the output format. Results are written to standard output, or to a file with `--output` (`-o`). The output file is written to a temporary file next to it first, so the directory must be writable, being the directory of the file a symbolic link points to when `--output` is one, and an existing file is only replaced with `--overwrite`, is never replaced when it is a directory or other special file, and is kept rather than replaced when any error occurred. A new output file is still written when errors occurred, so it may not contain every file. A replaced file keeps its permission bits, but not its owner, special bits such as setuid, or extended attributes. When `--output` is a symbolic link the file it points to is replaced, and a symbolic link which cannot be followed, such as a loop or a link to a file which does not exist, is refused. The replacement is a new file, so other hard links to the old file keep the old content. If `hashit` is interrupted by `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT` or `SIGPIPE` the temporary file is removed and it exits with 128 plus the signal number, such as `130` for `SIGINT`. A signal which was ignored when `hashit` started, such as `SIGHUP` under `nohup`, stays ignored. Other signals such as `SIGUSR1` are ignored, and `SIGKILL` cannot be caught, so leaves the temporary file behind. The message `results written to` is printed to standard output. The output file, the audit file, and paths reaching them through a symbolic link, either a link to the file or a symbolically linked directory, are never included in the results. Another hard link to the output file is ordinary data and is included. Supplying one of them explicitly, such as with a wildcard like `hashit -a sums.md5 *`, skips it with a `WARN`. When the only files supplied were the output or audit file an existing output file is kept rather than replaced with empty results, so `hashit -o doc.txt --overwrite doc.txt` is an error. Without `--overwrite` a file created at the output path while `hashit` was running, such as by another run writing the same output, is not replaced, and the new results are discarded with an error.
 
 - `text`, the default, shown above. `--mtime` adds an `MTime` line in local time.
-- `json`, an array of objects such as `[{"File":"example/a.txt","MD5":"b1946ac92492d2347c6235b4d2611184","Bytes":6}]`. The keys are `File`, `CRC32`, `XxHash64`, `MD4`, `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, `Blake2b256`, `Blake2b512`, `Blake3`, `Sha3224`, `Sha3256`, `Sha3384`, `Sha3512`, `ed2k` and `Bytes`. Hashes which were not calculated are omitted. `--mtime` adds `MTime` in RFC 3339 format with nanoseconds and the local time zone.
+- `json`, an array of objects such as `[{"File":"example/a.txt","MD5":"b1946ac92492d2347c6235b4d2611184","Bytes":6}]`. The keys are `File`, `CRC32`, `XxHash64`, `MD4`, `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, `Blake2b256`, `Blake2b512`, `Blake3`, `Sha3224`, `Sha3256`, `Sha3384`, `Sha3512`, `ed2k`, `Tiger`, `Whirlpool` and `Bytes`. Hashes which were not calculated are omitted. `--mtime` adds `MTime` in RFC 3339 format with nanoseconds and the local time zone.
 - `sum`, the same as `md5sum` and similar tools, with one line per hash per file when several hashes are selected. `--mtime` adds a `# mtime` comment line, see [Auditing with sum Files](#auditing-with-sum-files).
 - `hashdeep`, see [Auditing](#auditing). `--mtime` adds a `## mtime` comment line, see [Modification Times](#modification-times).
 - `hashonly`, one hash per line. With several hashes or files there is nothing to say which hash belongs to which file, so it is best used with a single hash and file. `--mtime` adds the time on its own line.
@@ -253,7 +255,7 @@ In this case, `hashit` would process `main.go` (and the `.hashignore` file itsel
 
 `hashit` provides a powerful auditing feature that is compatible with `hashdeep`. This allows you to verify the integrity of a set of files by comparing their current state against a previously generated list of known hashes.
 
-You can use `hashit` to generate an audit file and have `hashdeep` verify it, or use `hashdeep` to generate the audit file and have `hashit` verify it.
+You can use `hashit` to generate an audit file and have `hashdeep` verify it, or use `hashdeep` to generate the audit file and have `hashit` verify it. `hashit` can audit a `hashdeep` file made with any of the hashes `hashdeep` writes: MD5, SHA1, SHA256, Tiger and Whirlpool. `hashdeep` before 4.2 (2012) calculated Tiger wrongly for large files, so a file it wrote with a Tiger column may report those files as modified, by `hashit` and by current versions of `hashdeep` alike, and needs writing again.
 
 #### Generating an Audit File
 
@@ -264,6 +266,8 @@ $ hashit --format hashdeep processor > audit.txt
 ```
 
 This will create a file named `audit.txt` containing the hashes of the files in the `processor` directory.
+
+Like `hashdeep`, it holds MD5 and SHA256 unless `-c` chooses others. It can hold any of the hashes `hashdeep` writes, MD5, SHA1, SHA256, Tiger and Whirlpool, in that order, so `hashit --format hashdeep -c sha256,tiger processor` writes SHA256 and Tiger. Other hashes are left out with a warning, and if none of the chosen hashes can be held, MD5 and SHA256 are written.
 
 #### Verifying with `hashdeep`
 
@@ -304,6 +308,69 @@ Known files expecting: 14
       New files found: 0
         Files missing: 0
 ```
+
+#### Tiger and Whirlpool
+
+`hashdeep` calculates five hashes: MD5, SHA1, SHA256, Tiger and Whirlpool. It also ships as `tigerdeep` and `whirlpooldeep`, which write only one of them. Collections catalogued with those tools, such as forensic case files and archives, may hold only Tiger or Whirlpool, chosen as both come from outside the MD5 and SHA family. Tiger is a fast 192 bit hash, and Whirlpool is a 512 bit hash standardised in ISO/IEC 10118-3. `hashit` calculates both, so it can audit any file those tools write, and write files they can audit, without converting them or calculating the hashes again.
+
+Whirlpool is about ten times slower than SHA512, so only choose it when another tool or an existing catalogue needs it.
+
+To audit a `hashdeep` file holding Tiger and Whirlpool with `hashit`:
+
+```shell
+$ hashdeep -c tiger,whirlpool -r -l photos > photos.hd
+$ head -2 photos.hd
+%%%% HASHDEEP-1.0
+%%%% size,tiger,whirlpool,filename
+
+$ hashit -a photos.hd photos
+hashit: Audit passed
+       Files examined: 2
+Known files expecting: 2
+        Files matched: 2
+       Files modified: 0
+          Files moved: 0
+      New files found: 0
+        Files missing: 0
+```
+
+To write a `hashdeep` file with Tiger for `hashdeep` to audit, or every `hashdeep` hash with `-c all`:
+
+```shell
+$ hashit -f hashdeep -c sha256,tiger photos > photos.hd
+$ head -2 photos.hd
+%%%% HASHDEEP-1.0
+%%%% size,sha256,tiger,filename
+
+$ hashdeep -r -l -a -k photos.hd photos
+hashdeep: Audit passed
+
+$ hashit -f hashdeep -c all photos | head -2 | tail -1
+%%%% size,md5,sha1,sha256,tiger,whirlpool,filename
+```
+
+`tigerdeep` output can be audited as it is, as a hash of 48 characters can only be Tiger. A Whirlpool hash is 128 characters, as long as a SHA512 hash, so give `whirlpooldeep` output a `.whirlpool` extension:
+
+```shell
+$ tigerdeep -r -l photos > photos.tiger
+$ hashit -a photos.tiger photos
+hashit: Audit passed
+
+$ whirlpooldeep -r -l photos > photos.whirlpool
+$ hashit -a photos.whirlpool photos
+hashit: Audit passed
+```
+
+Both match the hashes `hashdeep` and `rhash` calculate:
+
+```shell
+$ hashit -c tiger,whirlpool photos/a.txt
+photos/a.txt (6 bytes)
+      Tiger b529747e5337b97818c401dd266799a693165013ce146cac
+  Whirlpool 63f8341c1720d76087bb66a8f3fc9ea21a279edeae866a3611ba425cbd9ac9a4e39b97066b492fed6037988a72a045344c8675107e6bb569276c2f597ea9cbb7
+```
+
+Here `photos/a.txt` holds `hello` and a newline.
 
 #### Understanding Audit Results
 
@@ -409,7 +476,7 @@ $ hashit -a checksums.md5 .
 
 Note that `md5sum *` does not include files in subdirectories, while `hashit` audits the whole directory, so for a directory with subdirectories generate the file with something like `find -L . -type f -exec md5sum {} +`, where `-L` follows symbolic links as `hashit` does.
 
-The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha224`, `.sha256`, `.sha384`, `.sha512`, `.sha3-224`, `.sha3-256`, `.sha3-384`, `.sha3-512`, `.b2` or `.blake2b` (Blake2b-512 or Blake2b-256), `.b3` or `.blake3`, `.ed2k`, or `.crc32`, and otherwise by the length of the hash. A hash of 8 characters is assumed to be `crc32` and one of 16 `xxhash64`. Where lengths are shared the more common hash is assumed, being `md5` over `md4` and `ed2k`, `sha224` over `sha3-224`, `sha256` over `sha3-256`, `blake3` and `b2sum -l 256`, `sha384` over `sha3-384`, and `sha512` over `sha3-512` and `b2sum`. A wrong guess reports every file as modified, so name `b2sum` files `.b2` or use `--tag` output for the others. Relative paths are resolved against both the current directory and the directory containing the sum file, so run the audit from the directory the sum file was created in, or keep the sum file at the root of the files it lists.
+The hash is determined by the file extension where it is one of `.md4`, `.md5`, `.sha1`, `.sha224`, `.sha256`, `.sha384`, `.sha512`, `.sha3-224`, `.sha3-256`, `.sha3-384`, `.sha3-512`, `.b2` or `.blake2b` (Blake2b-512 or Blake2b-256), `.b3` or `.blake3`, `.ed2k`, `.tiger`, `.whirlpool`, or `.crc32`, and otherwise by the length of the hash. A hash of 8 characters is assumed to be `crc32`, one of 16 `xxhash64` and one of 48 `tiger`. Where lengths are shared the more common hash is assumed, being `md5` over `md4` and `ed2k`, `sha224` over `sha3-224`, `sha256` over `sha3-256`, `blake3` and `b2sum -l 256`, `sha384` over `sha3-384`, and `sha512` over `sha3-512`, `whirlpool` and `b2sum`. A wrong guess reports every file as modified, with a warning naming the other hashes of that length and their extensions, so name `b2sum` files `.b2` and Whirlpool files `.whirlpool`, or use `--tag` output for the others. A line whose hash is not the length of any hash its extension names, such as `b2sum -l 192` output in a `.b2` file, is not recognised rather than guessed. Relative paths are resolved against both the current directory and the directory containing the sum file, so run the audit from the directory the sum file was created in, or keep the sum file at the root of the files it lists.
 
 Likewise the output of `hashit --format sum` can be verified by `md5sum -c` and friends, so long as only a single hash is selected:
 
@@ -437,7 +504,9 @@ This method is recommended for any large-scale or repeated auditing tasks.
 
 #### Generating a SQLite Audit Database
 
-To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. Without `--output` the database is written to `hashit.db`. It is recommended to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks when the audit is also run with `--hash all`.
+To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. Without `--output` the database is written to `hashit.db`. It is recommended to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks when the audit is also run with `--hash all`. That includes Whirlpool, which is much slower than the others, so for large collections `--hash sha512,blake3` or similar may be a better trade off.
+
+Databases written by `hashit` 1.5.0, before Tiger and Whirlpool were added, cannot be audited by later versions, which say so, and need to be created again.
 
 ```shell
 # Generate a database with all hashes for the current directory

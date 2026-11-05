@@ -530,6 +530,12 @@ func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount i
 	if auditFailed(filesModified, moved, len(newFiles), filesMissing) {
 		status = Failed
 	}
+	// a single modified file is more likely changed than read as the wrong hash
+	if matched == 0 && filesModified > 1 {
+		if hint := auditor.GuessedHashHint(); hint != "" {
+			printWarn(hint)
+		}
+	}
 
 	// the below is output based on what we get from hashdeep
 	// verbose (not very verbose)
@@ -598,6 +604,12 @@ func toSum(input chan Result) string {
 		}
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString(sumLine(res.Ed2k, res.File))
+		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString(sumLine(res.Tiger, res.File))
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString(sumLine(res.Whirlpool, res.File))
 		}
 
 		// written as a comment so md5sum -c and similar tools ignore it rather than warn
@@ -680,6 +692,12 @@ func toHashOnly(input chan Result) (string, bool) {
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString(res.Ed2k + "\n")
 		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString(res.Tiger + "\n")
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString(res.Whirlpool + "\n")
+		}
 
 		if MTime && res.MTime != nil {
 			str.WriteString(fmt.Sprintf("%s\n", res.MTime.Format("2006-01-02 15:04:05")))
@@ -758,6 +776,12 @@ func toText(input chan Result) (string, bool) {
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString("       ed2k " + res.Ed2k + "\n")
 		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString("      Tiger " + res.Tiger + "\n")
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString("  Whirlpool " + res.Whirlpool + "\n")
+		}
 
 		if MTime && res.MTime != nil {
 			str.WriteString(fmt.Sprintf("      MTime %s\n", res.MTime.Format("2006-01-02 15:04:05")))
@@ -782,6 +806,9 @@ func toJSON(input chan Result) string {
 	return string(jsonString) + "\n"
 }
 
+// hashdeepFormatHashes are the hashes hashdeep calculates, in the order it writes them
+var hashdeepFormatHashes = []string{HashNames.MD5, HashNames.SHA1, HashNames.SHA256, HashNames.Tiger, HashNames.Whirlpool}
+
 func toHashDeep(input chan Result) string {
 	var str strings.Builder
 
@@ -792,15 +819,16 @@ func toHashDeep(input chan Result) string {
 	}
 
 	str.WriteString("%%%% HASHDEEP-1.0\n")
-	if !contains(Hash, "sha256") && !contains(Hash, "all") {
-		str.WriteString("%%%% size,md5,filename")
-	} else if contains(Hash, "sha256") && !contains(Hash, "all") && !contains(Hash, "md5") {
-		str.WriteString("%%%% size,sha256,filename")
-	} else {
-		str.WriteString("%%%% size,md5,sha256,filename")
+	var columns []string
+	for _, h := range hashdeepFormatHashes {
+		if hasHash(h) {
+			columns = append(columns, h)
+		}
 	}
-
-	str.WriteString("\n")
+	if len(columns) == 0 {
+		columns = []string{HashNames.MD5, HashNames.SHA256}
+	}
+	str.WriteString("%%%% size," + strings.Join(columns, ",") + ",filename\n")
 
 	str.WriteString(fmt.Sprintf("## Invoked from: %s\n", pwd))
 	str.WriteString(fmt.Sprintf("## $ %s\n", strings.Join(os.Args, " ")))
@@ -810,13 +838,9 @@ func toHashDeep(input chan Result) string {
 		// Bytes first, always the same.
 		str.WriteString(fmt.Sprintf("%d,", res.Bytes))
 
-		// Follows the same logic as the headers.
-		if !contains(Hash, "sha256") && !contains(Hash, "all") {
-			str.WriteString(fmt.Sprintf("%s,", res.MD5))
-		} else if contains(Hash, "sha256") && !contains(Hash, "all") && !contains(Hash, "md5") {
-			str.WriteString(fmt.Sprintf("%s,", res.SHA256))
-		} else {
-			str.WriteString(fmt.Sprintf("%s,%s,", res.MD5, res.SHA256))
+		for _, h := range columns {
+			str.WriteString(res.hashValue(h))
+			str.WriteString(",")
 		}
 
 		// Finish with filename and newline.
@@ -929,6 +953,8 @@ func toSqlite(input chan Result) (string, bool) {
 			Sha3384:    toSqlNull(res.Sha3384),
 			Sha3512:    toSqlNull(res.Sha3512),
 			Ed2k:       toSqlNull(res.Ed2k),
+			Tiger:      toSqlNull(res.Tiger),
+			Whirlpool:  toSqlNull(res.Whirlpool),
 			Size:       res.Bytes,
 			Mtime:      toSqlNull(mtime),
 		})
@@ -1003,6 +1029,8 @@ func printHashes() {
 	fmt.Fprintf(stdout, "   SHA3-384 (%s)\n", HashNames.Sha3384)
 	fmt.Fprintf(stdout, "   SHA3-512 (%s)\n", HashNames.Sha3512)
 	fmt.Fprintf(stdout, "       ed2k (%s)\n", HashNames.Ed2k)
+	fmt.Fprintf(stdout, "      Tiger (%s)\n", HashNames.Tiger)
+	fmt.Fprintf(stdout, "  Whirlpool (%s)\n", HashNames.Whirlpool)
 }
 
 func contains(list []string, v string) bool {

@@ -4,6 +4,7 @@ package processor
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -95,13 +96,13 @@ func TestNewAuditorHashdeepMultipleHeaders(t *testing.T) {
 	if r == nil || r.Hashes["sha1"] != testSHA1 || r.Hashes["sha256"] != testSHA256 {
 		t.Errorf("expected sha1 and sha256 for b.txt got %v", r)
 	}
-	if _, ok := r.Hashes["tiger"]; ok {
-		t.Error("tiger is not supported and should be ignored")
+	if r.Hashes["tiger"] != "deadbeef" {
+		t.Errorf("expected tiger for b.txt got %v", r.Hashes)
 	}
 }
 
 func TestNewAuditorHashdeepUnsupported(t *testing.T) {
-	input := "%%%% HASHDEEP-1.0\n%%%% size,tiger,filename\n2,deadbeef,a.txt\n"
+	input := "%%%% HASHDEEP-1.0\n%%%% size,unknownhash,filename\n2,deadbeef,a.txt\n"
 	if _, err := NewAuditor(input, "hashes.txt"); err == nil {
 		t.Error("expected error when no supported hash is present")
 	}
@@ -243,6 +244,94 @@ func TestNewAuditorSumExtensionLengths(t *testing.T) {
 		}
 		if hdl.HashNames()[0] != want {
 			t.Errorf("expected %s got %v", want, hdl.HashNames())
+		}
+	}
+}
+
+func TestNewAuditorTigerWhirlpool(t *testing.T) {
+	// of "hi\n", as hashdeep and rhash write them
+	tigerHash := "d332cad51f518b1898a5c1bcf68ccca3c6d29b5de317a105"
+	whirlpoolHash := "917d29663e30e6c211b171967c3103d2e087a59389cae751ff803f55e87f8c96608f0e3a88755d8c3133f8f320d2994630a24948ffb62fa2e577fc3c70772328"
+	res := Result{File: "a.txt", Tiger: tigerHash, Whirlpool: whirlpoolHash, Bytes: 3}
+	cases := []struct {
+		name, input, filename string
+		hashes                []string
+	}{
+		{"hashdeep", "%%%% HASHDEEP-1.0\n%%%% size,tiger,whirlpool,filename\n3," + tigerHash + "," + whirlpoolHash + ",a.txt\n", "m.hd", []string{"tiger", "whirlpool"}},
+		{"bsd tags", "TIGER (a.txt) = " + tigerHash + "\nWHIRLPOOL (a.txt) = " + whirlpoolHash + "\n", "m.sum", []string{"tiger", "whirlpool"}},
+		// only tiger is 48 long, while 128 is sha512 unless the extension says otherwise
+		{"tiger by length", tigerHash + "  a.txt\n", "m.txt", []string{"tiger"}},
+		{"whirlpool by extension", whirlpoolHash + "  a.txt\n", "m.whirlpool", []string{"whirlpool"}},
+	}
+	for _, c := range cases {
+		hdl, err := NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := hdl.HashNames(); len(got) != len(c.hashes) || !contains(got, c.hashes[0]) || !contains(got, c.hashes[len(c.hashes)-1]) {
+			t.Errorf("%s: expected hashes %v got %v", c.name, c.hashes, got)
+		}
+		if _, status := hdl.Find(res); status != FileMatched {
+			t.Errorf("%s: expected match got %v", c.name, status)
+		}
+		// a fresh auditor, as a record which matched a file is not matched again
+		hdl, err = NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		changed := res
+		changed.Tiger = "00" + tigerHash[2:]
+		changed.Whirlpool = "00" + whirlpoolHash[2:]
+		if _, status := hdl.Find(changed); status != FileModified {
+			t.Errorf("%s: expected modified got %v", c.name, status)
+		}
+	}
+}
+
+func TestNewAuditorExtensionLengthMismatch(t *testing.T) {
+	// b2sum -l 192 and -l 160 output is 48 and 40 long, which blake2b files never are, so it is not
+	// taken as tiger or sha1 by length
+	for _, value := range []string{strings.Repeat("a", 48), strings.Repeat("a", 40)} {
+		for _, filename := range []string{"m.b2", "m.blake2b", "m.sha256"} {
+			if _, err := NewAuditor(value+"  a.txt\n", filename); err == nil {
+				t.Errorf("%s of length %d: expected the file to be refused", filename, len(value))
+			}
+		}
+		// without an extension naming the hash, the length is used
+		if _, err := NewAuditor(value+"  a.txt\n", "m.txt"); err != nil {
+			t.Errorf("m.txt of length %d: %v", len(value), err)
+		}
+	}
+}
+
+func TestGuessedHashHint(t *testing.T) {
+	sha512Like := strings.Repeat("a", 128) + "  a.txt\n"
+	cases := []struct {
+		input, filename string
+		want            []string
+	}{
+		{sha512Like, "m.txt", []string{"read as sha512", "whirlpool (.whirlpool)", "sha3512 (.sha3-512)"}},
+		// the extension names the hash, so nothing was guessed
+		{sha512Like, "m.whirlpool", nil},
+		// a bsd tag names the hash
+		{"SHA512 (a.txt) = " + strings.Repeat("a", 128) + "\n", "m.txt", nil},
+		// only tiger is 48 long, so there is nothing else it could be
+		{strings.Repeat("a", 48) + "  a.txt\n", "m.txt", nil},
+		{"%%%% HASHDEEP-1.0\n%%%% size,md5,filename\n1," + strings.Repeat("a", 32) + ",a.txt\n", "m.txt", nil},
+	}
+	for _, c := range cases {
+		hdl, err := NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.filename, err)
+		}
+		hint := hdl.GuessedHashHint()
+		if c.want == nil && hint != "" {
+			t.Errorf("%q in %s: expected no hint got %q", c.input, c.filename, hint)
+		}
+		for _, w := range c.want {
+			if !strings.Contains(hint, w) {
+				t.Errorf("%q in %s: expected hint containing %q got %q", c.input, c.filename, w, hint)
+			}
 		}
 	}
 }

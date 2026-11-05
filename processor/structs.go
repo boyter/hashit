@@ -24,6 +24,8 @@ type Result struct {
 	Sha3384    string `json:",omitempty"`
 	Sha3512    string `json:",omitempty"`
 	Ed2k       string `json:"ed2k,omitempty"`
+	Tiger      string `json:",omitempty"`
+	Whirlpool  string `json:",omitempty"`
 	Bytes      int64
 	MTime      *time.Time `json:",omitzero"`
 }
@@ -65,6 +67,10 @@ func (r Result) hashValue(name string) string {
 		return r.Sha3512
 	case HashNames.Ed2k:
 		return r.Ed2k
+	case HashNames.Tiger:
+		return r.Tiger
+	case HashNames.Whirlpool:
+		return r.Whirlpool
 	}
 	return ""
 }

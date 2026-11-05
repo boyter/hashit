@@ -52,14 +52,14 @@ fail_check() {
         echo -e "$3"
     fi
     echo -e "======================================================="
-    exit
+    exit 1
 }
 
 if ./hashit --not-a-real-option > /dev/null ; then
     echo -e "${RED}================================================="
     echo -e "FAILED Invalid option should produce error code "
     echo -e "======================================================="
-    exit
+    exit 1
 else
     echo -e "${GREEN}PASSED invalid option test"
 fi
@@ -70,7 +70,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should run correctly with no directory specified"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit * > /dev/null ; then
@@ -79,7 +79,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should run correctly with all files specified"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit "*.go" | grep -q -i 'main.go'; then
@@ -88,7 +88,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Globbing test for *.go"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit --debug --trace --verbose -f text --hash md5 --no-stream --stream-size 10 -r main.go > /dev/null ; then
@@ -97,7 +97,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should run correctly with multiple options"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit processor > /dev/null ; then
@@ -106,7 +106,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should run correctly with directory specified"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go -c md5 | grep -q -i 'md5'; then
@@ -115,7 +115,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with short hash"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 for i in 'crc32' 'xxHash64' 'md4' 'md5' 'sha1' 'sha256' 'sha512'
@@ -126,7 +126,7 @@ do
         echo -e "${RED}======================================================="
         echo -e "FAILED Should be able to work with hash $i"
         echo -e "======================================================="
-        exit
+        exit 1
     fi
 done
 
@@ -136,7 +136,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash blake2b256"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hash blake2b512 | grep -q -i 'blake2b-512'; then
@@ -145,7 +145,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash blake2b512"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hash sha3224 | grep -q -i 'sha3-224'; then
@@ -154,7 +154,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash sha3224"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hash sha3256 | grep -q -i 'sha3-256'; then
@@ -163,7 +163,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash sha3256"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hash sha3384 | grep -q -i 'sha3-384'; then
@@ -172,7 +172,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash sha3384"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hash sha3512 | grep -q -i 'sha3-512'; then
@@ -181,7 +181,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to work with hash sha3512"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit main.go --hashes | grep -q -i 'md5'; then
@@ -190,7 +190,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to display hashes"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --hash xxhash64 | grep -q -i 'e4c191d091bd8853'; then
@@ -199,7 +199,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to process xxhash64 stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --hash md5 | grep -q -i 'b1946ac92492d2347c6235b4d2611184'; then
@@ -208,7 +208,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to process md5 stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --hash sha1 | grep -q -i 'f572d396fae9206628714fb2ce00f72e94f2258f'; then
@@ -217,7 +217,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to process sha1 stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --hash sha256 | grep -q -i '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03'; then
@@ -226,7 +226,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to process sha256 stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --hash ed2k | grep -q -i '63481c78ae04c201fa01ea9d2b1db56d'; then
@@ -235,7 +235,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to process ed2k stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit --mtime ./hashit | grep -q -i 'Mtime'; then
@@ -244,7 +244,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to deal with mtime default"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if echo "hello" | ./hashit --mtime 2>&1 | grep -q -i 'WARN'; then
@@ -253,7 +253,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to deal with mtime stdin"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 a=$(./hashit --no-stream * | sort | md5sum)
@@ -264,7 +264,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED stream output test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 a=$(./hashit --format sum --hash md5 main.go)
@@ -275,7 +275,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sum md5 format test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 a=$(./hashit --format sum --hash sha1 main.go)
@@ -286,7 +286,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sum sha1 format test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 a=$(./hashit --format sum --hash sha256 main.go)
@@ -297,7 +297,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sum sha256 format test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 a=$(./hashit --format sum --hash sha512 main.go)
@@ -308,7 +308,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sum sha512 format test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 for i in '' '--stream-size 0'
@@ -319,7 +319,7 @@ do
         echo -e "${RED}======================================================="
         echo -e "FAILED $i test"
         echo -e "======================================================="
-        exit
+        exit 1
     fi
 done
 
@@ -331,7 +331,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED small scanner test"
     echo -e "================================================="
-    exit
+    exit 1
 fi
 
 echo ""
@@ -341,7 +341,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to create relative hashdeep audit"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if ./hashit --format hashdeep vendor > audit.txt && hashdeep -l -r -a -k audit.txt vendor | grep -q -i 'Audit passed'; then
@@ -350,7 +350,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to create large relative hashdeep audit"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 mkdir -p /tmp/hashit/
@@ -361,7 +361,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to create full hashdeep audit"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 echo "Running SQLite audit tests..."
@@ -382,7 +382,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Test 2: Modified file
@@ -397,7 +397,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Test 3: New file
@@ -413,7 +413,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 mkdir -p /tmp/hashit/
@@ -424,7 +424,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED Should be able to create full hashdeep audit reverse"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Test 4: Missing file
@@ -445,7 +445,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 echo ""
@@ -469,7 +469,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Test 6: Audit passes with a common hash subset
@@ -484,7 +484,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Test 7: Audit fails with a common hash subset after modification
@@ -499,7 +499,7 @@ else
     echo -e "Output was:"
     echo -e "$AUDIT_OUTPUT"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 # Audit edge cases, see https://github.com/boyter/hashit/issues/12
@@ -562,7 +562,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED refuses to overwrite existing output file test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 if "$HASHIT" --overwrite -o "$AUDITDIR/existing.txt" "$AUDITDIR/media" > /dev/null && ! grep -q "keep me" "$AUDITDIR/existing.txt"; then
@@ -571,7 +571,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED overwrite replaces existing output file test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 echo changed >> "$AUDITDIR/media/a.txt"
@@ -581,7 +581,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED audit detects modified file test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 audit_test "sqlite audit file inside audited directory test" \
     "cd '$AUDITDIR/media' && '$HASHIT' -f sqlite -o audit.db . > /dev/null && '$HASHIT' -a audit.db ."
@@ -591,7 +591,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sqlite refuses to overwrite existing database test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 echo "not a database" > "$AUDITDIR/notadb.txt"
@@ -601,7 +601,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sqlite overwrite refuses to replace non database test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 audit_test "sqlite overwrite replaces existing database test" \
@@ -616,7 +616,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sqlite audit leaves no files behind test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 mv "$AUDITDIR/media/sub/ünïcode.txt" "$AUDITDIR/media/moved.txt"
@@ -626,7 +626,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED sqlite audit detects moved file test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 if (cd "$AUDITDIR/media" && ! "$HASHIT" -a ../sums.md5 -o ../failed-audit.txt . > /dev/null) && grep -q 'Audit failed' "$AUDITDIR/failed-audit.txt"; then
     echo -e "${GREEN}PASSED failed audit to output file exits non zero test"
@@ -634,7 +634,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED failed audit to output file exits non zero test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 # https://github.com/boyter/hashit/issues/19
 audit_test "hashdeep can audit hashit --absolute output test" \
@@ -653,7 +653,7 @@ for AUDITFILE in moved.txt moved.db; do
         echo -e "${RED}======================================================="
         echo -e "FAILED allow moved $AUDITFILE test"
         echo -e "======================================================="
-        exit
+        exit 1
     fi
 done
 echo 3 > "$AUDITDIR/moved/new"
@@ -664,7 +664,7 @@ for AUDITFILE in moved.txt moved.db; do
         echo -e "${RED}======================================================="
         echo -e "FAILED allow moved still fails new file $AUDITFILE test"
         echo -e "======================================================="
-        exit
+        exit 1
     fi
 done
 
@@ -833,6 +833,37 @@ fi
 chmod 644 "$AUDITDIR/unread/b"
 if command -v rhash > /dev/null; then
     check "rhash bsd ed2k file test" "cd '$AUDITDIR/unread' && rhash --ed2k --bsd a > ../ed2k.txt && '$HASHIT' -a ../ed2k.txt a | grep -q 'Audit passed'"
+fi
+
+# tiger and whirlpool, the hashes hashdeep can write besides md5, sha1 and sha256
+mkdir -p "$AUDITDIR/tw/t/sub"
+printf '' > "$AUDITDIR/tw/t/empty"
+echo hi > "$AUDITDIR/tw/t/hi"
+head -c 3000000 /dev/urandom > "$AUDITDIR/tw/t/sub/big"
+head -c 64 /dev/urandom > "$AUDITDIR/tw/t/sub/b64"
+check "tiger and whirlpool match hashdeep test" \
+    "cd '$AUDITDIR/tw' && [ \"\$('$HASHIT' -c tiger,whirlpool -f sum t/hi t/empty t/sub/big t/sub/b64 | sort)\" == \"\$(hashdeep -l -c tiger,whirlpool t/hi t/empty t/sub/big t/sub/b64 | grep -v '^[%#]' | awk -F, '{print \$2 \"  \" \$4; print \$3 \"  \" \$4}' | sort)\" ]"
+check "hashdeep tiger and whirlpool file audit test" "cd '$AUDITDIR/tw' && hashdeep -c tiger,whirlpool -r -l t > tw.hd && '$HASHIT' -a tw.hd t | grep -q 'Audit passed'"
+check "hashdeep file with every hash it writes audit test" "cd '$AUDITDIR/tw' && hashdeep -c md5,sha1,sha256,tiger,whirlpool -r -l t > all.hd && '$HASHIT' -a all.hd t | grep -q 'Audit passed'"
+check "sum files of tiger and whirlpool audit test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger -f sum t > s.txt && '$HASHIT' -a s.txt t | grep -q 'Audit passed' && '$HASHIT' -c whirlpool -f sum t > s.whirlpool && '$HASHIT' -a s.whirlpool t | grep -q 'Audit passed'"
+check "sqlite tiger and whirlpool audit test" "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger,whirlpool -f sqlite -o tw.db t > /dev/null && '$HASHIT' -c tiger,whirlpool -a tw.db t | grep -q 'Audit passed'"
+# a database written before tiger and whirlpool were added, such as by 1.5.0, has no columns for them and is refused,
+# made here by copying a current one into the 1.5.0 table
+check "sqlite database without tiger and whirlpool columns is refused test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -f sqlite -o old.db t > /dev/null && sqlite3 old.db 'create table old (filepath text primary key, crc32 text, xxhash64 text, md4 text, md5 text, sha1 text, sha224 text, sha256 text, sha384 text, sha512 text, blake2b_256 text, blake2b_512 text, blake3 text, sha3_224 text, sha3_256 text, sha3_384 text, sha3_512 text, ed2k text, size integer not null, mtime text null); insert into old select filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes; drop table file_hashes; alter table old rename to file_hashes' && ! '$HASHIT' -a old.db t > old.out 2>&1 && grep -q 'older version of hashit' old.out"
+# the hashdeep format holds every hashdeep hash requested, in hashdeep's order, and md5 and sha256 by default
+check "hashdeep format writes requested hashdeep hashes test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -f hashdeep -c whirlpool,tiger,sha1 t > req.hd && grep -q '^%%%% size,sha1,tiger,whirlpool,filename\$' req.hd && hashdeep -r -l -a -k req.hd t | grep -q 'Audit passed' && '$HASHIT' -a req.hd t | grep -q 'Audit passed'"
+check "hashdeep format writes md5 and sha256 by default test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -f hashdeep t | grep -q '^%%%% size,md5,sha256,filename\$'"
+check "hashdeep format leaves out hashes hashdeep lacks with a warning test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -f hashdeep -c md5,blake3 t 2> req.err | grep -q '^%%%% size,md5,filename\$' && grep -q 'leaving out blake3' req.err"
+echo changed >> "$AUDITDIR/tw/t/hi"
+check "modified file fails tiger and whirlpool audits test" \
+    "cd '$AUDITDIR/tw' && ! '$HASHIT' -a tw.hd t > /dev/null && ! '$HASHIT' -a all.hd t > /dev/null && ! '$HASHIT' -a s.txt t > /dev/null && ! '$HASHIT' -a s.whirlpool t > /dev/null && ! '$HASHIT' -a req.hd t > /dev/null && ! hashdeep -r -l -a -k req.hd t > /dev/null && ! '$HASHIT' -c tiger,whirlpool -a tw.db t > /dev/null && ! hashdeep -r -l -a -k tw.hd t > /dev/null"
+if command -v rhash > /dev/null; then
+    check "rhash bsd tiger and whirlpool file test" "cd '$AUDITDIR/unread' && rhash --tiger --whirlpool --bsd a > ../tw.sum && '$HASHIT' -a ../tw.sum a | grep -q 'Audit passed'"
 fi
 
 # explicitly supplied special files and broken links are errors, found while walking they are skipped
@@ -1091,7 +1122,7 @@ check "conflicting sum lines audited from outside its directory are not a move t
 mkdir -p "$AUDITDIR/r12/u"
 echo u > "$AUDITDIR/r12/u/u"
 (cd "$AUDITDIR/r12/u" && "$HASHIT" -f sqlite -o ../u.db . > /dev/null)
-sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes"
+sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes"
 mkdir -p "$AUDITDIR/r12/u/x"
 chmod 000 "$AUDITDIR/r12/u/u"
 # the second row lists the same values for the same file, so is a duplicate as in a hashdeep file
@@ -1139,7 +1170,7 @@ check "sum line naming a directory is not a file test" "cd '$AUDITDIR/r13/s3' &&
 mkdir -p "$AUDITDIR/r13/uv/A" "$AUDITDIR/r13/uv/C"
 echo f > "$AUDITDIR/r13/uv/A/f" && echo g > "$AUDITDIR/r13/uv/A/g" && echo cf > "$AUDITDIR/r13/uv/C/f"
 (cd "$AUDITDIR/r13/uv/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 rm "$AUDITDIR/r13/uv/A/f" && chmod 000 "$AUDITDIR/r13/uv/C/f"
 check "missing record sharing a path with an unreadable file is not unreadable test" \
     "cd '$AUDITDIR/r13/uv/C' && '$HASHIT' -v -a ../m.db . 2>/dev/null | grep -q '^./f: File expected but not found'"
@@ -1180,7 +1211,7 @@ check "symlink and .. leading to the symlinked working directory test" "cd '$AUD
 mkdir -p "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/O"
 echo one > "$AUDITDIR/r14/ud/A/f" && echo two > "$AUDITDIR/r14/ud/A/g"
 (cd "$AUDITDIR/r14/ud/A" && "$HASHIT" -f sqlite -o ../O/m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 mv "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/B" && mv "$AUDITDIR/r14/ud/O/m.db" "$AUDITDIR/r14/ud/B/"
 chmod 000 "$AUDITDIR/r14/ud/B/f"
 check "every spelling of an unreadable file in a moved sqlite tree is reported test" \
@@ -1200,7 +1231,7 @@ check "sum lines naming the same file with different correct hashes pass test" "
 mkdir -p "$AUDITDIR/r15/uo/A"
 echo one > "$AUDITDIR/r15/uo/A/f" && echo two > "$AUDITDIR/r15/uo/A/g"
 (cd "$AUDITDIR/r15/uo/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 mv "$AUDITDIR/r15/uo/A" "$AUDITDIR/r15/uo/B" && chmod 000 "$AUDITDIR/r15/uo/B/f"
 check "every spelling of an unreadable file in a moved tree with the sqlite file outside it test" \
     "cd '$AUDITDIR/r15/uo/B' && '$HASHIT' -v -a ../m.db . 2>/dev/null > ../uo.out; [ \"\$(grep -c 'File could not be read' ../uo.out)\" == 1 ] && ! grep -q 'not found' ../uo.out"
@@ -1442,7 +1473,7 @@ for HASHNAME in $("$HASHIT" --hashes | sed -n 's/.*(\(.*\))/\1/p'); do
         echo -e "${RED}======================================================="
         echo -e "FAILED $HASHNAME parallel and stream agree test"
         echo -e "======================================================="
-        exit
+        exit 1
     fi
 done
 
@@ -1463,7 +1494,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED large stdin hash test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 echo "$AUDITDIR/media/a.txt" > "$AUDITDIR/input-list.txt"
@@ -1473,7 +1504,7 @@ else
     echo -e "${RED}======================================================="
     echo -e "FAILED input file used when stdin is a pipe test"
     echo -e "======================================================="
-    exit
+    exit 1
 fi
 
 rm -rf "$AUDITDIR"

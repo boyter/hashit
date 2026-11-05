@@ -11,7 +11,7 @@ import (
 )
 
 const fileHashByFilePath = `-- name: FileHashByFilePath :one
-select filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = ?
+select filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = ?
 `
 
 func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (FileHash, error) {
@@ -36,6 +36,8 @@ func (q *Queries) FileHashByFilePath(ctx context.Context, filepath string) (File
 		&i.Sha3384,
 		&i.Sha3512,
 		&i.Ed2k,
+		&i.Tiger,
+		&i.Whirlpool,
 		&i.Size,
 		&i.Mtime,
 	)
@@ -54,7 +56,7 @@ func (q *Queries) FileHashCount(ctx context.Context) (int64, error) {
 }
 
 const fileHashFirst = `-- name: FileHashFirst :one
-select filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes limit 1
+select filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes limit 1
 `
 
 func (q *Queries) FileHashFirst(ctx context.Context) (FileHash, error) {
@@ -79,6 +81,8 @@ func (q *Queries) FileHashFirst(ctx context.Context) (FileHash, error) {
 		&i.Sha3384,
 		&i.Sha3512,
 		&i.Ed2k,
+		&i.Tiger,
+		&i.Whirlpool,
 		&i.Size,
 		&i.Mtime,
 	)
@@ -89,10 +93,10 @@ const fileHashInsertReplace = `-- name: FileHashInsertReplace :one
 
 insert or replace into file_hashes (
     filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512,
-    blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k,
+    blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool,
     size, mtime
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-returning filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+returning filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime
 `
 
 type FileHashInsertReplaceParams struct {
@@ -114,6 +118,8 @@ type FileHashInsertReplaceParams struct {
 	Sha3384    sql.NullString
 	Sha3512    sql.NullString
 	Ed2k       sql.NullString
+	Tiger      sql.NullString
+	Whirlpool  sql.NullString
 	Size       int64
 	Mtime      interface{}
 }
@@ -139,6 +145,8 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		arg.Sha3384,
 		arg.Sha3512,
 		arg.Ed2k,
+		arg.Tiger,
+		arg.Whirlpool,
 		arg.Size,
 		arg.Mtime,
 	)
@@ -162,6 +170,8 @@ func (q *Queries) FileHashInsertReplace(ctx context.Context, arg FileHashInsertR
 		&i.Sha3384,
 		&i.Sha3512,
 		&i.Ed2k,
+		&i.Tiger,
+		&i.Whirlpool,
 		&i.Size,
 		&i.Mtime,
 	)
