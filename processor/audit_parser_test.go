@@ -95,13 +95,13 @@ func TestNewAuditorHashdeepMultipleHeaders(t *testing.T) {
 	if r == nil || r.Hashes["sha1"] != testSHA1 || r.Hashes["sha256"] != testSHA256 {
 		t.Errorf("expected sha1 and sha256 for b.txt got %v", r)
 	}
-	if _, ok := r.Hashes["tiger"]; ok {
-		t.Error("tiger is not supported and should be ignored")
+	if r.Hashes["tiger"] != "deadbeef" {
+		t.Errorf("expected tiger for b.txt got %v", r.Hashes)
 	}
 }
 
 func TestNewAuditorHashdeepUnsupported(t *testing.T) {
-	input := "%%%% HASHDEEP-1.0\n%%%% size,tiger,filename\n2,deadbeef,a.txt\n"
+	input := "%%%% HASHDEEP-1.0\n%%%% size,unknownhash,filename\n2,deadbeef,a.txt\n"
 	if _, err := NewAuditor(input, "hashes.txt"); err == nil {
 		t.Error("expected error when no supported hash is present")
 	}
@@ -243,6 +243,46 @@ func TestNewAuditorSumExtensionLengths(t *testing.T) {
 		}
 		if hdl.HashNames()[0] != want {
 			t.Errorf("expected %s got %v", want, hdl.HashNames())
+		}
+	}
+}
+
+func TestNewAuditorTigerWhirlpool(t *testing.T) {
+	// of "hi\n", as hashdeep and rhash write them
+	tigerHash := "d332cad51f518b1898a5c1bcf68ccca3c6d29b5de317a105"
+	whirlpoolHash := "917d29663e30e6c211b171967c3103d2e087a59389cae751ff803f55e87f8c96608f0e3a88755d8c3133f8f320d2994630a24948ffb62fa2e577fc3c70772328"
+	res := Result{File: "a.txt", Tiger: tigerHash, Whirlpool: whirlpoolHash, Bytes: 3}
+	cases := []struct {
+		name, input, filename string
+		hashes                []string
+	}{
+		{"hashdeep", "%%%% HASHDEEP-1.0\n%%%% size,tiger,whirlpool,filename\n3," + tigerHash + "," + whirlpoolHash + ",a.txt\n", "m.hd", []string{"tiger", "whirlpool"}},
+		{"bsd tags", "TIGER (a.txt) = " + tigerHash + "\nWHIRLPOOL (a.txt) = " + whirlpoolHash + "\n", "m.sum", []string{"tiger", "whirlpool"}},
+		// only tiger is 48 long, while 128 is sha512 unless the extension says otherwise
+		{"tiger by length", tigerHash + "  a.txt\n", "m.txt", []string{"tiger"}},
+		{"whirlpool by extension", whirlpoolHash + "  a.txt\n", "m.whirlpool", []string{"whirlpool"}},
+	}
+	for _, c := range cases {
+		hdl, err := NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := hdl.HashNames(); len(got) != len(c.hashes) || !contains(got, c.hashes[0]) || !contains(got, c.hashes[len(c.hashes)-1]) {
+			t.Errorf("%s: expected hashes %v got %v", c.name, c.hashes, got)
+		}
+		if _, status := hdl.Find(res); status != FileMatched {
+			t.Errorf("%s: expected match got %v", c.name, status)
+		}
+		// a fresh auditor, as a record which matched a file is not matched again
+		hdl, err = NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		changed := res
+		changed.Tiger = "00" + tigerHash[2:]
+		changed.Whirlpool = "00" + whirlpoolHash[2:]
+		if _, status := hdl.Find(changed); status != FileModified {
+			t.Errorf("%s: expected modified got %v", c.name, status)
 		}
 	}
 }

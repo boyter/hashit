@@ -27,6 +27,9 @@ github.com/gosuri/uiprogress/util/strutil
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
+# github.com/jzelinskie/whirlpool v0.0.0-20201016144138-0675e54bb004
+## explicit
+github.com/jzelinskie/whirlpool
 # github.com/klauspost/cpuid/v2 v2.4.1
 ## explicit; go 1.24.0
 github.com/klauspost/cpuid/v2

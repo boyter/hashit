@@ -3,9 +3,9 @@
 -- name: FileHashInsertReplace :one
 insert or replace into file_hashes (
     filepath, crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512,
-    blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k,
+    blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool,
     size, mtime
-) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 returning *;
 
 -- name: FileHashByFilePath :one

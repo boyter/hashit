@@ -599,6 +599,12 @@ func toSum(input chan Result) string {
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString(sumLine(res.Ed2k, res.File))
 		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString(sumLine(res.Tiger, res.File))
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString(sumLine(res.Whirlpool, res.File))
+		}
 
 		// written as a comment so md5sum -c and similar tools ignore it rather than warn
 		if MTime && res.MTime != nil {
@@ -680,6 +686,12 @@ func toHashOnly(input chan Result) (string, bool) {
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString(res.Ed2k + "\n")
 		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString(res.Tiger + "\n")
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString(res.Whirlpool + "\n")
+		}
 
 		if MTime && res.MTime != nil {
 			str.WriteString(fmt.Sprintf("%s\n", res.MTime.Format("2006-01-02 15:04:05")))
@@ -757,6 +769,12 @@ func toText(input chan Result) (string, bool) {
 		}
 		if hasHash(HashNames.Ed2k) {
 			str.WriteString("       ed2k " + res.Ed2k + "\n")
+		}
+		if hasHash(HashNames.Tiger) {
+			str.WriteString("      Tiger " + res.Tiger + "\n")
+		}
+		if hasHash(HashNames.Whirlpool) {
+			str.WriteString("  Whirlpool " + res.Whirlpool + "\n")
 		}
 
 		if MTime && res.MTime != nil {
@@ -929,6 +947,8 @@ func toSqlite(input chan Result) (string, bool) {
 			Sha3384:    toSqlNull(res.Sha3384),
 			Sha3512:    toSqlNull(res.Sha3512),
 			Ed2k:       toSqlNull(res.Ed2k),
+			Tiger:      toSqlNull(res.Tiger),
+			Whirlpool:  toSqlNull(res.Whirlpool),
 			Size:       res.Bytes,
 			Mtime:      toSqlNull(mtime),
 		})
@@ -1003,6 +1023,8 @@ func printHashes() {
 	fmt.Fprintf(stdout, "   SHA3-384 (%s)\n", HashNames.Sha3384)
 	fmt.Fprintf(stdout, "   SHA3-512 (%s)\n", HashNames.Sha3512)
 	fmt.Fprintf(stdout, "       ed2k (%s)\n", HashNames.Ed2k)
+	fmt.Fprintf(stdout, "      Tiger (%s)\n", HashNames.Tiger)
+	fmt.Fprintf(stdout, "  Whirlpool (%s)\n", HashNames.Whirlpool)
 }
 
 func contains(list []string, v string) bool {

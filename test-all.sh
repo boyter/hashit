@@ -835,6 +835,29 @@ if command -v rhash > /dev/null; then
     check "rhash bsd ed2k file test" "cd '$AUDITDIR/unread' && rhash --ed2k --bsd a > ../ed2k.txt && '$HASHIT' -a ../ed2k.txt a | grep -q 'Audit passed'"
 fi
 
+# tiger and whirlpool, the hashes hashdeep can write besides md5, sha1 and sha256
+mkdir -p "$AUDITDIR/tw/t/sub"
+printf '' > "$AUDITDIR/tw/t/empty"
+echo hi > "$AUDITDIR/tw/t/hi"
+head -c 3000000 /dev/urandom > "$AUDITDIR/tw/t/sub/big"
+head -c 64 /dev/urandom > "$AUDITDIR/tw/t/sub/b64"
+check "tiger and whirlpool match hashdeep test" \
+    "cd '$AUDITDIR/tw' && [ \"\$('$HASHIT' -c tiger,whirlpool -f sum t/hi t/empty t/sub/big t/sub/b64 | sort)\" == \"\$(hashdeep -l -c tiger,whirlpool t/hi t/empty t/sub/big t/sub/b64 | grep -v '^[%#]' | awk -F, '{print \$2 \"  \" \$4; print \$3 \"  \" \$4}' | sort)\" ]"
+check "hashdeep tiger and whirlpool file audit test" "cd '$AUDITDIR/tw' && hashdeep -c tiger,whirlpool -r -l t > tw.hd && '$HASHIT' -a tw.hd t | grep -q 'Audit passed'"
+check "hashdeep file with every hash it writes audit test" "cd '$AUDITDIR/tw' && hashdeep -c md5,sha1,sha256,tiger,whirlpool -r -l t > all.hd && '$HASHIT' -a all.hd t | grep -q 'Audit passed'"
+check "sum files of tiger and whirlpool audit test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger -f sum t > s.txt && '$HASHIT' -a s.txt t | grep -q 'Audit passed' && '$HASHIT' -c whirlpool -f sum t > s.whirlpool && '$HASHIT' -a s.whirlpool t | grep -q 'Audit passed'"
+check "sqlite tiger and whirlpool audit test" "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger,whirlpool -f sqlite -o tw.db t > /dev/null && '$HASHIT' -c tiger,whirlpool -a tw.db t | grep -q 'Audit passed'"
+# a database written before tiger and whirlpool were added, such as by 1.5.0, has no columns for them
+check "sqlite database without tiger and whirlpool columns audit test" \
+    "cd '$AUDITDIR/tw' && '$HASHIT' -f sqlite -o old.db t > /dev/null && sqlite3 old.db 'alter table file_hashes drop column tiger; alter table file_hashes drop column whirlpool' && '$HASHIT' -a old.db t | grep -q 'Audit passed'"
+echo changed >> "$AUDITDIR/tw/t/hi"
+check "modified file fails tiger and whirlpool audits test" \
+    "cd '$AUDITDIR/tw' && ! '$HASHIT' -a tw.hd t > /dev/null && ! '$HASHIT' -a all.hd t > /dev/null && ! '$HASHIT' -a s.txt t > /dev/null && ! '$HASHIT' -a s.whirlpool t > /dev/null && ! '$HASHIT' -c tiger,whirlpool -a tw.db t > /dev/null && ! '$HASHIT' -a old.db t > /dev/null && ! hashdeep -r -l -a -k tw.hd t > /dev/null"
+if command -v rhash > /dev/null; then
+    check "rhash bsd tiger and whirlpool file test" "cd '$AUDITDIR/unread' && rhash --tiger --whirlpool --bsd a > ../tw.sum && '$HASHIT' -a ../tw.sum a | grep -q 'Audit passed'"
+fi
+
 # explicitly supplied special files and broken links are errors, found while walking they are skipped
 mkdir -p "$AUDITDIR/explicit"
 echo 1 > "$AUDITDIR/explicit/a"
@@ -1091,7 +1114,7 @@ check "conflicting sum lines audited from outside its directory are not a move t
 mkdir -p "$AUDITDIR/r12/u"
 echo u > "$AUDITDIR/r12/u/u"
 (cd "$AUDITDIR/r12/u" && "$HASHIT" -f sqlite -o ../u.db . > /dev/null)
-sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes"
+sqlite3 "$AUDITDIR/r12/u.db" "insert into file_hashes select 'x/../u', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes"
 mkdir -p "$AUDITDIR/r12/u/x"
 chmod 000 "$AUDITDIR/r12/u/u"
 # the second row lists the same values for the same file, so is a duplicate as in a hashdeep file
@@ -1139,7 +1162,7 @@ check "sum line naming a directory is not a file test" "cd '$AUDITDIR/r13/s3' &&
 mkdir -p "$AUDITDIR/r13/uv/A" "$AUDITDIR/r13/uv/C"
 echo f > "$AUDITDIR/r13/uv/A/f" && echo g > "$AUDITDIR/r13/uv/A/g" && echo cf > "$AUDITDIR/r13/uv/C/f"
 (cd "$AUDITDIR/r13/uv/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r13/uv/m.db" "insert into file_hashes select '$AUDITDIR/r13/uv/C/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 rm "$AUDITDIR/r13/uv/A/f" && chmod 000 "$AUDITDIR/r13/uv/C/f"
 check "missing record sharing a path with an unreadable file is not unreadable test" \
     "cd '$AUDITDIR/r13/uv/C' && '$HASHIT' -v -a ../m.db . 2>/dev/null | grep -q '^./f: File expected but not found'"
@@ -1180,7 +1203,7 @@ check "symlink and .. leading to the symlinked working directory test" "cd '$AUD
 mkdir -p "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/O"
 echo one > "$AUDITDIR/r14/ud/A/f" && echo two > "$AUDITDIR/r14/ud/A/g"
 (cd "$AUDITDIR/r14/ud/A" && "$HASHIT" -f sqlite -o ../O/m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r14/ud/O/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 mv "$AUDITDIR/r14/ud/A" "$AUDITDIR/r14/ud/B" && mv "$AUDITDIR/r14/ud/O/m.db" "$AUDITDIR/r14/ud/B/"
 chmod 000 "$AUDITDIR/r14/ud/B/f"
 check "every spelling of an unreadable file in a moved sqlite tree is reported test" \
@@ -1200,7 +1223,7 @@ check "sum lines naming the same file with different correct hashes pass test" "
 mkdir -p "$AUDITDIR/r15/uo/A"
 echo one > "$AUDITDIR/r15/uo/A/f" && echo two > "$AUDITDIR/r15/uo/A/g"
 (cd "$AUDITDIR/r15/uo/A" && "$HASHIT" -f sqlite -o ../m.db . > /dev/null)
-sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, size, mtime from file_hashes where filepath = './f'"
+sqlite3 "$AUDITDIR/r15/uo/m.db" "insert into file_hashes select './/f', crc32, xxhash64, md4, md5, sha1, sha224, sha256, sha384, sha512, blake2b_256, blake2b_512, blake3, sha3_224, sha3_256, sha3_384, sha3_512, ed2k, tiger, whirlpool, size, mtime from file_hashes where filepath = './f'"
 mv "$AUDITDIR/r15/uo/A" "$AUDITDIR/r15/uo/B" && chmod 000 "$AUDITDIR/r15/uo/B/f"
 check "every spelling of an unreadable file in a moved tree with the sqlite file outside it test" \
     "cd '$AUDITDIR/r15/uo/B' && '$HASHIT' -v -a ../m.db . 2>/dev/null > ../uo.out; [ \"\$(grep -c 'File could not be read' ../uo.out)\" == 1 ] && ! grep -q 'not found' ../uo.out"

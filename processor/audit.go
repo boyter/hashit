@@ -108,7 +108,67 @@ func fileHashToRecord(f database.FileHash) *AuditRecord {
 	add(HashNames.Sha3384, f.Sha3384)
 	add(HashNames.Sha3512, f.Sha3512)
 	add(HashNames.Ed2k, f.Ed2k)
+	add(HashNames.Tiger, f.Tiger)
+	add(HashNames.Whirlpool, f.Whirlpool)
 	return r
+}
+
+// sqliteHashColumns are the hash columns of file_hashes, in the order database.FileHash holds them
+var sqliteHashColumns = []string{"crc32", "xxhash64", "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512",
+	"blake2b_256", "blake2b_512", "blake3", "sha3_224", "sha3_256", "sha3_384", "sha3_512", "ed2k", "tiger", "whirlpool"}
+
+type sqliteQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// sqlitePresentHashColumns returns the hash columns the audit database has, as databases written
+// before tiger and whirlpool were added, such as by 1.5.0, lack those columns
+func sqlitePresentHashColumns(ctx context.Context, q sqliteQueryer) ([]string, error) {
+	rows, err := q.QueryContext(ctx, "select name from pragma_table_info('file_hashes')")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var present []string
+	for _, column := range sqliteHashColumns {
+		if contains(names, column) {
+			present = append(present, column)
+		}
+	}
+	return present, nil
+}
+
+// sqliteRecordSelect returns the columns scanFileHash reads, from file_hashes named f, with null
+// for any hash column the database lacks
+func sqliteRecordSelect(present []string) string {
+	columns := []string{"f.filepath"}
+	for _, column := range sqliteHashColumns {
+		if contains(present, column) {
+			columns = append(columns, "f."+column)
+		} else {
+			columns = append(columns, "null")
+		}
+	}
+	return strings.Join(append(columns, "f.size", "f.mtime"), ", ")
+}
+
+// scanFileHash reads a row of the columns sqliteRecordSelect returns, followed by any extra columns
+func scanFileHash(scan func(...any) error, f *database.FileHash, extra ...any) error {
+	dest := []any{&f.Filepath, &f.Crc32, &f.Xxhash64, &f.Md4, &f.Md5, &f.Sha1, &f.Sha224, &f.Sha256, &f.Sha384, &f.Sha512,
+		&f.Blake2b256, &f.Blake2b512, &f.Blake3, &f.Sha3224, &f.Sha3256, &f.Sha3384, &f.Sha3512, &f.Ed2k, &f.Tiger, &f.Whirlpool,
+		&f.Size, &f.Mtime}
+	return scan(append(dest, extra...)...)
 }
 
 // hasCollateClause reports if SQL contains the keyword COLLATE, which hashit never writes, outside
@@ -229,7 +289,12 @@ func sqliteAuditHashes(pathName string) ([]string, error) {
 		}
 	}
 
-	first, err := database.New(db).FileHashFirst(context.Background())
+	present, err := sqlitePresentHashColumns(context.Background(), db)
+	if err != nil {
+		return nil, err
+	}
+	var first database.FileHash
+	err = scanFileHash(db.QueryRow("select "+sqliteRecordSelect(present)+" from file_hashes f limit 1").Scan, &first)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -541,8 +606,11 @@ func markSqliteDuplicates(ctx context.Context, tx *sql.Tx, base string) (int, er
 	// them, and the name is what follows the last separator. A row this misses is still reported
 	path := `replace(filepath, '\', '/')`
 	values := []string{"substr(" + path + ", length(rtrim(" + path + ", replace(" + path + ", '/', ''))) + 1)"}
-	for _, column := range []string{"crc32", "xxhash64", "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512",
-		"blake2b_256", "blake2b_512", "blake3", "sha3_224", "sha3_256", "sha3_384", "sha3_512", "ed2k"} {
+	present, err := sqlitePresentHashColumns(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	for _, column := range present {
 		values = append(values, "lower(ifnull("+column+", ''))")
 	}
 	key := "size || '|' || " + strings.Join(values, " || '|' || ")
@@ -636,6 +704,12 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	invokedFrom, _ := queries.MetadataGet(ctx, metadataInvokedFrom)
 	bases := auditBases(invokedFrom, AuditFile, cwd)
 
+	present, err := sqlitePresentHashColumns(ctx, db)
+	if err != nil {
+		printError(fmt.Sprintf("failed to read audit database: %s", err.Error()))
+		return "", false
+	}
+
 	relative, err := buildSqlitePathIndex(ctx, db, bases)
 	if err != nil {
 		printError(fmt.Sprintf("failed to index audit database: %s", err.Error()))
@@ -672,7 +746,7 @@ func doSqliteAudit(input chan Result) (string, bool) {
 	}
 	stmts := &sqliteStatements{tx: tx}
 	defer stmts.close()
-	txQueries := database.New(stmts)
+	byPath := "select " + sqliteRecordSelect(present) + " from file_hashes f where f.filepath = ?"
 
 	examinedCount := 0
 
@@ -713,7 +787,11 @@ func doSqliteAudit(input chan Result) (string, bool) {
 			votes[level]++
 		}
 		for _, c := range candidates {
-			row, err := txQueries.FileHashByFilePath(ctx, c.filePath)
+			var row database.FileHash
+			stmt, err := stmts.get(ctx, byPath)
+			if err == nil {
+				err = scanFileHash(stmt.QueryRowContext(ctx, c.filePath).Scan, &row)
+			}
 			if err != nil {
 				printError(fmt.Sprintf("failed to query audit database for file %s: %s", res.File, err.Error()))
 				break
@@ -850,9 +928,12 @@ func judgeSqliteAudit(ctx context.Context, db *sql.DB, tx *sql.Tx, stmts *sqlite
 	movedTo := make([]bool, len(newFileCandidates))
 
 	// stream every record in path order joined against what we saw, reporting as we go
-	rows, err := db.QueryContext(ctx, `select f.filepath, f.crc32, f.xxhash64, f.md4, f.md5, f.sha1, f.sha224, f.sha256, f.sha384, f.sha512,
-    f.blake2b_256, f.blake2b_512, f.blake3, f.sha3_224, f.sha3_256, f.sha3_384, f.sha3_512, f.ed2k, f.size, f.mtime,
-    s.status, s.disk_file
+	present, err := sqlitePresentHashColumns(ctx, db)
+	if err != nil {
+		printError(fmt.Sprintf("failed to query audit database: %s", err.Error()))
+		return "", false
+	}
+	rows, err := db.QueryContext(ctx, `select `+sqliteRecordSelect(present)+`, s.status, s.disk_file
 from file_hashes f left join temp.seen s on s.filepath = f.filepath
 where f.rowid not in (select rid from temp.duplicates)
 order by f.filepath`)
@@ -870,9 +951,7 @@ order by f.filepath`)
 		var f database.FileHash
 		var status sql.NullInt64
 		var diskFile sql.NullString
-		err := rows.Scan(&f.Filepath, &f.Crc32, &f.Xxhash64, &f.Md4, &f.Md5, &f.Sha1, &f.Sha224, &f.Sha256, &f.Sha384, &f.Sha512,
-			&f.Blake2b256, &f.Blake2b512, &f.Blake3, &f.Sha3224, &f.Sha3256, &f.Sha3384, &f.Sha3512, &f.Ed2k,
-			&f.Size, &f.Mtime, &status, &diskFile)
+		err := scanFileHash(rows.Scan, &f, &status, &diskFile)
 		if err != nil {
 			printError(fmt.Sprintf("failed to read audit database: %s", err.Error()))
 			return "", false

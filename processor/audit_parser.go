@@ -65,12 +65,14 @@ const (
 	FileMissing
 )
 
-// hashdeepColumns maps hashdeep column names to hashit hash names. Hashdeep also supports
-// tiger and whirlpool which we cannot calculate, so those columns are ignored
+// hashdeepColumns maps hashdeep column names to hashit hash names, which covers every hash
+// hashdeep can write
 var hashdeepColumns = map[string]string{
-	"md5":    HashNames.MD5,
-	"sha1":   HashNames.SHA1,
-	"sha256": HashNames.SHA256,
+	"md5":       HashNames.MD5,
+	"sha1":      HashNames.SHA1,
+	"sha256":    HashNames.SHA256,
+	"tiger":     HashNames.Tiger,
+	"whirlpool": HashNames.Whirlpool,
 }
 
 // bsdTagNames maps the algorithm names used by the BSD style output of md5sum --tag
@@ -94,29 +96,33 @@ var bsdTagNames = map[string]string{
 	"SHA3-256":    HashNames.Sha3256,
 	"SHA3-384":    HashNames.Sha3384,
 	"SHA3-512":    HashNames.Sha3512,
+	"TIGER":       HashNames.Tiger,
+	"WHIRLPOOL":   HashNames.Whirlpool,
 }
 
 // sumExtensions maps checksum file extensions to the hashes they usually contain, which lets us
 // tell apart hashes of the same length such as md4 and md5. Where tools can write more than one
 // length, such as b2sum -l 256, the hash matching the length of the value is used
 var sumExtensions = map[string][]string{
-	".crc32":    {HashNames.CRC32},
-	".md4":      {HashNames.MD4},
-	".md5":      {HashNames.MD5},
-	".sha1":     {HashNames.SHA1},
-	".sha224":   {HashNames.SHA224},
-	".sha256":   {HashNames.SHA256},
-	".sha384":   {HashNames.SHA384},
-	".sha512":   {HashNames.SHA512},
-	".blake2b":  {HashNames.Blake2b512, HashNames.Blake2b256},
-	".b2":       {HashNames.Blake2b512, HashNames.Blake2b256},
-	".blake3":   {HashNames.Blake3},
-	".sha3-224": {HashNames.Sha3224},
-	".sha3-256": {HashNames.Sha3256},
-	".sha3-384": {HashNames.Sha3384},
-	".sha3-512": {HashNames.Sha3512},
-	".b3":       {HashNames.Blake3},
-	".ed2k":     {HashNames.Ed2k},
+	".crc32":     {HashNames.CRC32},
+	".md4":       {HashNames.MD4},
+	".md5":       {HashNames.MD5},
+	".sha1":      {HashNames.SHA1},
+	".sha224":    {HashNames.SHA224},
+	".sha256":    {HashNames.SHA256},
+	".sha384":    {HashNames.SHA384},
+	".sha512":    {HashNames.SHA512},
+	".blake2b":   {HashNames.Blake2b512, HashNames.Blake2b256},
+	".b2":        {HashNames.Blake2b512, HashNames.Blake2b256},
+	".blake3":    {HashNames.Blake3},
+	".sha3-224":  {HashNames.Sha3224},
+	".sha3-256":  {HashNames.Sha3256},
+	".sha3-384":  {HashNames.Sha3384},
+	".sha3-512":  {HashNames.Sha3512},
+	".b3":        {HashNames.Blake3},
+	".ed2k":      {HashNames.Ed2k},
+	".tiger":     {HashNames.Tiger},
+	".whirlpool": {HashNames.Whirlpool},
 }
 
 // sumLengths is the hash assumed for a given hex length when the file extension does not tell us
@@ -125,6 +131,7 @@ var sumLengths = map[int]string{
 	16:  HashNames.XxHash64,
 	32:  HashNames.MD5,
 	40:  HashNames.SHA1,
+	48:  HashNames.Tiger,
 	56:  HashNames.SHA224,
 	64:  HashNames.SHA256,
 	96:  HashNames.SHA384,
@@ -150,13 +157,15 @@ var hashLengths = map[string]int{
 	HashNames.Sha3384:    96,
 	HashNames.Sha3512:    128,
 	HashNames.Ed2k:       32,
+	HashNames.Tiger:      48,
+	HashNames.Whirlpool:  128,
 }
 
 // hashPriority is the order hashes are compared and indexed in, strongest first
 var hashPriority = []string{
-	HashNames.SHA512, HashNames.Sha3512, HashNames.Blake2b512, HashNames.SHA384, HashNames.Sha3384,
-	HashNames.SHA256, HashNames.Sha3256, HashNames.Blake2b256, HashNames.Blake3,
-	HashNames.SHA224, HashNames.Sha3224, HashNames.SHA1, HashNames.MD5, HashNames.MD4, HashNames.Ed2k,
+	HashNames.SHA512, HashNames.Sha3512, HashNames.Blake2b512, HashNames.Whirlpool, HashNames.SHA384,
+	HashNames.Sha3384, HashNames.SHA256, HashNames.Sha3256, HashNames.Blake2b256, HashNames.Blake3,
+	HashNames.SHA224, HashNames.Sha3224, HashNames.Tiger, HashNames.SHA1, HashNames.MD5, HashNames.MD4, HashNames.Ed2k,
 	HashNames.XxHash64, HashNames.CRC32,
 }
 

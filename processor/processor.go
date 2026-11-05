@@ -228,6 +228,8 @@ var HashNames = Result{
 	Sha3384:    "sha3384",
 	Sha3512:    "sha3512",
 	Ed2k:       "ed2k",
+	Tiger:      "tiger",
+	Whirlpool:  "whirlpool",
 }
 
 // Process is the main entry point of the command line it sets everything up and starts running

@@ -7,6 +7,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/djherbis/times v1.6.0
 	github.com/gosuri/uiprogress v0.0.1
+	github.com/jzelinskie/whirlpool v0.0.0-20201016144138-0675e54bb004
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/spf13/cobra v1.10.2
 	github.com/zeebo/blake3 v0.2.4
