@@ -848,12 +848,12 @@ check "hashdeep file with every hash it writes audit test" "cd '$AUDITDIR/tw' &&
 check "sum files of tiger and whirlpool audit test" \
     "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger -f sum t > s.txt && '$HASHIT' -a s.txt t | grep -q 'Audit passed' && '$HASHIT' -c whirlpool -f sum t > s.whirlpool && '$HASHIT' -a s.whirlpool t | grep -q 'Audit passed'"
 check "sqlite tiger and whirlpool audit test" "cd '$AUDITDIR/tw' && '$HASHIT' -c tiger,whirlpool -f sqlite -o tw.db t > /dev/null && '$HASHIT' -c tiger,whirlpool -a tw.db t | grep -q 'Audit passed'"
-# a database written before tiger and whirlpool were added, such as by 1.5.0, has no columns for them
-check "sqlite database without tiger and whirlpool columns audit test" \
-    "cd '$AUDITDIR/tw' && '$HASHIT' -f sqlite -o old.db t > /dev/null && sqlite3 old.db 'alter table file_hashes drop column tiger; alter table file_hashes drop column whirlpool' && '$HASHIT' -a old.db t | grep -q 'Audit passed'"
+# a database written before tiger and whirlpool were added, such as by 1.5.0, has no columns for them and is refused
+check "sqlite database without tiger and whirlpool columns is refused test" \
+    "cd '$AUDITDIR/tw' && sqlite3 old.db 'create table file_hashes (filepath text primary key, md5 text, size integer, mtime text)' && ! '$HASHIT' -a old.db t > old.out 2>&1 && grep -q 'older version of hashit' old.out"
 echo changed >> "$AUDITDIR/tw/t/hi"
 check "modified file fails tiger and whirlpool audits test" \
-    "cd '$AUDITDIR/tw' && ! '$HASHIT' -a tw.hd t > /dev/null && ! '$HASHIT' -a all.hd t > /dev/null && ! '$HASHIT' -a s.txt t > /dev/null && ! '$HASHIT' -a s.whirlpool t > /dev/null && ! '$HASHIT' -c tiger,whirlpool -a tw.db t > /dev/null && ! '$HASHIT' -a old.db t > /dev/null && ! hashdeep -r -l -a -k tw.hd t > /dev/null"
+    "cd '$AUDITDIR/tw' && ! '$HASHIT' -a tw.hd t > /dev/null && ! '$HASHIT' -a all.hd t > /dev/null && ! '$HASHIT' -a s.txt t > /dev/null && ! '$HASHIT' -a s.whirlpool t > /dev/null && ! '$HASHIT' -c tiger,whirlpool -a tw.db t > /dev/null && ! hashdeep -r -l -a -k tw.hd t > /dev/null"
 if command -v rhash > /dev/null; then
     check "rhash bsd tiger and whirlpool file test" "cd '$AUDITDIR/unread' && rhash --tiger --whirlpool --bsd a > ../tw.sum && '$HASHIT' -a ../tw.sum a | grep -q 'Audit passed'"
 fi

@@ -441,7 +441,7 @@ This method is recommended for any large-scale or repeated auditing tasks.
 
 To generate a SQLite database of hashes, use the `--format sqlite` flag combined with `--output`. Without `--output` the database is written to `hashit.db`. It is recommended to use `--hash all` to store all possible hashes, which enables the most robust "paranoid" audit checks when the audit is also run with `--hash all`. That includes Whirlpool, which is much slower than the others, so for large collections `--hash sha512,blake3` or similar may be a better trade off.
 
-Databases written by `hashit` 1.5.0, before Tiger and Whirlpool were added, can still be audited. `hashit` 1.5.0 can audit newer databases too, using the hashes it knows, so long as the database holds at least one of them.
+Databases written by `hashit` 1.5.0, before Tiger and Whirlpool were added, cannot be audited by later versions, which say so, and need to be created again.
 
 ```shell
 # Generate a database with all hashes for the current directory
