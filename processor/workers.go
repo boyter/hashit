@@ -465,12 +465,37 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 		}()
 	}
 
+	closeAll := func() {
+		close(crc32c)
+		close(xxhash64c)
+		close(md4c)
+		close(md5c)
+		close(sha1c)
+		close(sha224c)
+		close(sha256c)
+		close(sha384c)
+		close(sha512c)
+		close(blake2b_256_c)
+		close(blake2b_512_c)
+		close(blake3c)
+		close(sha3_224_c)
+		close(sha3_256_c)
+		close(sha3_384_c)
+		close(sha3_512_c)
+		close(ed2k_c)
+		close(tiger_c)
+		close(whirlpool_c)
+	}
+
 	sum := 0
 	data := make([]byte, 4_194_304)
 	for {
 		n, err := file.Read(data)
 		if err != nil && err != io.EOF {
 			fileFailed(filename, fmt.Sprintf("reading file %s: %s", filename, err.Error()))
+			// the hashing goroutines would otherwise wait on their channels forever
+			closeAll()
+			wg.Wait()
 			return Result{}, err
 		}
 
@@ -555,26 +580,7 @@ func processScanner(filename string, fsize int, bar progressBar) (Result, error)
 		}
 	}
 
-	close(crc32c)
-	close(xxhash64c)
-	close(md4c)
-	close(md5c)
-	close(sha1c)
-	close(sha224c)
-	close(sha256c)
-	close(sha384c)
-	close(sha512c)
-	close(blake2b_256_c)
-	close(blake2b_512_c)
-	close(blake3c)
-	close(sha3_224_c)
-	close(sha3_256_c)
-	close(sha3_384_c)
-	close(sha3_512_c)
-	close(ed2k_c)
-	close(tiger_c)
-	close(whirlpool_c)
-
+	closeAll()
 	wg.Wait()
 
 	return Result{

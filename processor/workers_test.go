@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -218,5 +219,30 @@ func TestAllHashPathsAgree(t *testing.T) {
 		if got := scanner.hashValue(name); got != want {
 			t.Errorf("%s: processScanner expected %q got %q", name, want, got)
 		}
+	}
+}
+
+func TestProcessScannerReadErrorStopsGoroutines(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("reading a directory is how the read error is caused")
+	}
+	saved := Hash
+	defer func() { Hash = saved }()
+	Hash = []string{"all"}
+
+	// a directory opens but fails to read, which used to leave every hashing goroutine waiting
+	dir := t.TempDir()
+	defer func() {
+		failedFiles.Delete(dir)
+		fileErrors.Store(false)
+	}()
+	before := runtime.NumGoroutine()
+	for range 5 {
+		if _, err := processScanner(dir, 10, nil); err == nil {
+			t.Fatal("expected a read error")
+		}
+	}
+	if after := runtime.NumGoroutine(); after > before {
+		t.Errorf("expected no goroutines left running, %d before and %d after", before, after)
 	}
 }
