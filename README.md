@@ -309,6 +309,69 @@ Known files expecting: 14
         Files missing: 0
 ```
 
+#### Tiger and Whirlpool
+
+`hashdeep` calculates five hashes: MD5, SHA1, SHA256, Tiger and Whirlpool. It also ships as `tigerdeep` and `whirlpooldeep`, which write only one of them. Collections catalogued with those tools, such as forensic case files and archives, may hold only Tiger or Whirlpool, chosen as both come from outside the MD5 and SHA family. Tiger is a fast 192 bit hash, and Whirlpool is a 512 bit hash standardised in ISO/IEC 10118-3. `hashit` calculates both, so it can audit any file those tools write, and write files they can audit, without converting them or calculating the hashes again.
+
+Whirlpool is about ten times slower than SHA512, so only choose it when another tool or an existing catalogue needs it.
+
+To audit a `hashdeep` file holding Tiger and Whirlpool with `hashit`:
+
+```shell
+$ hashdeep -c tiger,whirlpool -r -l photos > photos.hd
+$ head -2 photos.hd
+%%%% HASHDEEP-1.0
+%%%% size,tiger,whirlpool,filename
+
+$ hashit -a photos.hd photos
+hashit: Audit passed
+       Files examined: 2
+Known files expecting: 2
+        Files matched: 2
+       Files modified: 0
+          Files moved: 0
+      New files found: 0
+        Files missing: 0
+```
+
+To write a `hashdeep` file with Tiger for `hashdeep` to audit, or every `hashdeep` hash with `-c all`:
+
+```shell
+$ hashit -f hashdeep -c sha256,tiger photos > photos.hd
+$ head -2 photos.hd
+%%%% HASHDEEP-1.0
+%%%% size,sha256,tiger,filename
+
+$ hashdeep -r -l -a -k photos.hd photos
+hashdeep: Audit passed
+
+$ hashit -f hashdeep -c all photos | head -2 | tail -1
+%%%% size,md5,sha1,sha256,tiger,whirlpool,filename
+```
+
+`tigerdeep` output can be audited as it is, as a hash of 48 characters can only be Tiger. A Whirlpool hash is 128 characters, as long as a SHA512 hash, so give `whirlpooldeep` output a `.whirlpool` extension:
+
+```shell
+$ tigerdeep -r -l photos > photos.tiger
+$ hashit -a photos.tiger photos
+hashit: Audit passed
+
+$ whirlpooldeep -r -l photos > photos.whirlpool
+$ hashit -a photos.whirlpool photos
+hashit: Audit passed
+```
+
+Both match the hashes `hashdeep` and `rhash` calculate:
+
+```shell
+$ hashit -c tiger,whirlpool photos/a.txt
+photos/a.txt (6 bytes)
+      Tiger b529747e5337b97818c401dd266799a693165013ce146cac
+  Whirlpool 63f8341c1720d76087bb66a8f3fc9ea21a279edeae866a3611ba425cbd9ac9a4e39b97066b492fed6037988a72a045344c8675107e6bb569276c2f597ea9cbb7
+```
+
+Here `photos/a.txt` holds `hello` and a newline.
+
 #### Understanding Audit Results
 
 `hashit`'s audit output is designed to be similar to `hashdeep`'s verbose output, providing a clear summary of what has changed.
