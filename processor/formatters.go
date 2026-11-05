@@ -530,6 +530,12 @@ func judgeAudit(founds []auditFound, newFileCandidates []Result, examinedCount i
 	if auditFailed(filesModified, moved, len(newFiles), filesMissing) {
 		status = Failed
 	}
+	// a single modified file is more likely changed than read as the wrong hash
+	if matched == 0 && filesModified > 1 {
+		if hint := auditor.GuessedHashHint(); hint != "" {
+			printWarn(hint)
+		}
+	}
 
 	// the below is output based on what we get from hashdeep
 	// verbose (not very verbose)

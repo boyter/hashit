@@ -303,3 +303,35 @@ func TestNewAuditorExtensionLengthMismatch(t *testing.T) {
 		}
 	}
 }
+
+func TestGuessedHashHint(t *testing.T) {
+	sha512Like := strings.Repeat("a", 128) + "  a.txt\n"
+	cases := []struct {
+		input, filename string
+		want            []string
+	}{
+		{sha512Like, "m.txt", []string{"read as sha512", "whirlpool (.whirlpool)", "sha3512 (.sha3-512)"}},
+		// the extension names the hash, so nothing was guessed
+		{sha512Like, "m.whirlpool", nil},
+		// a bsd tag names the hash
+		{"SHA512 (a.txt) = " + strings.Repeat("a", 128) + "\n", "m.txt", nil},
+		// only tiger is 48 long, so there is nothing else it could be
+		{strings.Repeat("a", 48) + "  a.txt\n", "m.txt", nil},
+		{"%%%% HASHDEEP-1.0\n%%%% size,md5,filename\n1," + strings.Repeat("a", 32) + ",a.txt\n", "m.txt", nil},
+	}
+	for _, c := range cases {
+		hdl, err := NewAuditor(c.input, c.filename)
+		if err != nil {
+			t.Fatalf("%s: %v", c.filename, err)
+		}
+		hint := hdl.GuessedHashHint()
+		if c.want == nil && hint != "" {
+			t.Errorf("%q in %s: expected no hint got %q", c.input, c.filename, hint)
+		}
+		for _, w := range c.want {
+			if !strings.Contains(hint, w) {
+				t.Errorf("%q in %s: expected hint containing %q got %q", c.input, c.filename, w, hint)
+			}
+		}
+	}
+}

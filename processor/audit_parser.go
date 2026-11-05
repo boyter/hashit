@@ -53,6 +53,7 @@ type Auditor struct {
 	source      string                    // the audit file's contents, see reparse
 	sourceName  string                    // the audit file's path, see reparse
 	excluded    []string                  // paths passed to Exclude, see reparse
+	guessed     []string                  // sum file hashes named only by their length, see GuessedHashHint
 }
 
 type FileStatus int
@@ -167,6 +168,42 @@ var hashPriority = []string{
 	HashNames.Sha3384, HashNames.SHA256, HashNames.Sha3256, HashNames.Blake2b256, HashNames.Blake3,
 	HashNames.SHA224, HashNames.Sha3224, HashNames.Tiger, HashNames.SHA1, HashNames.MD5, HashNames.MD4, HashNames.Ed2k,
 	HashNames.XxHash64, HashNames.CRC32,
+}
+
+// GuessedHashHint returns a warning for an audit where no file matched, when the sum file's hashes
+// were taken from their length alone and other hashes are as long, such as whirlpool output read as
+// sha512, or an empty string otherwise
+func (hdl *Auditor) GuessedHashHint() string {
+	var hints []string
+	for _, name := range hdl.guessed {
+		var others []string
+		for _, other := range hashPriority {
+			if other == name || hashLengths[other] != hashLengths[name] {
+				continue
+			}
+			var exts []string
+			for ext, names := range sumExtensions {
+				if contains(names, other) {
+					exts = append(exts, ext)
+				}
+			}
+			sort.Strings(exts)
+			if len(exts) != 0 {
+				others = append(others, fmt.Sprintf("%s (%s)", other, strings.Join(exts, " or ")))
+			}
+		}
+		if len(others) != 0 {
+			list := strings.Join(others, ", ")
+			if len(others) > 1 {
+				list = strings.Join(others[:len(others)-1], ", ") + " or " + others[len(others)-1]
+			}
+			hints = append(hints, fmt.Sprintf("hashes %d long were read as %s, if they are %s, give the audit file that extension", hashLengths[name], name, list))
+		}
+	}
+	if len(hints) == 0 {
+		return ""
+	}
+	return "no file matched the audit file; " + strings.Join(hints, "; ")
 }
 
 // NewAuditor parses the supplied audit file content. The filename is used to determine
@@ -1347,6 +1384,11 @@ func (hdl *Auditor) parseSumFile(input string, auditFilename string) error {
 		if !ok {
 			improper++
 			continue
+		}
+
+		// a GNU style line, which begins with its value, in a file whose extension does not name the hash
+		if len(extHashes) == 0 && strings.HasPrefix(strings.ToLower(strings.TrimPrefix(line, "\\")), value) && !contains(hdl.guessed, name) {
+			hdl.guessed = append(hdl.guessed, name)
 		}
 
 		// hashit's sum format writes one line per hash, so merge them into a single record
