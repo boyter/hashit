@@ -26,3 +26,33 @@ func TestTiger(t *testing.T) {
 		}
 	}
 }
+
+// as upstream checks, Sum part way through leaves the state alone, and Reset starts again
+func TestTigerSumAndReset(t *testing.T) {
+	d := New()
+	_, _ = d.Write([]byte("Ti"))
+	if got := hex.EncodeToString(d.Sum(nil)); got == "dd00230799f5009fec6debc838bb6a27df2b9d6f110c7937" {
+		t.Fatal("expected the hash of a partial write to differ")
+	}
+	_, _ = d.Write([]byte("ger"))
+	want := "dd00230799f5009fec6debc838bb6a27df2b9d6f110c7937"
+	if got := hex.EncodeToString(d.Sum(nil)); got != want {
+		t.Errorf("after Sum part way through: expected %s got %s", want, got)
+	}
+	if got := hex.EncodeToString(d.Sum(nil)); got != want {
+		t.Errorf("Sum called twice: expected %s got %s", want, got)
+	}
+	prefix := []byte("prefix")
+	if got := d.Sum(prefix); string(got[:len(prefix)]) != "prefix" || hex.EncodeToString(got[len(prefix):]) != want {
+		t.Errorf("Sum should append to its argument, got %x", got)
+	}
+
+	d.Reset()
+	_, _ = d.Write([]byte("abc"))
+	if got := hex.EncodeToString(d.Sum(nil)); got != "2aab1484e8c158f2bfb8c5ff41b57a525129131c957b5f93" {
+		t.Errorf("after Reset: expected the hash of abc got %s", got)
+	}
+	if d.Size() != 24 || d.BlockSize() != 64 {
+		t.Errorf("expected size 24 and block size 64, got %d and %d", d.Size(), d.BlockSize())
+	}
+}
