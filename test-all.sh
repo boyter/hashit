@@ -20,9 +20,12 @@ go test -shuffle on ./... || exit
 echo "Building application..."
 go build -ldflags="-s -w" || exit
 
-# illumos has no SQLite driver or progress bar support, so is built without them
+# illumos has no progress bar support, and solaris no SQLite driver either, so are built without them
 echo "Building for illumos..."
 GOOS=illumos GOARCH=amd64 go build -o /dev/null . || exit
+
+echo "Building for solaris..."
+GOOS=solaris GOARCH=amd64 go build -o /dev/null . || exit
 
 GREEN='\033[1;32m'
 RED='\033[0;31m'

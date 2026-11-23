@@ -110,6 +110,9 @@ Out of scope:
   [SBOM.md](SBOM.md) and [LICENSE-3RD-PARTY.md](LICENSE-3RD-PARTY.md) list
   exactly what this module carries and what is merely in the module graph.
 
+[THREAT-MODEL.md](THREAT-MODEL.md) goes through the driver layer, the page cache
+binding and the VFS bridge row by row, with the status of each.
+
 ### Vulnerabilities in SQLite itself
 
 This module does not link SQLite; it ships SQLite's C amalgamation transpiled

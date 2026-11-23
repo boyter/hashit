@@ -237,8 +237,6 @@ const kGUARD_EXC_MOVE_PROVISIONAL_REPLY_PORT = 1048580
 
 const kGUARD_EXC_PROVISIONAL_REPLY_PORT = 1048578
 
-type stat64 = Tstat64
-
 type statfs64 = Tstatfs64
 
 type t__darwin_fp_control = struct {

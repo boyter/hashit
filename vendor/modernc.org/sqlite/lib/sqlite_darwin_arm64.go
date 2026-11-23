@@ -14,8 +14,6 @@ type Dl_info_t = TDl_info_t
  * Special handle values for dlsym().
  */
 
-const FD_CLOFORK = 2
-
 const F_DUPFD_CLOFORK = 115
 
 const F_RDADVISEV = 116
@@ -63,8 +61,6 @@ const TARGET_OS_ARROW = 1
 const TARGET_OS_FIRMWARE = 0
 
 const TARGET_OS_KERNELKIT = 0
-
-type Tboolean_t = int32
 
 type Tradvisoryv = struct {
 	Frav_flags  uint32
@@ -198,8 +194,6 @@ const __AARCH64_SIMD__ = 1
 
 const __ARM64_ARCH_8__ = 1
 
-const __ARM_ACLE = 202420
-
 const __ARM_ARCH_8_2__ = 1
 
 const __ARM_ARCH_8_3__ = 1
@@ -244,8 +238,6 @@ const __ARM_FEATURE_SHA3 = 1
 
 const __ARM_FEATURE_SHA512 = 1
 
-const __ARM_NEON_SVE_BRIDGE = 1
-
 const __BRIDGEOS_10_5 = 100500
 
 const __BRIDGEOS_10_6 = 100600
@@ -263,8 +255,6 @@ const __DRIVERKIT_27_0 = 270000
 const __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ = 270000
 
 const __ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ = 270000
-
-const __FUNCTION_MULTI_VERSIONING_SUPPORT_LEVEL = 202430
 
 const __IPHONE_26_6 = 260600
 
