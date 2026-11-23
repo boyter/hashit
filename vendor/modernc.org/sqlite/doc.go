@@ -29,6 +29,16 @@
 // environment the process starts with, or call [OFDLocking] from Go. See the
 // [OFDLocking] documentation for the full contract.
 //
+// # Syncing with fdatasync
+//
+// SQLite commits with fsync(2), which on a journaling file system also
+// flushes the file's timestamps through the journal. The library can sync
+// with fdatasync(2) instead, which skips that and keeps a commit just as
+// durable. The switch is process-wide, off by default, and honored on Linux,
+// FreeBSD, illumos and NetBSD: call [Fdatasync] from Go at any time;
+// [FdatasyncEnabled] reports the setting. See the [Fdatasync] documentation
+// for the full contract.
+//
 // # Fragile modernc.org/libc dependency
 //
 // When you import this package you should use in your go.mod file the exact
@@ -59,6 +69,7 @@
 //	freebsd	amd64   3.54.1
 //	freebsd	arm     3.54.1
 //	freebsd	arm64   3.54.1
+//	illumos	amd64   3.54.1
 //	linux	386     3.54.1
 //	linux	amd64   3.54.1
 //	linux	arm     3.54.1
@@ -169,11 +180,13 @@
 //
 // A driver connection reached through [sql.Conn.Raw] is not safe for
 // concurrent use, and must not be used after the function passed to Raw
-// returns. Every connection is opened with SQLITE_OPEN_FULLMUTEX, but that
-// serializes access only inside SQLite: the driver's own per-connection
-// state, including the [modernc.org/libc.TLS] every call into SQLite runs
-// on, is used before that mutex is reached, and two goroutines using one
-// connection can corrupt memory.
+// returns; two goroutines using one connection can corrupt memory. Every
+// connection is opened with SQLITE_OPEN_NOMUTEX, SQLite's multi-thread
+// mode: SQLite keeps connections that share a cache apart, but does not
+// serialize calls on one connection. Nor did SQLITE_OPEN_FULLMUTEX, which
+// connections were opened with up to v1.62.0: every call on a connection
+// runs on the same [modernc.org/libc.TLS], and SQLite's connection mutex
+// lets in any caller on the TLS that holds it.
 //
 // # Debug and development versions
 //

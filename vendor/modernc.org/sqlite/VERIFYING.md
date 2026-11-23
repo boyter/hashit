@@ -9,7 +9,11 @@ release of the tag links both files. No key is involved: the signing
 certificate is issued for that one job and names it, and the signature is
 recorded in Sigstore's public transparency log.
 
-Releases tagged before this job existed have no document.
+Releases tagged before this job existed have no document, and neither has
+v1.61.0, the first tag the job ran for: that run copied `vendor.json` into the
+document from a working tree `make vendor-check` had just stamped again with
+the job's own Go release, and `attest -verify` refused the document against the
+committed file. Since v1.61.1 the copy is taken from the tagged commit.
 
 ## What a verified document tells you
 

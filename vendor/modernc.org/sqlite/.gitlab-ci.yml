@@ -128,7 +128,10 @@ attestgen:
 # digest, since the job holds the identity cosign signs with; it is
 # golang:1.27.1. vendor-check compares everything in vendor.json but its go
 # field, which names the Go of the last make vendor, and the document's
-# builder.go records the Go that vendored again here.
+# builder.go records the Go that vendored again here; the document's vendor
+# is the committed vendor.json, read from the commit, not the copy
+# vendor-check leaves stamped with this image's Go. The v1.61.0 job read that
+# copy and failed its own verification, so that release has no document.
 attest:
   stage: attest
   image: golang:1.27.1@sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244

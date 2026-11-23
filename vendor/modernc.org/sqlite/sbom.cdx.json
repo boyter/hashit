@@ -638,11 +638,11 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:golang/modernc.org/cc/v4@v4.30.3",
+      "bom-ref": "pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b",
       "name": "modernc.org/cc/v4",
-      "version": "v4.30.3",
+      "version": "v4.30.6-0.20261101114202-1b9d1a076f6b",
       "scope": "excluded",
-      "purl": "pkg:golang/modernc.org/cc/v4@v4.30.3",
+      "purl": "pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b",
       "licenses": [
         {
           "license": {
@@ -657,7 +657,7 @@
         },
         {
           "type": "distribution",
-          "url": "https://proxy.golang.org/modernc.org/cc/v4/@v/v4.30.3.zip"
+          "url": "https://proxy.golang.org/modernc.org/cc/v4/@v/v4.30.6-0.20261101114202-1b9d1a076f6b.zip"
         }
       ],
       "properties": [
@@ -669,11 +669,11 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:golang/modernc.org/ccgo/v4@v4.37.0",
+      "bom-ref": "pkg:golang/modernc.org/ccgo/v4@v4.38.1",
       "name": "modernc.org/ccgo/v4",
-      "version": "v4.37.0",
+      "version": "v4.38.1",
       "scope": "excluded",
-      "purl": "pkg:golang/modernc.org/ccgo/v4@v4.37.0",
+      "purl": "pkg:golang/modernc.org/ccgo/v4@v4.38.1",
       "licenses": [
         {
           "license": {
@@ -688,7 +688,7 @@
         },
         {
           "type": "distribution",
-          "url": "https://proxy.golang.org/modernc.org/ccgo/v4/@v/v4.37.0.zip"
+          "url": "https://proxy.golang.org/modernc.org/ccgo/v4/@v/v4.38.1.zip"
         }
       ],
       "properties": [
@@ -829,11 +829,11 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:golang/modernc.org/libc@v1.79.0",
+      "bom-ref": "pkg:golang/modernc.org/libc@v1.80.1",
       "name": "modernc.org/libc",
-      "version": "v1.79.0",
+      "version": "v1.80.1",
       "scope": "required",
-      "purl": "pkg:golang/modernc.org/libc@v1.79.0",
+      "purl": "pkg:golang/modernc.org/libc@v1.80.1",
       "licenses": [
         {
           "license": {
@@ -848,7 +848,7 @@
         },
         {
           "type": "distribution",
-          "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.79.0.zip"
+          "url": "https://proxy.golang.org/modernc.org/libc/@v/v1.80.1.zip"
         }
       ],
       "properties": [
@@ -1145,7 +1145,7 @@
         "pkg:golang/github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
         "pkg:golang/golang.org/x/sys@v0.49.0",
         "pkg:golang/modernc.org/fileutil@v1.4.0",
-        "pkg:golang/modernc.org/libc@v1.79.0",
+        "pkg:golang/modernc.org/libc@v1.80.1",
         "pkg:golang/modernc.org/mathutil@v1.7.1",
         "pkg:golang/modernc.org/memory@v1.12.1",
         "repo:SQLite-TCL-test-suite",
@@ -1200,10 +1200,10 @@
       "ref": "pkg:golang/golang.org/x/tools@v0.52.0"
     },
     {
-      "ref": "pkg:golang/modernc.org/cc/v4@v4.30.3"
+      "ref": "pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b"
     },
     {
-      "ref": "pkg:golang/modernc.org/ccgo/v4@v4.37.0"
+      "ref": "pkg:golang/modernc.org/ccgo/v4@v4.38.1"
     },
     {
       "ref": "pkg:golang/modernc.org/fileutil@v1.4.0",
@@ -1222,7 +1222,7 @@
       "ref": "pkg:golang/modernc.org/goabi0@v0.2.0"
     },
     {
-      "ref": "pkg:golang/modernc.org/libc@v1.79.0",
+      "ref": "pkg:golang/modernc.org/libc@v1.80.1",
       "dependsOn": [
         "pkg:golang/github.com/dustin/go-humanize@v1.1.0",
         "pkg:golang/github.com/google/uuid@v1.6.0",
@@ -1234,8 +1234,8 @@
         "pkg:golang/golang.org/x/sync@v0.24.0",
         "pkg:golang/golang.org/x/sys@v0.49.0",
         "pkg:golang/golang.org/x/tools@v0.52.0",
-        "pkg:golang/modernc.org/cc/v4@v4.30.3",
-        "pkg:golang/modernc.org/ccgo/v4@v4.37.0",
+        "pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b",
+        "pkg:golang/modernc.org/ccgo/v4@v4.38.1",
         "pkg:golang/modernc.org/fileutil@v1.4.0",
         "pkg:golang/modernc.org/gc/v2@v2.6.5",
         "pkg:golang/modernc.org/gc/v3@v3.2.0",

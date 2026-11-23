@@ -18,8 +18,6 @@ const FIODTYPE = 1074030202
 
 const IOCPARM_MAX = 8192
 
-const MADV_FREE = 5
-
 const MAP_RESERVED0080 = 128
 
 const MINCORE_INCORE = 1
@@ -46,10 +44,6 @@ type T_RuneRange = struct {
 type Tdl_info = TDl_info
 
 const UF_HIDDEN = 32768
-
-const UTIME_NOW = -1
-
-const UTIME_OMIT = -2
 
 // C documentation
 //
@@ -79,7 +73,7 @@ func Xsqlite3_result_str(tls *libc.TLS, pCtx uintptr, pStr uintptr, eOwn int32) 
 	if libc.Int32FromUint8((*Tsqlite3_str)(unsafe.Pointer(pStr)).FaccError) == 0 {
 		if (*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar == uint32(0) {
 			_setResultStrOrError(tls, pCtx, __ccgo_ts+1730, 0, uint8(SQLITE_UTF8_ZT), libc.UintptrFromInt32(0))
-			Xsqlite3_str_reset(tls, pStr)
+			_sqlite3_str_reset__ccgo_gp(tls, unsafe.Pointer(pStr))
 		} else {
 			zText = Xsqlite3_str_value(tls, pStr)
 			/* Only internal code has the ability to capture a pointer to
@@ -91,7 +85,7 @@ func Xsqlite3_result_str(tls *libc.TLS, pCtx uintptr, pStr uintptr, eOwn int32) 
 				_setResultStrOrError(tls, pCtx, zText, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar), uint8(SQLITE_UTF8), uintptr(-libc.Int32FromInt32(1)))
 			} else {
 				_setResultStrOrError(tls, pCtx, zText, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FnChar), uint8(SQLITE_UTF8_ZT), __ccgo_fp(_sqlite3RowSetClear))
-				_sqlite3StrAccumInit(tls, pStr, (*Tsqlite3_str)(unsafe.Pointer(pStr)).Fdb, uintptr(0), 0, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FmxAlloc))
+				_sqlite3StrAccumInit(tls, unsafe.Pointer(pStr), (*Tsqlite3_str)(unsafe.Pointer(pStr)).Fdb, uintptr(0), 0, libc.Int32FromUint32((*Tsqlite3_str)(unsafe.Pointer(pStr)).FmxAlloc))
 			}
 		}
 	} else {
@@ -730,7 +724,7 @@ func _dotlockLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 	rc = (*(*func(*libc.TLS, uintptr, Tmode_t) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(18)].FpCurrent})))(tls, zLockFile, uint16(0777))
 	if rc < 0 {
 		/* failed to open/create the lock directory */
-		tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+		tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 		if int32(EEXIST) == tErrno {
 			rc = int32(SQLITE_BUSY)
 		} else {
@@ -777,7 +771,7 @@ func _dotlockUnlock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 	/* To fully unlock the database, delete the lock file */
 	rc = (*(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(19)].FpCurrent})))(tls, zLockFile)
 	if rc < 0 {
-		tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+		tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 		if tErrno == int32(ENOENT) {
 			rc = SQLITE_OK
 		} else {
@@ -830,7 +824,7 @@ func _robust_close(tls *libc.TLS, pFile uintptr, h int32, lineno int32) {
 func _robust_ftruncate(tls *libc.TLS, h int32, sz Tsqlite3_int64) (r int32) {
 	var rc int32
 	_ = rc
-	for cond := true; cond; cond = rc < 0 && **(**int32)(__ccgo_up(libc.X__error(tls))) == int32(EINTR) {
+	for cond := true; cond; cond = rc < 0 && *(*int32)(__ccgo_ptr(libc.X__error(tls))) == int32(EINTR) {
 		rc = (*(*func(*libc.TLS, int32, Toff_t) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(6)].FpCurrent})))(tls, h, sz)
 	}
 	return rc
@@ -997,18 +991,18 @@ func _unixLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 	 ** acquiring an EXCLUSIVE lock.  For the SHARED lock, the PENDING will
 	 ** be released.
 	 */
-	(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(1)
-	(**(**Tflock)(__ccgo_up(bp))).Fl_whence = SEEK_SET
+	(*(*Tflock)(__ccgo_ptr(bp))).Fl_len = int64(1)
+	(*(*Tflock)(__ccgo_ptr(bp))).Fl_whence = SEEK_SET
 	if eFileLock == int32(SHARED_LOCK) || eFileLock == int32(EXCLUSIVE_LOCK) && libc.Int32FromUint8((*TunixFile)(unsafe.Pointer(pFile)).FeFileLock) == int32(RESERVED_LOCK) {
 		if eFileLock == int32(SHARED_LOCK) {
 			v1 = int32(F_RDLCK)
 		} else {
 			v1 = int32(F_WRLCK)
 		}
-		(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(v1)
-		(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_type = int16(v1)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_start = int64(_sqlite3PendingByte)
 		if _unixFileLock(tls, pFile, bp) != 0 {
-			tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+			tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 			rc = _sqliteErrorFromPosixError(tls, tErrno, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(15)<<libc.Int32FromInt32(8))
 			if rc != int32(SQLITE_BUSY) {
 				_storeLastErrno(tls, pFile, tErrno)
@@ -1026,19 +1020,19 @@ func _unixLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 	 */
 	if eFileLock == int32(SHARED_LOCK) {
 		/* Now get the read-lock */
-		(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
-		(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(SHARED_SIZE)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_len = int64(SHARED_SIZE)
 		if _unixFileLock(tls, pFile, bp) != 0 {
-			tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+			tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 			rc = _sqliteErrorFromPosixError(tls, tErrno, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(15)<<libc.Int32FromInt32(8))
 		}
 		/* Drop the temporary PENDING lock */
-		(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte)
-		(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(1)
-		(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_UNLCK)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_start = int64(_sqlite3PendingByte)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_len = int64(1)
+		(*(*Tflock)(__ccgo_ptr(bp))).Fl_type = int16(F_UNLCK)
 		if _unixFileLock(tls, pFile, bp) != 0 && rc == SQLITE_OK {
 			/* This could happen with a network mount */
-			tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+			tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 			rc = libc.Int32FromInt32(SQLITE_IOERR) | libc.Int32FromInt32(8)<<libc.Int32FromInt32(8)
 		}
 		if rc != 0 {
@@ -1075,16 +1069,16 @@ func _unixLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 				 ** assumed that there is a SHARED or greater lock on the file
 				 ** already.
 				 */
-				(**(**Tflock)(__ccgo_up(bp))).Fl_type = int16(F_WRLCK)
+				(*(*Tflock)(__ccgo_ptr(bp))).Fl_type = int16(F_WRLCK)
 				if eFileLock == int32(RESERVED_LOCK) {
-					(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(1))
-					(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(1)
+					(*(*Tflock)(__ccgo_ptr(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(1))
+					(*(*Tflock)(__ccgo_ptr(bp))).Fl_len = int64(1)
 				} else {
-					(**(**Tflock)(__ccgo_up(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
-					(**(**Tflock)(__ccgo_up(bp))).Fl_len = int64(SHARED_SIZE)
+					(*(*Tflock)(__ccgo_ptr(bp))).Fl_start = int64(_sqlite3PendingByte + libc.Int32FromInt32(2))
+					(*(*Tflock)(__ccgo_ptr(bp))).Fl_len = int64(SHARED_SIZE)
 				}
 				if _unixFileLock(tls, pFile, bp) != 0 {
-					tErrno = **(**int32)(__ccgo_up(libc.X__error(tls)))
+					tErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls)))
 					rc = _sqliteErrorFromPosixError(tls, tErrno, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(15)<<libc.Int32FromInt32(8))
 					if rc != int32(SQLITE_BUSY) {
 						_storeLastErrno(tls, pFile, tErrno)
@@ -1127,8 +1121,8 @@ func _unixLogErrorAtLine(tls *libc.TLS, errcode int32, zFunc uintptr, zPath uint
 	defer tls.Free(48)
 	var iErrno int32
 	var zErr uintptr
-	_, _ = iErrno, zErr                                 /* Message from strerror() or equivalent */
-	iErrno = **(**int32)(__ccgo_up(libc.X__error(tls))) /* Saved syscall error number */
+	_, _ = iErrno, zErr                                /* Message from strerror() or equivalent */
+	iErrno = *(*int32)(__ccgo_ptr(libc.X__error(tls))) /* Saved syscall error number */
 	/* If this is not a threadsafe build (SQLITE_THREADSAFE==0), then use
 	 ** the strerror() function to obtain the human-readable error message
 	 ** equivalent to errno. Otherwise, use strerror_r().
@@ -1162,7 +1156,7 @@ func _unixTruncate(tls *libc.TLS, id uintptr, nByte Ti64) (r int32) {
 	}
 	rc = _robust_ftruncate(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, nByte)
 	if rc != 0 {
-		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__error(tls))))
+		_storeLastErrno(tls, pFile, *(*int32)(__ccgo_ptr(libc.X__error(tls))))
 		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3590, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44782))
 	} else {
 		/* If the file was just truncated to a size smaller than the currently

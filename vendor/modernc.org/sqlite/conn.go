@@ -111,13 +111,22 @@ func newConn(dsn string) (*conn, error) {
 	// completes. sqlite3_initialize fires implicitly inside openV2 the
 	// first time; after that point SQLITE_CONFIG_PCACHE2 can no longer be
 	// installed. See pagecache.go for the lifecycle contract.
+	//
+	// SQLITE_OPEN_NOMUTEX: SQLite's connection mutex is recursive and knows
+	// its owner by the libc.TLS, and every call on c runs on c.tls, so the
+	// mutex SQLITE_OPEN_FULLMUTEX adds never kept a second goroutine using
+	// c out; it only cost a lock and an unlock per sqlite3_column_* call.
+	// The one call made on c.db with another TLS, sqlite3_interrupt, does
+	// not take it. Connections sharing a cache are still serialized by the
+	// BtShared mutex, which does not depend on this flag. See
+	// https://github.com/modernc-org/sqlite/issues/13.
 	var db uintptr
 	if gateErr := withOpenGate(func() error {
 		db, err = c.openV2(
 			dsn,
 			vfsName,
 			sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
-				sqlite3.SQLITE_OPEN_FULLMUTEX|
+				sqlite3.SQLITE_OPEN_NOMUTEX|
 				sqlite3.SQLITE_OPEN_URI,
 		)
 		return err
@@ -273,7 +282,9 @@ func (c *conn) columnBlob(pstmt uintptr, iCol int) (v []byte, err error) {
 	}
 
 	if p == 0 || len == 0 {
-		return nil, nil
+		// A zero-length BLOB has no pointer. Return an empty slice, since
+		// database/sql reads nil as NULL.
+		return make([]byte, 0), nil
 	}
 
 	v = make([]byte, len)
@@ -530,12 +541,23 @@ func (c *conn) retry(pstmt uintptr) error {
 	return nil
 }
 
-func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []uintptr, err error) {
+// cBinding is a C buffer bind allocated for a text or blob argument, and the
+// 1-based index of the parameter it is bound to. The caller frees the buffer
+// once the statement has run and, for a cached statement, unbinds the
+// parameter, see clearBindings.
+type cBinding struct {
+	p   uintptr
+	idx int32
+}
+
+func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []cBinding, err error) {
 	defer func() {
 		if err == nil {
 			return
 		}
 
+		// Leave no parameter pointing into the freed buffers.
+		c.clearBindings(pstmt, allocs)
 		c.freeAllocs(allocs)
 		allocs = nil
 	}()
@@ -614,7 +636,7 @@ func (c *conn) bind(pstmt uintptr, n int, args []driver.NamedValue) (allocs []ui
 			return allocs, fmt.Errorf("sqlite: invalid driver.Value type %T", x)
 		}
 		if p != 0 {
-			allocs = append(allocs, p)
+			allocs = append(allocs, cBinding{p, int32(i)})
 		}
 	}
 	return allocs, nil
@@ -964,9 +986,9 @@ func (c *conn) free(p uintptr) {
 	}
 }
 
-func (c *conn) freeAllocs(allocs []uintptr) {
+func (c *conn) freeAllocs(allocs []cBinding) {
 	for _, v := range allocs {
-		c.free(v)
+		c.free(v.p)
 	}
 }
 
@@ -1269,6 +1291,33 @@ func (c *conn) newStmtContext(ctx context.Context, query string) (*stmt, error) 
 		return nil, ctx.Err()
 	}
 	return s, err
+}
+
+// withWaitCtx runs f with ctx as the context of the call in progress, so that
+// a wait for a lock in f, under busy_timeout or with a shared cache, ends once
+// ctx is done, see busyHandler and retry; the outer call's context is restored
+// afterwards. A failure of f once ctx is done is reported as ctx.Err(). Only
+// the waits watch ctx: f is not interrupted, and a ctx without a deadline or
+// cancellation changes nothing.
+func (c *conn) withWaitCtx(ctx context.Context, f func() error) error {
+	if ctx == nil || ctx.Done() == nil {
+		return f()
+	}
+
+	prevWaitCtx := c.waitCtx
+	c.waitCtx = ctx
+	defer func() { c.waitCtx = prevWaitCtx }()
+
+	c.ensureBusyHandler()
+	if err := f(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // Queryer is an optional interface that may be implemented by a Conn.

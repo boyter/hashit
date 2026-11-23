@@ -3,7 +3,7 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "modernc.org/sqlite",
-  "documentNamespace": "https://gitlab.com/cznic/sqlite/-/spdx/0738672427d583e06bcafdb35c2c83b9ed165ac2ebd5c2b2188f9e4634e92364",
+  "documentNamespace": "https://gitlab.com/cznic/sqlite/-/spdx/188fd644d8916341771bc95027e346cd8afb010a72d78ebd09765a4661bf7966",
   "creationInfo": {
     "created": "1970-01-01T00:00:00Z",
     "creators": [
@@ -362,10 +362,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-modernc.org-cc-v4-v4.30.3",
+      "SPDXID": "SPDXRef-Package-modernc.org-cc-v4-v4.30.6-0.20261101114202-1b9d1a076f6b",
       "name": "modernc.org/cc/v4",
-      "versionInfo": "v4.30.3",
-      "downloadLocation": "https://proxy.golang.org/modernc.org/cc/v4/@v/v4.30.3.zip",
+      "versionInfo": "v4.30.6-0.20261101114202-1b9d1a076f6b",
+      "downloadLocation": "https://proxy.golang.org/modernc.org/cc/v4/@v/v4.30.6-0.20261101114202-1b9d1a076f6b.zip",
       "filesAnalyzed": false,
       "homepage": "https://pkg.go.dev/modernc.org/cc/v4",
       "licenseConcluded": "BSD-3-Clause",
@@ -376,15 +376,15 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:golang/modernc.org/cc/v4@v4.30.3"
+          "referenceLocator": "pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-modernc.org-ccgo-v4-v4.37.0",
+      "SPDXID": "SPDXRef-Package-modernc.org-ccgo-v4-v4.38.1",
       "name": "modernc.org/ccgo/v4",
-      "versionInfo": "v4.37.0",
-      "downloadLocation": "https://proxy.golang.org/modernc.org/ccgo/v4/@v/v4.37.0.zip",
+      "versionInfo": "v4.38.1",
+      "downloadLocation": "https://proxy.golang.org/modernc.org/ccgo/v4/@v/v4.38.1.zip",
       "filesAnalyzed": false,
       "homepage": "https://pkg.go.dev/modernc.org/ccgo/v4",
       "licenseConcluded": "BSD-3-Clause",
@@ -395,7 +395,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:golang/modernc.org/ccgo/v4@v4.37.0"
+          "referenceLocator": "pkg:golang/modernc.org/ccgo/v4@v4.38.1"
         }
       ]
     },
@@ -476,10 +476,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Package-modernc.org-libc-v1.79.0",
+      "SPDXID": "SPDXRef-Package-modernc.org-libc-v1.80.1",
       "name": "modernc.org/libc",
-      "versionInfo": "v1.79.0",
-      "downloadLocation": "https://proxy.golang.org/modernc.org/libc/@v/v1.79.0.zip",
+      "versionInfo": "v1.80.1",
+      "downloadLocation": "https://proxy.golang.org/modernc.org/libc/@v/v1.80.1.zip",
       "filesAnalyzed": false,
       "homepage": "https://pkg.go.dev/modernc.org/libc",
       "licenseConcluded": "BSD-3-Clause",
@@ -490,7 +490,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:golang/modernc.org/libc@v1.79.0"
+          "referenceLocator": "pkg:golang/modernc.org/libc@v1.80.1"
         }
       ]
     },
@@ -659,12 +659,12 @@
       "relatedSpdxElement": "SPDXRef-Package-modernc.org-sqlite"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.79.0",
+      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.80.1",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-Package-Go"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.79.0",
+      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.80.1",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-Package-NixOS-nixpkgs"
     },
@@ -729,7 +729,7 @@
       "relatedSpdxElement": "SPDXRef-Package-github.com-remyoudompheng-bigfft-v0.0.0-20230129092748-24d4a6f8daec"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.79.0",
+      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.80.1",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-Package-go-netdb"
     },
@@ -754,12 +754,12 @@
       "relatedSpdxElement": "SPDXRef-Package-modernc.org-sqlite"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-cc-v4-v4.30.3",
+      "spdxElementId": "SPDXRef-Package-modernc.org-cc-v4-v4.30.6-0.20261101114202-1b9d1a076f6b",
       "relationshipType": "OPTIONAL_DEPENDENCY_OF",
       "relatedSpdxElement": "SPDXRef-Package-modernc.org-sqlite"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-ccgo-v4-v4.37.0",
+      "spdxElementId": "SPDXRef-Package-modernc.org-ccgo-v4-v4.38.1",
       "relationshipType": "OPTIONAL_DEPENDENCY_OF",
       "relatedSpdxElement": "SPDXRef-Package-modernc.org-sqlite"
     },
@@ -786,7 +786,7 @@
     {
       "spdxElementId": "SPDXRef-Package-modernc.org-sqlite",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-modernc.org-libc-v1.79.0"
+      "relatedSpdxElement": "SPDXRef-Package-modernc.org-libc-v1.80.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-modernc.org-sqlite",
@@ -819,7 +819,7 @@
       "relatedSpdxElement": "SPDXRef-Package-modernc.org-sqlite"
     },
     {
-      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.79.0",
+      "spdxElementId": "SPDXRef-Package-modernc.org-libc-v1.80.1",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-Package-musl-libc"
     },

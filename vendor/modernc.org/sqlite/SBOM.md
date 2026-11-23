@@ -65,7 +65,7 @@ embedded in both JSON documents as well.
 | Go | -- | `BSD-3-Clause` | -- |
 | go-netdb | -- | `MIT` | -- |
 | golang.org/x/sys | v0.49.0 | `BSD-3-Clause` | `pkg:golang/golang.org/x/sys@v0.49.0` |
-| modernc.org/libc | v1.79.0 | `BSD-3-Clause` | `pkg:golang/modernc.org/libc@v1.79.0` |
+| modernc.org/libc | v1.80.1 | `BSD-3-Clause` | `pkg:golang/modernc.org/libc@v1.80.1` |
 | modernc.org/mathutil | v1.7.1 | `BSD-3-Clause` | `pkg:golang/modernc.org/mathutil@v1.7.1` |
 | modernc.org/memory | v1.12.1 | `BSD-3-Clause AND LicenseRef-L5` | `pkg:golang/modernc.org/memory@v1.12.1` |
 | musl libc | -- | `MIT` | -- |
@@ -93,8 +93,8 @@ embedded in both JSON documents as well.
 | golang.org/x/mod | v0.42.0 | `BSD-3-Clause` | `pkg:golang/golang.org/x/mod@v0.42.0` |
 | golang.org/x/sync | v0.24.0 | `BSD-3-Clause` | `pkg:golang/golang.org/x/sync@v0.24.0` |
 | golang.org/x/tools | v0.52.0 | `BSD-3-Clause` | `pkg:golang/golang.org/x/tools@v0.52.0` |
-| modernc.org/cc/v4 | v4.30.3 | `BSD-3-Clause` | `pkg:golang/modernc.org/cc/v4@v4.30.3` |
-| modernc.org/ccgo/v4 | v4.37.0 | `BSD-3-Clause` | `pkg:golang/modernc.org/ccgo/v4@v4.37.0` |
+| modernc.org/cc/v4 | v4.30.6-0.20261101114202-1b9d1a076f6b | `BSD-3-Clause` | `pkg:golang/modernc.org/cc/v4@v4.30.6-0.20261101114202-1b9d1a076f6b` |
+| modernc.org/ccgo/v4 | v4.38.1 | `BSD-3-Clause` | `pkg:golang/modernc.org/ccgo/v4@v4.38.1` |
 | modernc.org/gc/v2 | v2.6.5 | `BSD-3-Clause` | `pkg:golang/modernc.org/gc/v2@v2.6.5` |
 | modernc.org/gc/v3 | v3.2.0 | `BSD-3-Clause` | `pkg:golang/modernc.org/gc/v3@v3.2.0` |
 | modernc.org/goabi0 | v0.2.0 | `BSD-3-Clause` | `pkg:golang/modernc.org/goabi0@v0.2.0` |

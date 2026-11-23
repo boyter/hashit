@@ -14,10 +14,14 @@ import (
 
 type tx struct {
 	c *conn
+	// ctx is the context given to BeginTx. database/sql documents it as in
+	// use until the transaction is committed or rolled back, so Commit's
+	// wait for a lock ends once it is done.
+	ctx context.Context
 }
 
 func newTx(ctx context.Context, c *conn, opts driver.TxOptions) (*tx, error) {
-	r := &tx{c: c}
+	r := &tx{c: c, ctx: ctx}
 
 	sql := "begin"
 	if !opts.ReadOnly && c.beginMode != "" {
@@ -32,8 +36,14 @@ func newTx(ctx context.Context, c *conn, opts driver.TxOptions) (*tx, error) {
 }
 
 // Commit implements driver.Tx.
+//
+// A COMMIT can wait, under busy_timeout, for a lock another connection holds,
+// such as a reader's SHARED lock in rollback-journal mode. The wait ends once
+// the context given to BeginTx is done, with the context's error, and the
+// transaction is rolled back, as database/sql rolls it back when that context
+// ends before Commit. See https://gitlab.com/cznic/sqlite/-/issues/263.
 func (t *tx) Commit() (err error) {
-	err = t.exec(context.Background(), "commit")
+	err = t.exec(t.ctx, "commit")
 	if err == nil {
 		return nil
 	}
@@ -54,6 +64,10 @@ func (t *tx) Commit() (err error) {
 }
 
 // Rollback implements driver.Tx.
+//
+// Unlike Commit it does not watch the context given to BeginTx: database/sql
+// calls Rollback to clean up once that context is done, and the ROLLBACK must
+// run then. It takes no lock another connection could hold.
 func (t *tx) Rollback() (err error) {
 	return t.exec(context.Background(), "rollback")
 }

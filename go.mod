@@ -13,7 +13,7 @@ require (
 	github.com/zeebo/blake3 v0.2.4
 	go.felesatra.moe/hash/ed2k v1.2.0
 	golang.org/x/crypto v0.58.0
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
@@ -29,7 +29,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	modernc.org/libc v1.79.1 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//go:build !solaris
+//go:build !solaris || illumos
 
 package processor
 
